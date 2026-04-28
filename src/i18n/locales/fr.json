@@ -1,0 +1,87 @@
+{
+  "nav": {
+    "home": "Accueil",
+    "concepts": "Concepts EEG",
+    "montages": "Montages",
+    "waveforms": "Formes d'onde",
+    "findings": "Résultats cliniques",
+    "sandbox": "Bac à sable",
+    "quiz": "Quiz",
+    "artifacts": "Artefacts"
+  },
+  "home": {
+    "hero_tag": "Éducation EEG Interactive",
+    "hero_title": "Maîtrisez l'Interprétation EEG",
+    "hero_subtitle": "Des fondamentaux aux résultats cliniques — apprenez, interagissez et testez vos connaissances avec une plateforme de simulation EEG entièrement interactive.",
+    "cta_start": "Commencer",
+    "cta_sandbox": "Ouvrir le Bac à sable",
+    "modules": "Modules d'apprentissage"
+  },
+  "concepts": {
+    "title": "Concepts EEG",
+    "intro": "L'électroencéphalographie (EEG) mesure l'activité électrique générée par le cerveau via des électrodes placées sur le cuir chevelu.",
+    "what_is_eeg": "Qu'est-ce que l'EEG ?",
+    "how_it_works": "Comment ça fonctionne",
+    "electrode_placement": "Placement des électrodes",
+    "10_20_system": "Le système 10-20",
+    "propagation": "Propagation du Champ Épileptique"
+  },
+  "montages": {
+    "title": "Montages",
+    "subtitle": "Un montage définit comment les voies EEG sont dérivées des paires d'électrodes.",
+    "referential": "Référentiel",
+    "bipolar": "Bipolaire",
+    "laplacian": "Laplacien",
+    "average_ref": "Référence moyenne",
+    "longitudinal": "Bipolaire longitudinal (Double Banane)",
+    "transverse": "Bipolaire transversal",
+    "select_montage": "Sélectionner un montage",
+    "try_it": "Essayez interactivement"
+  },
+  "waveforms": {
+    "title": "Formes d'onde",
+    "subtitle": "Apprenez à reconnaître les éléments de base des patterns EEG.",
+    "spike": "Pointe",
+    "sharp_wave": "Onde pointue",
+    "polyspike": "Polypointe",
+    "spike_wave": "Pointe-onde",
+    "slowing": "Ralentissement",
+    "burst_suppression": "Burst-Suppression",
+    "alpha": "Alpha",
+    "beta": "Bêta",
+    "theta": "Thêta",
+    "delta": "Delta"
+  },
+  "findings": {
+    "title": "Résultats Cliniques",
+    "subtitle": "Patterns EEG normaux vs pathologiques.",
+    "normal": "Normal",
+    "abnormal": "Anormal",
+    "epileptiform": "Épileptiforme",
+    "non_epileptiform": "Non-épileptiforme"
+  },
+  "sandbox": {
+    "title": "Bac à Sable EEG",
+    "subtitle": "Générez et explorez les signaux EEG interactivement.",
+    "controls": "Contrôles du Signal",
+    "montage": "Montage",
+    "add_artifact": "Injecter un artefact",
+    "add_spike": "Injecter une pointe",
+    "noise_level": "Bruit",
+    "amplitude": "Amplitude",
+    "speed": "Vitesse de balayage",
+    "channels": "Voies"
+  },
+  "common": {
+    "learn_more": "En savoir plus",
+    "interactive": "Interactif",
+    "loading": "Chargement…",
+    "language": "Langue"
+  },
+  "quiz": {
+    "subtitle": "Testez vos connaissances sur les patterns EEG, montages et résultats cliniques."
+  },
+  "artifacts": {
+    "subtitle": "Artefacts EEG courants avec exemples multicanaux et guides d'identification."
+  }
+}

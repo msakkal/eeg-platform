@@ -1,0 +1,87 @@
+{
+  "nav": {
+    "home": "Startseite",
+    "concepts": "EEG-Konzepte",
+    "montages": "Montagen",
+    "waveforms": "Wellenformen",
+    "findings": "Klinische Befunde",
+    "sandbox": "Sandkasten",
+    "quiz": "Quiz",
+    "artifacts": "Artefakte"
+  },
+  "home": {
+    "hero_tag": "Interaktive EEG-Ausbildung",
+    "hero_title": "EEG-Interpretation Meistern",
+    "hero_subtitle": "Von den Grundlagen bis zu klinischen Befunden — lernen, interagieren und testen Sie Ihr Wissen mit einer vollständig interaktiven EEG-Simulationsplattform.",
+    "cta_start": "Lernen beginnen",
+    "cta_sandbox": "Sandkasten öffnen",
+    "modules": "Lernmodule"
+  },
+  "concepts": {
+    "title": "EEG-Konzepte",
+    "intro": "Die Elektroenzephalographie (EEG) misst die vom Gehirn erzeugte elektrische Aktivität über Elektroden, die auf der Kopfhaut platziert werden.",
+    "what_is_eeg": "Was ist EEG?",
+    "how_it_works": "Wie es funktioniert",
+    "electrode_placement": "Elektrodenplatzierung",
+    "10_20_system": "Das 10-20-System",
+    "propagation": "Epileptische Feldpropagation"
+  },
+  "montages": {
+    "title": "Montagen",
+    "subtitle": "Eine Montage definiert, wie EEG-Kanäle aus Elektrodenpaaren abgeleitet werden.",
+    "referential": "Referenziell",
+    "bipolar": "Bipolar",
+    "laplacian": "Laplacian",
+    "average_ref": "Durchschnittsreferenz",
+    "longitudinal": "Longitudinal Bipolar (Doppelte Banane)",
+    "transverse": "Transversal Bipolar",
+    "select_montage": "Montage auswählen",
+    "try_it": "Interaktiv ausprobieren"
+  },
+  "waveforms": {
+    "title": "Wellenformen",
+    "subtitle": "Lernen Sie die Bausteine von EEG-Mustern zu erkennen.",
+    "spike": "Spike",
+    "sharp_wave": "Steile Welle",
+    "polyspike": "Polyspike",
+    "spike_wave": "Spike-und-Welle",
+    "slowing": "Verlangsamung",
+    "burst_suppression": "Burst-Suppression",
+    "alpha": "Alpha",
+    "beta": "Beta",
+    "theta": "Theta",
+    "delta": "Delta"
+  },
+  "findings": {
+    "title": "Klinische Befunde",
+    "subtitle": "Normale vs. pathologische EEG-Muster.",
+    "normal": "Normal",
+    "abnormal": "Abnormal",
+    "epileptiform": "Epileptiform",
+    "non_epileptiform": "Nicht-Epileptiform"
+  },
+  "sandbox": {
+    "title": "EEG-Sandkasten",
+    "subtitle": "Generieren und erkunden Sie EEG-Signale interaktiv.",
+    "controls": "Signalsteuerung",
+    "montage": "Montage",
+    "add_artifact": "Artefakt injizieren",
+    "add_spike": "Spike injizieren",
+    "noise_level": "Rauschen",
+    "amplitude": "Amplitude",
+    "speed": "Ablaufgeschwindigkeit",
+    "channels": "Kanäle"
+  },
+  "common": {
+    "learn_more": "Mehr erfahren",
+    "interactive": "Interaktiv",
+    "loading": "Lädt…",
+    "language": "Sprache"
+  },
+  "quiz": {
+    "subtitle": "Testen Sie Ihr Wissen über EEG-Muster, Montagen und klinische Befunde."
+  },
+  "artifacts": {
+    "subtitle": "Häufige EEG-Artefakte mit Mehrkanal-Beispielen und Identifikationsanleitungen."
+  }
+}

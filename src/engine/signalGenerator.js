@@ -1,0 +1,1395 @@
+/**
+ * EEG Signal Generation Engine
+ *
+ * Generates physiologically plausible EEG using:
+ *  - Regional frequency content (occipital alpha, central mu, frontal beta,
+ *    temporal theta) with posterior-dominant alpha gradients.
+ *  - Berger effect: alpha is attenuated with eyes open and replaced by
+ *    low-amplitude desynchronized beta.
+ *  - Spontaneous eye blink artifacts with realistic frontopolar-maximum
+ *    fields and gamma-distributed inter-blink intervals.
+ *  - Sleep micro-architecture (vertex sharp waves, K-complexes, spindles).
+ *  - Pink (1/f) background noise.
+ *  - Transient event injection (spike, sharp wave, spike-and-wave, polyspike).
+ *
+ * References: American Academy of Neurological EEG primers; learningeeg.com
+ * descriptions of normal awake / drowsy / sleep patterns.
+ */
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+export const SAMPLE_RATE = 256          // Hz
+export const WINDOW_SIZE = SAMPLE_RATE * 10  // 10-second window
+
+// ─── Rhythm Definitions ──────────────────────────────────────────────────────
+
+export const RHYTHMS = {
+  delta: { min: 0.5, max: 4,   label: 'Delta (δ)', color: '#7B5EA7' },
+  theta: { min: 4,   max: 8,   label: 'Theta (θ)', color: '#00D4FF' },
+  alpha: { min: 8,   max: 13,  label: 'Alpha (α)', color: '#00FFB0' },
+  beta:  { min: 13,  max: 30,  label: 'Beta (β)',  color: '#FF6B35' },
+  gamma: { min: 30,  max: 80,  label: 'Gamma (γ)', color: '#FFD166' },
+}
+
+// ─── Noise ───────────────────────────────────────────────────────────────────
+
+/** Box-Muller gaussian random number */
+function gaussianRandom(mean = 0, std = 1) {
+  const u = 1 - Math.random()
+  const v = Math.random()
+  return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
+}
+
+/** Generate pink-ish noise (1/f approximation via summed octaves) */
+function pinkNoise(length) {
+  const white = Array.from({ length }, () => gaussianRandom(0, 1))
+  const pink  = new Float32Array(length)
+  let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0
+  for (let i = 0; i < length; i++) {
+    const w = white[i]
+    b0 = 0.99886 * b0 + w * 0.0555179
+    b1 = 0.99332 * b1 + w * 0.0750759
+    b2 = 0.96900 * b2 + w * 0.1538520
+    b3 = 0.86650 * b3 + w * 0.3104856
+    b4 = 0.55000 * b4 + w * 0.5329522
+    b5 = -0.7616 * b5 - w * 0.0168980
+    pink[i] = (b0 + b1 + b2 + b3 + b4 + b5 + w * 0.5362) * 0.11
+  }
+  return pink
+}
+
+// ─── Core Generators ─────────────────────────────────────────────────────────
+
+/**
+ * Generate a background EEG rhythm as a sum of sine components.
+ * @param {number} length   - number of samples
+ * @param {number} fs       - sample rate (Hz)
+ * @param {object} options  - { freqBands, amplitude, noiseLevel }
+ */
+export function generateBackground(length, fs = SAMPLE_RATE, options = {}) {
+  const {
+    freqBands  = ['alpha'],
+    amplitude  = 50,        // µV
+    noiseLevel = 0.3,
+  } = options
+
+  const signal = new Float32Array(length)
+  const noise  = pinkNoise(length)
+
+  freqBands.forEach(band => {
+    const { min, max } = RHYTHMS[band] ?? RHYTHMS.alpha
+    const nComponents = 4
+    for (let c = 0; c < nComponents; c++) {
+      const freq  = min + Math.random() * (max - min)
+      const phase = Math.random() * 2 * Math.PI
+      const amp   = amplitude * (0.5 + Math.random() * 0.5) / nComponents
+      for (let i = 0; i < length; i++) {
+        signal[i] += amp * Math.sin(2 * Math.PI * freq * (i / fs) + phase)
+      }
+    }
+  })
+
+  for (let i = 0; i < length; i++) {
+    signal[i] += noise[i] * amplitude * noiseLevel
+  }
+
+  return signal
+}
+
+// ─── Modulated Rhythm Generator ──────────────────────────────────────────────
+
+/**
+ * Add a narrow-band rhythmic component with slow amplitude envelope
+ * (waxing/waning) and gentle frequency drift — mimics the way biological
+ * rhythms like alpha and mu modulate in vivo.
+ *
+ * The envelope is a rectified low-frequency carrier plus a noise floor, so
+ * the rhythm waxes and wanes every 1–3 s rather than being steady.
+ */
+function addModulatedBand(signal, fs, {
+  centerFreq,
+  bandwidthHz = 1.5,
+  amplitude   = 30,
+  nComponents = 3,
+  envFreqMin  = 0.1,      // Hz — carrier for waxing/waning
+  envFreqMax  = 0.3,
+  envFloor    = 0.25,     // minimum envelope (0..1) — never silences completely
+  phase0,
+}) {
+  const length = signal.length
+  const envFreq = envFreqMin + Math.random() * (envFreqMax - envFreqMin)
+  const envPhase = Math.random() * 2 * Math.PI
+
+  // Build a smooth amplitude envelope (0..1)
+  const env = new Float32Array(length)
+  for (let i = 0; i < length; i++) {
+    const t = i / fs
+    const c = 0.5 + 0.5 * Math.sin(2 * Math.PI * envFreq * t + envPhase)
+    env[i]  = envFloor + (1 - envFloor) * c
+  }
+
+  for (let c = 0; c < nComponents; c++) {
+    const freq  = centerFreq + (Math.random() - 0.5) * bandwidthHz
+    const phase = phase0 != null ? phase0 + c * 0.4 : Math.random() * 2 * Math.PI
+    const amp   = amplitude * (0.6 + Math.random() * 0.4) / nComponents
+    for (let i = 0; i < length; i++) {
+      signal[i] += amp * env[i] * Math.sin(2 * Math.PI * freq * (i / fs) + phase)
+    }
+  }
+}
+
+/**
+ * Add wideband pink-ish noise scaled to amplitude.
+ */
+function addPinkNoiseTo(signal, amplitude, noiseLevel) {
+  const noise = pinkNoise(signal.length)
+  for (let i = 0; i < signal.length; i++) signal[i] += noise[i] * amplitude * noiseLevel
+}
+
+// ─── Transient Injectors ─────────────────────────────────────────────────────
+
+/**
+ * Inject a spike transient into a signal buffer.
+ * @param {Float32Array} signal  - signal to modify in-place
+ * @param {number} sampleIndex   - center of spike
+ * @param {object} options       - { amplitude, duration, polarity }
+ */
+export function injectSpike(signal, sampleIndex, options = {}) {
+  const {
+    amplitude = 150,   // µV
+    duration  = 0.06,  // seconds (< 70 ms = spike)
+    polarity  = -1,    // -1 = negative (classic EEG spike)
+    asymmetry = 0.3,   // rise:fall ratio
+  } = options
+
+  const halfW = Math.round((duration * SAMPLE_RATE) / 2)
+
+  for (let i = sampleIndex - halfW; i <= sampleIndex + halfW; i++) {
+    if (i < 0 || i >= signal.length) continue
+    const t = (i - sampleIndex) / halfW          // normalised -1..1
+    const env = t < 0
+      ? Math.exp(-Math.pow(t / asymmetry, 2) * 4)
+      : Math.exp(-Math.pow(t / (1 - asymmetry), 2) * 4)
+    signal[i] += polarity * amplitude * env
+  }
+  return signal
+}
+
+/** Inject a sharp wave (70–200 ms). */
+export function injectSharpWave(signal, sampleIndex, options = {}) {
+  return injectSpike(signal, sampleIndex, {
+    amplitude: 100,
+    duration:  0.12,
+    polarity:  -1,
+    asymmetry: 0.4,
+    ...options,
+  })
+}
+
+/** Inject spike-and-wave complex (spike followed by slow wave). */
+export function injectSpikeAndWave(signal, sampleIndex, options = {}) {
+  const { frequency = 3 } = options
+  injectSpike(signal, sampleIndex, { amplitude: 200, duration: 0.04, polarity: -1 })
+  const swStart    = sampleIndex + Math.round(SAMPLE_RATE * 0.06)
+  const swDuration = Math.round(SAMPLE_RATE * 0.25)
+  for (let i = 0; i < swDuration; i++) {
+    const idx = swStart + i
+    if (idx >= signal.length) break
+    signal[idx] += 80 * Math.sin(Math.PI * i / swDuration)
+  }
+  return signal
+}
+
+/** Inject polyspike burst. */
+export function injectPolyspike(signal, sampleIndex, options = {}) {
+  const { count = 4, spacing = 0.025 } = options
+  for (let k = 0; k < count; k++) {
+    const idx = sampleIndex + Math.round(k * spacing * SAMPLE_RATE)
+    injectSpike(signal, idx, {
+      amplitude: 120 - k * 15,
+      duration:  0.03,
+      polarity:  k % 2 === 0 ? -1 : 1,
+    })
+  }
+  return signal
+}
+
+/**
+ * Inject a triphasic wave (classic metabolic / hepatic encephalopathy pattern).
+ * Three blunt phases: small positive → large negative → slower positive.
+ * Duration ~350 ms total, no needle-like spike component.
+ */
+export function injectTriphasicWave(signal, sampleIndex, options = {}) {
+  const {
+    amplitude = 120,
+    duration  = 0.35,
+  } = options
+  const total = Math.round(duration * SAMPLE_RATE)
+  if (total < 3) return signal
+  const p1End = Math.round(total * 0.18)   // phase 1: brief small positive
+  const p2End = Math.round(total * 0.55)   // phase 2: dominant blunt negative
+  // phase 3 fills the rest: broad positive afterwave
+
+  for (let i = 0; i < total; i++) {
+    const idx = sampleIndex + i
+    if (idx < 0 || idx >= signal.length) continue
+    let v
+    if (i < p1End) {
+      v = +0.35 * amplitude * Math.sin(Math.PI * i / p1End)
+    } else if (i < p2End) {
+      const t = (i - p1End) / (p2End - p1End)
+      v = -1.00 * amplitude * Math.sin(Math.PI * t)
+    } else {
+      const t = (i - p2End) / (total - p2End)
+      v = +0.72 * amplitude * Math.sin(Math.PI * t)
+    }
+    signal[idx] += v
+  }
+  return signal
+}
+
+/** Inject muscle artifact (high-frequency burst). */
+export function injectMuscleArtifact(signal, sampleIndex, options = {}) {
+  const { duration = 0.5, amplitude = 80 } = options
+  const len = Math.round(duration * SAMPLE_RATE)
+  for (let i = 0; i < len; i++) {
+    const idx = sampleIndex + i
+    if (idx >= signal.length) break
+    const env = Math.sin(Math.PI * i / len)
+    signal[idx] += gaussianRandom(0, amplitude * env)
+  }
+  return signal
+}
+
+/**
+ * Inject an eye blink with realistic morphology.
+ *
+ * A blink produces a positive deflection at frontopolar channels because
+ * closing the eyelid briefly brings the positive cornea closer to the
+ * Fp electrodes. The waveform rises quickly (~50–80 ms) and decays more
+ * slowly (~200–300 ms) — a skewed bell shape, NOT a symmetric sine.
+ *
+ * @param {Float32Array} signal
+ * @param {number} sampleIndex - sample at which blink onset begins
+ * @param {object} options
+ *   - amplitude: peak µV at this channel (caller scales by field factor)
+ *   - riseMs: ms from onset to peak (default 70)
+ *   - fallMs: ms from peak back to baseline (default 220)
+ *   - polarity: +1 (Fp positive, standard) or −1
+ */
+export function injectEyeBlink(signal, sampleIndex, options = {}) {
+  const {
+    amplitude = 200,
+    riseMs    = 70,
+    fallMs    = 220,
+    polarity  = +1,
+  } = options
+
+  const riseN = Math.round((riseMs / 1000) * SAMPLE_RATE)
+  const fallN = Math.round((fallMs / 1000) * SAMPLE_RATE)
+  const total = riseN + fallN
+
+  for (let i = 0; i < total; i++) {
+    const idx = sampleIndex + i
+    if (idx < 0 || idx >= signal.length) continue
+    let v
+    if (i < riseN) {
+      // Smooth rise (half sine)
+      v = Math.sin((Math.PI / 2) * (i / riseN))
+    } else {
+      // Exponential-ish decay
+      const k = (i - riseN) / fallN
+      v = Math.cos((Math.PI / 2) * k) * Math.exp(-1.1 * k)
+    }
+    signal[idx] += polarity * amplitude * v
+  }
+  return signal
+}
+
+/**
+ * Generate a train of spontaneous blink times (seconds) over a duration.
+ * Inter-blink intervals are gamma-distributed so bursts and pauses look
+ * natural (not perfectly periodic).
+ *
+ * @param {number} durationSec
+ * @param {number} ratePerMin  - mean blink rate (default 18/min)
+ */
+export function generateBlinkTimes(durationSec, ratePerMin = 18) {
+  if (ratePerMin <= 0) return []
+  const meanIbi = 60 / ratePerMin           // seconds
+  const times = []
+  let t = 0.3 + Math.random() * meanIbi     // first blink offset
+  while (t < durationSec - 0.2) {
+    times.push(t)
+    // Gamma(k=2, theta=meanIbi/2) approximation = sum of two exponentials
+    const u1 = Math.max(1e-6, Math.random())
+    const u2 = Math.max(1e-6, Math.random())
+    const ibi = -(meanIbi / 2) * (Math.log(u1) + Math.log(u2))
+    t += Math.max(0.25, ibi)                // minimum plausible inter-blink
+  }
+  return times
+}
+
+// ─── Multi-Channel EEG Generator ─────────────────────────────────────────────
+
+/**
+ * Standard 10-20 electrode labels used across the platform.
+ */
+export const ELECTRODES_1020 = [
+  'Fp1','Fp2',
+  'F7','F3','Fz','F4','F8',
+  'T3','C3','Cz','C4','T4',
+  'T5','P3','Pz','P4','T6',
+  'O1','O2',
+  'A1','A2',   // ear reference electrodes
+]
+
+/** Classify an electrode by broad scalp region. */
+function regionOf(label) {
+  if (label === 'A1' || label === 'A2') return 'ear'
+  if (label.startsWith('Fp'))  return 'frontopolar'
+  if (label.startsWith('F'))   return 'frontal'
+  if (label === 'T3' || label === 'T4') return 'midtemporal'
+  if (label === 'T5' || label === 'T6') return 'posttemporal'
+  if (label.startsWith('C'))   return 'central'
+  if (label.startsWith('P'))   return 'parietal'
+  if (label.startsWith('O'))   return 'occipital'
+  return 'other'
+}
+
+/**
+ * Field factor for an eye-blink at each electrode — reflects the actual
+ * corneoretinal dipole field distribution. Fp1/Fp2 are maximal; amplitude
+ * falls off rapidly with increasing distance from the forehead.
+ */
+function blinkField(label) {
+  switch (regionOf(label)) {
+    case 'frontopolar':  return 1.00
+    case 'frontal':      return label === 'F7' || label === 'F8' ? 0.55 : 0.45
+    case 'midtemporal':  return 0.15
+    case 'central':      return 0.10
+    case 'posttemporal': return 0.05
+    case 'parietal':     return 0.03
+    case 'occipital':    return 0.02
+    case 'ear':          return 0.05
+    default:             return 0.05
+  }
+}
+
+/**
+ * Alpha amplitude gradient (posterior-dominant) relative to O1/O2.
+ * Matches the typical clinical observation that the posterior dominant
+ * rhythm is largest occipitally and tapers anteriorly.
+ */
+function alphaGradient(label) {
+  switch (label) {
+    case 'O1': case 'O2': return 1.00
+    case 'P3': case 'P4': return 0.80
+    case 'Pz':            return 0.75
+    case 'T5': case 'T6': return 0.70
+    case 'C3': case 'C4': return 0.35
+    case 'Cz':            return 0.30
+    case 'T3': case 'T4': return 0.35
+    case 'F3': case 'F4': return 0.18
+    case 'Fz':            return 0.18
+    case 'F7': case 'F8': return 0.20
+    case 'Fp1': case 'Fp2': return 0.12
+    default: return 0.05
+  }
+}
+
+/** Mu rhythm amplitude at each site — maximal at C3/C4 (rolandic). */
+function muGradient(label) {
+  switch (label) {
+    case 'C3': case 'C4': return 1.00
+    case 'Cz':            return 0.55
+    case 'F3': case 'F4': return 0.35
+    case 'P3': case 'P4': return 0.30
+    default: return 0
+  }
+}
+
+/** Frontal beta amplitude — most prominent at F3/F4/Fz, smaller elsewhere. */
+function frontalBetaGradient(label) {
+  switch (label) {
+    case 'F3': case 'F4': case 'Fz': return 1.00
+    case 'Fp1': case 'Fp2':           return 0.70
+    case 'F7':  case 'F8':            return 0.80
+    case 'C3':  case 'C4': case 'Cz': return 0.60
+    default: return 0.30
+  }
+}
+
+/**
+ * Generalised frontocentral-max field — used by GPDs, slow spike-wave,
+ * polyspike-wave, and generalized epileptiform discharges where the
+ * negative maximum sits over the midline frontal-central region.
+ */
+function frontocentralGradient(label) {
+  switch (label) {
+    case 'Fz': case 'Cz': return 1.00
+    case 'F3': case 'F4': case 'C3': case 'C4': return 0.88
+    case 'Fp1': case 'Fp2':           return 0.75
+    case 'F7':  case 'F8':            return 0.70
+    case 'Pz':                        return 0.60
+    case 'P3':  case 'P4':            return 0.55
+    case 'T3':  case 'T4':            return 0.45
+    case 'T5':  case 'T6':            return 0.35
+    case 'O1':  case 'O2':            return 0.30
+    default: return 0.05
+  }
+}
+
+/** Bifrontal maximum — for FIRDA and triphasic waves. */
+function bifrontalGradient(label) {
+  switch (label) {
+    case 'Fz':                        return 1.00
+    case 'F3': case 'F4':             return 0.92
+    case 'Fp1': case 'Fp2':           return 0.85
+    case 'F7':  case 'F8':            return 0.72
+    case 'C3':  case 'C4': case 'Cz': return 0.40
+    case 'T3':  case 'T4':            return 0.25
+    case 'P3':  case 'P4': case 'Pz': return 0.18
+    case 'T5':  case 'T6':            return 0.14
+    case 'O1':  case 'O2':            return 0.10
+    default: return 0.05
+  }
+}
+
+/** Left-hemisphere field — for LPDs lateralised to the left. */
+function leftHemisphereGradient(label) {
+  switch (label) {
+    case 'F7':                        return 1.00
+    case 'T3':                        return 0.95
+    case 'T5':                        return 0.82
+    case 'C3':                        return 0.75
+    case 'F3':                        return 0.70
+    case 'P3':                        return 0.62
+    case 'Fp1':                       return 0.55
+    case 'O1':                        return 0.38
+    case 'Fz':                        return 0.22
+    case 'Cz':                        return 0.18
+    case 'Pz':                        return 0.15
+    default: return 0.04               // right hemisphere minimally involved
+  }
+}
+
+/** Left anterior-temporal field — for TLE interictal sharps. */
+function leftTemporalSpikeGradient(label) {
+  switch (label) {
+    case 'F7': case 'T3':             return 1.00
+    case 'T5':                        return 0.55
+    case 'Fp1':                       return 0.55
+    case 'F3':                        return 0.42
+    case 'C3':                        return 0.30
+    case 'P3':                        return 0.18
+    default: return 0
+  }
+}
+
+/** Focal breach — left-central max over a skull defect. */
+function breachGradient(label) {
+  switch (label) {
+    case 'C3':                        return 1.00
+    case 'T3':                        return 0.65
+    case 'F3':                        return 0.55
+    case 'P3':                        return 0.55
+    case 'Cz':                        return 0.32
+    default: return 0
+  }
+}
+
+/** Frontal-maximum alpha (inverted gradient) — for alpha coma. */
+function alphaComaFieldGradient(label) {
+  switch (regionOf(label)) {
+    case 'frontopolar':  return 1.00
+    case 'frontal':      return 0.95
+    case 'central':      return 0.72
+    case 'midtemporal':  return 0.55
+    case 'parietal':     return 0.40
+    case 'posttemporal': return 0.30
+    case 'occipital':    return 0.25
+    case 'ear':          return 0.05
+    default:             return 0.10
+  }
+}
+
+/**
+ * Generate a full multi-channel EEG dataset.
+ * Returns an object: { channels: { [label]: Float32Array }, sampleRate, duration }
+ *
+ * @param {object} options
+ *   - duration, sampleRate, amplitude, noiseLevel
+ *   - pattern: 'normal_awake' | 'normal_drowsy' | 'normal_sleep' |
+ *              'absence' | 'focal_slowing' | 'burst_suppression'
+ *   - eyesClosed: boolean (applies to 'normal_awake')
+ *   - blinksEnabled: boolean (default true when eyes open)
+ *   - blinkRate: blinks per minute (default 18)
+ */
+export function generateMultiChannelEEG(options = {}) {
+  const {
+    duration      = 10,
+    sampleRate    = SAMPLE_RATE,
+    pattern       = 'normal_awake',
+    noiseLevel    = 0.25,
+    amplitude     = 50,
+    eyesClosed    = true,
+    blinksEnabled = true,
+    blinkRate     = 18,
+  } = options
+
+  const nSamples = Math.round(duration * sampleRate)
+  const channels = {}
+
+  // Emit a realistic awake background for one channel, taking the electrode
+  // label and eye state into account.
+  function awakeChannel(label) {
+    const sig = new Float32Array(nSamples)
+    addPinkNoiseTo(sig, amplitude, noiseLevel * 0.6)
+
+    // Alpha (posterior dominant rhythm) — strongly gated by eye state.
+    const alphaAmp = alphaGradient(label) * amplitude * (eyesClosed ? 1.2 : 0.12)
+    if (alphaAmp > 0.5) {
+      addModulatedBand(sig, sampleRate, {
+        centerFreq:  10,                   // dominant alpha ~10 Hz
+        bandwidthHz: 1.4,
+        amplitude:   alphaAmp,
+        nComponents: 3,
+        envFreqMin:  0.12,
+        envFreqMax:  0.28,
+        envFloor:    eyesClosed ? 0.45 : 0.30,
+      })
+    }
+
+    // Mu rhythm (central 8–12 Hz, arched) — present regardless of eye state.
+    const muAmp = muGradient(label) * amplitude * 0.25
+    if (muAmp > 0.5) {
+      addModulatedBand(sig, sampleRate, {
+        centerFreq:  10.5,
+        bandwidthHz: 1.0,
+        amplitude:   muAmp,
+        nComponents: 2,
+        envFreqMin:  0.05,
+        envFreqMax:  0.15,
+        envFloor:    0.3,
+      })
+      // Very mild arched harmonic (20 Hz) to hint at mu morphology.
+      addModulatedBand(sig, sampleRate, {
+        centerFreq:  21,
+        bandwidthHz: 1.0,
+        amplitude:   muAmp * 0.3,
+        nComponents: 1,
+        envFloor:    0.3,
+      })
+    }
+
+    // Low-amplitude frontal/diffuse beta — prominent when eyes open
+    // (desynchronised, "alert" cortex).
+    const betaAmp = frontalBetaGradient(label) * amplitude *
+      (eyesClosed ? 0.12 : 0.22)
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  20,
+      bandwidthHz: 6,
+      amplitude:   betaAmp,
+      nComponents: 3,
+      envFreqMin:  0.2,
+      envFreqMax:  0.6,
+      envFloor:    0.4,
+    })
+
+    // A touch of temporal theta (more in mid-temporal channels, small in adults).
+    if (regionOf(label) === 'midtemporal' || regionOf(label) === 'posttemporal') {
+      addModulatedBand(sig, sampleRate, {
+        centerFreq:  6,
+        bandwidthHz: 2,
+        amplitude:   amplitude * 0.15,
+        nComponents: 2,
+        envFreqMin:  0.08,
+        envFreqMax:  0.2,
+        envFloor:    0.2,
+      })
+    }
+
+    return sig
+  }
+
+  // Drowsy: alpha fragments, increased theta, slow roving eye movements.
+  function drowsyChannel(label) {
+    const sig = new Float32Array(nSamples)
+    addPinkNoiseTo(sig, amplitude, noiseLevel * 0.8)
+
+    // Fragmented, slower alpha (posterior, attenuated)
+    const alphaAmp = alphaGradient(label) * amplitude * 0.55
+    if (alphaAmp > 0.5) {
+      addModulatedBand(sig, sampleRate, {
+        centerFreq:  8.5,
+        bandwidthHz: 1.5,
+        amplitude:   alphaAmp,
+        nComponents: 2,
+        envFreqMin:  0.15,
+        envFreqMax:  0.3,
+        envFloor:    0.1,          // pronounced fragmentation
+      })
+    }
+    // Diffuse theta
+    const thetaAmp = amplitude * 0.55 *
+      (regionOf(label) === 'central' || regionOf(label) === 'frontal' ? 1.1 : 0.85)
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  5.5,
+      bandwidthHz: 2,
+      amplitude:   thetaAmp,
+      nComponents: 3,
+      envFreqMin:  0.1,
+      envFreqMax:  0.25,
+      envFloor:    0.4,
+    })
+    return sig
+  }
+
+  // Light NREM-ish sleep: delta-theta background + vertex sharps + sleep
+  // spindles at Cz/Fz + occasional K-complexes.
+  function sleepChannel(label) {
+    const sig = new Float32Array(nSamples)
+    addPinkNoiseTo(sig, amplitude, noiseLevel * 0.9)
+
+    // Delta background, larger frontally/centrally
+    const isFrontalOrCentral = regionOf(label) === 'frontal' ||
+                               regionOf(label) === 'frontopolar' ||
+                               regionOf(label) === 'central'
+    const deltaAmp = amplitude * (isFrontalOrCentral ? 1.7 : 1.0)
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  1.5,
+      bandwidthHz: 1.8,
+      amplitude:   deltaAmp,
+      nComponents: 3,
+      envFreqMin:  0.05,
+      envFreqMax:  0.15,
+      envFloor:    0.6,
+    })
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  4.5,
+      bandwidthHz: 2,
+      amplitude:   amplitude * 0.5,
+      nComponents: 2,
+      envFloor:    0.4,
+    })
+
+    // Sleep spindles (12–14 Hz, 0.5–1.5 s) — maximal central/frontal
+    const spindleAmp = (label === 'Cz' || label === 'Fz') ? amplitude * 0.9
+                    : (label === 'C3' || label === 'C4') ? amplitude * 0.75
+                    : (label === 'F3' || label === 'F4') ? amplitude * 0.45
+                    : amplitude * 0.15
+    if (spindleAmp > 1) {
+      const nSpindles = Math.round(duration / 4)         // ~1 every 4 s
+      for (let k = 0; k < nSpindles; k++) {
+        const start   = Math.round((1 + Math.random() * (duration - 2)) * sampleRate)
+        const spDur   = Math.round((0.6 + Math.random() * 0.8) * sampleRate)
+        const spFreq  = 12.5 + Math.random() * 1.5
+        for (let i = 0; i < spDur; i++) {
+          const idx = start + i
+          if (idx >= nSamples) break
+          const env = Math.sin(Math.PI * i / spDur)      // rise and fall
+          sig[idx] += spindleAmp * env *
+            Math.sin(2 * Math.PI * spFreq * i / sampleRate)
+        }
+      }
+    }
+
+    // Vertex sharp waves — sporadic negative sharp transient at Cz/C3/C4
+    if (label === 'Cz' || label === 'C3' || label === 'C4' || label === 'Fz') {
+      const nVertex = Math.max(1, Math.round(duration / 5))
+      const vertexAmp = label === 'Cz' ? 110 : 75
+      for (let k = 0; k < nVertex; k++) {
+        const pos = Math.round((0.8 + Math.random() * (duration - 1.6)) * sampleRate)
+        injectSharpWave(sig, pos, { amplitude: vertexAmp, duration: 0.12, polarity: -1 })
+      }
+    }
+
+    // K-complexes — rare (every ~5–10 s), large biphasic complex maximal Fz/Cz.
+    if (label === 'Fz' || label === 'Cz' || label === 'F3' || label === 'F4') {
+      const nK = Math.max(1, Math.round(duration / 8))
+      const kAmp = (label === 'Fz' || label === 'Cz') ? 1.0 : 0.65
+      for (let k = 0; k < nK; k++) {
+        const pos = Math.round((1.5 + Math.random() * (duration - 3)) * sampleRate)
+        // Sharp negative wave followed by longer positive slow wave
+        injectSharpWave(sig, pos, { amplitude: 180 * kAmp, duration: 0.18, polarity: -1 })
+        const slowDur = Math.round(sampleRate * 0.45)
+        for (let i = 0; i < slowDur; i++) {
+          const idx = pos + Math.round(sampleRate * 0.12) + i
+          if (idx >= nSamples) break
+          sig[idx] += 90 * kAmp * Math.sin(Math.PI * i / slowDur)
+        }
+      }
+    }
+
+    return sig
+  }
+
+  // Focal slowing: polymorphic delta/theta concentrated over one region
+  // (here: left temporal T3/T5/F7), with normal-looking background elsewhere.
+  function focalSlowingChannel(label) {
+    const isFocal = ['T3', 'T5', 'F7', 'T4', 'T6', 'F8']
+      .includes(label)
+    const isLeftFocal = ['T3', 'T5', 'F7'].includes(label)
+
+    const sig = isLeftFocal ? new Float32Array(nSamples) : awakeChannel(label)
+
+    if (isLeftFocal) {
+      addPinkNoiseTo(sig, amplitude, noiseLevel * 0.9)
+      // Polymorphic delta
+      addModulatedBand(sig, sampleRate, {
+        centerFreq:  2,
+        bandwidthHz: 2,
+        amplitude:   amplitude * 2.2,
+        nComponents: 4,
+        envFreqMin:  0.15,
+        envFreqMax:  0.4,
+        envFloor:    0.3,
+      })
+      // Theta overlay
+      addModulatedBand(sig, sampleRate, {
+        centerFreq:  6,
+        bandwidthHz: 2,
+        amplitude:   amplitude * 1.3,
+        nComponents: 3,
+        envFloor:    0.4,
+      })
+      // Heavily attenuated alpha in the affected region
+      const alphaAmp = alphaGradient(label) * amplitude * 0.25
+      if (alphaAmp > 0.5) {
+        addModulatedBand(sig, sampleRate, {
+          centerFreq:  9,
+          bandwidthHz: 1.5,
+          amplitude:   alphaAmp,
+          nComponents: 2,
+          envFloor:    0.2,
+        })
+      }
+    }
+    // Slight attenuation in the right hemisphere counterpart too (for contrast)
+    if (['T4', 'T6', 'F8'].includes(label) && !isLeftFocal) {
+      // no-op — awake channel already captures normal side
+    }
+    return sig
+  }
+
+  // Burst-suppression: periods of near-flat suppression alternating with
+  // mixed-frequency bursts. Duration of suppression and burst vary jittered.
+  function burstSuppressionChannel(label) {
+    const sig = new Float32Array(nSamples)
+    addPinkNoiseTo(sig, amplitude * 0.15, noiseLevel)     // very low suppression floor
+
+    let t = 0.2
+    while (t < duration - 0.5) {
+      const burstDur = 0.5 + Math.random() * 1.2
+      const start    = Math.round(t * sampleRate)
+      const len      = Math.round(burstDur * sampleRate)
+      // Mixed-frequency high-amplitude burst (theta/alpha/beta)
+      const burst = new Float32Array(len)
+      addPinkNoiseTo(burst, amplitude * 1.6, 0.6)
+      addModulatedBand(burst, sampleRate, {
+        centerFreq: 6, bandwidthHz: 3, amplitude: amplitude * 1.8,
+        nComponents: 2, envFloor: 0.7,
+      })
+      addModulatedBand(burst, sampleRate, {
+        centerFreq: 14, bandwidthHz: 4, amplitude: amplitude * 0.9,
+        nComponents: 2, envFloor: 0.5,
+      })
+      // Apply rise/fall envelope so the burst onset is abrupt but realistic
+      for (let i = 0; i < len; i++) {
+        const env = i < len * 0.08 ? i / (len * 0.08)
+                  : i > len * 0.9  ? (len - i) / (len * 0.1)
+                  : 1
+        const idx = start + i
+        if (idx >= nSamples) break
+        sig[idx] += burst[i] * env
+      }
+      // Suppression interval (2–4 s)
+      t += burstDur + 2 + Math.random() * 2
+    }
+    return sig
+  }
+
+  // Slow-wave sleep (N3): very high amplitude diffuse delta, fewer spindles.
+  function deltaSleepChannel(label) {
+    const sig = new Float32Array(nSamples)
+    addPinkNoiseTo(sig, amplitude, noiseLevel)
+    const frontalCentral = regionOf(label) === 'frontal' ||
+                           regionOf(label) === 'frontopolar' ||
+                           regionOf(label) === 'central'
+    const deltaAmp = amplitude * (frontalCentral ? 2.8 : 1.6)
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  1.2,
+      bandwidthHz: 1.0,
+      amplitude:   deltaAmp,
+      nComponents: 3,
+      envFreqMin:  0.03,
+      envFreqMax:  0.10,
+      envFloor:    0.75,
+    })
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  2.5,
+      bandwidthHz: 1.5,
+      amplitude:   amplitude * 0.8,
+      nComponents: 2,
+      envFloor:    0.55,
+    })
+    return sig
+  }
+
+  // Diffuse slowing / encephalopathy background.
+  function encephalopathyChannel(label) {
+    const sig = new Float32Array(nSamples)
+    addPinkNoiseTo(sig, amplitude, noiseLevel * 0.7)
+    // Diffuse theta dominant
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  5,
+      bandwidthHz: 2.2,
+      amplitude:   amplitude * 1.05,
+      nComponents: 3,
+      envFloor:    0.55,
+    })
+    // Delta overlay — slightly more anteriorly
+    const anterior = regionOf(label) === 'frontal' || regionOf(label) === 'frontopolar'
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  2,
+      bandwidthHz: 1.5,
+      amplitude:   amplitude * (anterior ? 0.9 : 0.55),
+      nComponents: 2,
+      envFloor:    0.5,
+    })
+    // Residual attenuated, slowed alpha preserving an A-P gradient
+    const alphaAmp = alphaGradient(label) * amplitude * 0.30
+    if (alphaAmp > 0.5) {
+      addModulatedBand(sig, sampleRate, {
+        centerFreq:  7.5,
+        bandwidthHz: 1.2,
+        amplitude:   alphaAmp,
+        nComponents: 2,
+        envFloor:    0.3,
+      })
+    }
+    return sig
+  }
+
+  // Alpha coma: diffuse non-reactive alpha with FRONTAL max (inverted field).
+  function alphaComaChannel(label) {
+    const sig = new Float32Array(nSamples)
+    addPinkNoiseTo(sig, amplitude * 0.35, noiseLevel * 0.5)
+    const alphaAmp = alphaComaFieldGradient(label) * amplitude * 0.95
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  10,
+      bandwidthHz: 0.7,
+      amplitude:   alphaAmp,
+      nComponents: 2,
+      envFreqMin:  0.03,
+      envFreqMax:  0.08,
+      envFloor:    0.9,               // nearly monotonous, non-reactive
+    })
+    return sig
+  }
+
+  // Electrocerebral silence — near-flat, residual technical noise only.
+  function ecsChannel(label) {
+    const sig = new Float32Array(nSamples)
+    addPinkNoiseTo(sig, amplitude * 0.04, noiseLevel * 0.3)
+    return sig
+  }
+
+  // Breach rhythm: awake background amplified over a skull defect.
+  function breachChannel(label) {
+    const sig = awakeChannel(label)
+    const f = breachGradient(label)
+    if (f <= 0) return sig
+    for (let i = 0; i < nSamples; i++) sig[i] *= (1 + f * 1.6)
+    // Sharpened, higher-amp beta
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  18,
+      bandwidthHz: 6,
+      amplitude:   amplitude * 1.5 * f,
+      nComponents: 3,
+      envFreqMin:  0.15,
+      envFreqMax:  0.4,
+      envFloor:    0.55,
+    })
+    // Accentuated, sharp-contoured alpha
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  10,
+      bandwidthHz: 1.0,
+      amplitude:   amplitude * 1.2 * f,
+      nComponents: 2,
+      envFloor:    0.6,
+    })
+    return sig
+  }
+
+  // Hypsarrhythmia: chaotic very-high-amplitude disorganized slowing with
+  // asynchronous multifocal sharp waves. Each channel gets its own random
+  // morphology — that's the whole point (asynchrony).
+  function hypsarrhythmiaChannel(label) {
+    const sig = new Float32Array(nSamples)
+    addPinkNoiseTo(sig, amplitude * 2.0, noiseLevel * 1.3)
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  1.5 + Math.random() * 1.5,
+      bandwidthHz: 2.5,
+      amplitude:   amplitude * 3.8,
+      nComponents: 4,
+      envFreqMin:  0.05,
+      envFreqMax:  0.4,
+      envFloor:    0.5,
+    })
+    addModulatedBand(sig, sampleRate, {
+      centerFreq:  3 + Math.random() * 2,
+      bandwidthHz: 3,
+      amplitude:   amplitude * 2.2,
+      nComponents: 3,
+      envFloor:    0.4,
+    })
+    // Random asynchronous multifocal sharp waves
+    const nSpikes = Math.round(duration * 2.2)
+    for (let k = 0; k < nSpikes; k++) {
+      const pos = Math.round(Math.random() * nSamples)
+      const amp = 180 + Math.random() * 260
+      injectSharpWave(sig, pos, {
+        amplitude: amp,
+        duration:  0.08 + Math.random() * 0.1,
+        polarity:  Math.random() > 0.5 ? -1 : +1,
+      })
+    }
+    return sig
+  }
+
+  // LPDs background — left hemisphere attenuated/slowed, right side normal.
+  function lpdsBackgroundChannel(label) {
+    return leftHemisphereGradient(label) > 0.3
+      ? encephalopathyChannel(label)
+      : awakeChannel(label)
+  }
+
+  // ── Build each channel ──────────────────────────────────────────────────
+  ELECTRODES_1020.forEach(label => {
+    let sig
+    switch (pattern) {
+      case 'normal_sleep':            sig = sleepChannel(label);            break
+      case 'normal_drowsy':           sig = drowsyChannel(label);           break
+      case 'slow_wave_sleep':         sig = deltaSleepChannel(label);       break
+      case 'focal_slowing':           sig = focalSlowingChannel(label);     break
+      case 'burst_suppression':       sig = burstSuppressionChannel(label); break
+      case 'hypsarrhythmia':          sig = hypsarrhythmiaChannel(label);   break
+      case 'alpha_coma':              sig = alphaComaChannel(label);        break
+      case 'electrocerebral_silence': sig = ecsChannel(label);              break
+      case 'breach_rhythm':           sig = breachChannel(label);           break
+      case 'diffuse_slowing':
+      case 'firda':
+      case 'gpds':
+      case 'triphasic_waves':         sig = encephalopathyChannel(label);   break
+      case 'lpds':                    sig = lpdsBackgroundChannel(label);   break
+      case 'slow_spike_wave':
+      case 'centrotemporal_spikes':   sig = drowsyChannel(label);           break
+      case 'temporal_sharps':
+      case 'polyspike_jme':
+      case 'photoparoxysmal':
+      case 'absence':
+      case 'normal_awake':
+      default:
+        sig = awakeChannel(label)
+    }
+
+    // Ear channels are mostly silent references
+    if (label === 'A1' || label === 'A2') {
+      sig = new Float32Array(nSamples)
+      addPinkNoiseTo(sig, amplitude * 0.1, noiseLevel)
+    }
+
+    channels[label] = sig
+  })
+
+  // ── Spontaneous eye blinks ──────────────────────────────────────────────
+  // Blinks only occur when the subject is awake with open eyes.
+  const NO_BLINK_PATTERNS = new Set([
+    'normal_sleep', 'normal_drowsy', 'slow_wave_sleep',
+    'burst_suppression', 'alpha_coma', 'electrocerebral_silence',
+    'hypsarrhythmia', 'gpds', 'triphasic_waves', 'diffuse_slowing',
+    'firda', 'centrotemporal_spikes', 'slow_spike_wave',
+  ])
+  const awakeWithOpenEyes = !eyesClosed && !NO_BLINK_PATTERNS.has(pattern)
+  const showBlinks = blinksEnabled && awakeWithOpenEyes
+
+  if (showBlinks) {
+    const blinkTimes = generateBlinkTimes(duration, blinkRate)
+    blinkTimes.forEach(t => {
+      const s0 = Math.round(t * sampleRate)
+      const peakAmp = 180 + Math.random() * 80      // 180–260 µV at Fp
+      const riseMs  = 55 + Math.random() * 30
+      const fallMs  = 180 + Math.random() * 90
+      ELECTRODES_1020.forEach(label => {
+        const f = blinkField(label)
+        if (f < 0.02) return
+        injectEyeBlink(channels[label], s0, {
+          amplitude: peakAmp * f,
+          riseMs,
+          fallMs,
+          polarity: +1,
+        })
+      })
+    })
+  }
+
+  // ── Pattern-specific transient injection ────────────────────────────────
+  if (pattern === 'absence') {
+    // 3 Hz generalised spike-and-wave, maximal frontocentral, attenuated
+    // posteriorly. We build the complex on a scratch buffer and scale it
+    // per channel so the spatial distribution is physiologic.
+    const period     = Math.round(sampleRate / 3)
+    const burstStart = Math.round(1.0 * sampleRate)
+    const burstEnd   = Math.round((duration - 1.0) * sampleRate)
+    const cmplxLen   = Math.round(sampleRate * 0.38)
+    const spikeOffset = 10                      // ensure full spike fits
+
+    const scaleFor = (region) => (
+      region === 'frontal' || region === 'central' ? 1.0
+        : region === 'frontopolar' ? 0.9
+        : region === 'parietal'    ? 0.7
+        : region === 'occipital'   ? 0.55
+        : region === 'ear'         ? 0.0
+        :                            0.6
+    )
+
+    for (let s = burstStart; s < burstEnd; s += period) {
+      const scratch = new Float32Array(cmplxLen)
+      injectSpikeAndWave(scratch, spikeOffset, { frequency: 3 })
+      ELECTRODES_1020.forEach(label => {
+        const scale = scaleFor(regionOf(label))
+        if (scale <= 0) return
+        for (let i = 0; i < cmplxLen; i++) {
+          const idx = s + i
+          if (idx >= nSamples) break
+          channels[label][idx] += scratch[i] * scale
+        }
+      })
+    }
+  }
+
+  // ── GPDs: bilaterally synchronous 1 Hz sharp-and-slow ──────────────────
+  if (pattern === 'gpds') {
+    const ibi      = 1.0                                   // ~1 Hz
+    const cmplxLen = Math.round(sampleRate * 0.42)
+    for (let t = 0.6; t < duration - 0.5; t += ibi) {
+      const scratch = new Float32Array(cmplxLen)
+      injectSharpWave(scratch, 12, { amplitude: 130, duration: 0.11, polarity: -1 })
+      // after-going slow wave
+      const swStart = Math.round(sampleRate * 0.15)
+      const swLen   = Math.round(sampleRate * 0.26)
+      for (let i = 0; i < swLen; i++) {
+        const idx = swStart + i
+        if (idx >= cmplxLen) break
+        scratch[idx] += 70 * Math.sin(Math.PI * i / swLen)
+      }
+      const s0 = Math.round(t * sampleRate)
+      ELECTRODES_1020.forEach(label => {
+        const scale = frontocentralGradient(label)
+        if (scale <= 0.05) return
+        for (let i = 0; i < cmplxLen; i++) {
+          const idx = s0 + i
+          if (idx >= nSamples) break
+          channels[label][idx] += scratch[i] * scale
+        }
+      })
+    }
+  }
+
+  // ── LPDs: left-lateralised ~1 Hz periodic discharges ───────────────────
+  if (pattern === 'lpds') {
+    const ibi      = 1.1
+    const cmplxLen = Math.round(sampleRate * 0.38)
+    for (let t = 0.7; t < duration - 0.5; t += ibi) {
+      const scratch = new Float32Array(cmplxLen)
+      injectSharpWave(scratch, 12, { amplitude: 120, duration: 0.09, polarity: -1 })
+      const swStart = Math.round(sampleRate * 0.13)
+      const swLen   = Math.round(sampleRate * 0.22)
+      for (let i = 0; i < swLen; i++) {
+        const idx = swStart + i
+        if (idx >= cmplxLen) break
+        scratch[idx] += 55 * Math.sin(Math.PI * i / swLen)
+      }
+      const s0 = Math.round(t * sampleRate)
+      ELECTRODES_1020.forEach(label => {
+        const scale = leftHemisphereGradient(label)
+        if (scale <= 0.08) return
+        for (let i = 0; i < cmplxLen; i++) {
+          const idx = s0 + i
+          if (idx >= nSamples) break
+          channels[label][idx] += scratch[i] * scale
+        }
+      })
+    }
+  }
+
+  // ── Triphasic waves: ~1.5 Hz blunt 3-phase, A-P phase lag ──────────────
+  if (pattern === 'triphasic_waves') {
+    const ibi      = 0.65                                  // ~1.5 Hz
+    const cmplxLen = Math.round(sampleRate * 0.4)
+    // Samples of anterior→posterior lag per region (classic triphasic lag)
+    const regionLag = {
+      frontopolar: 0,
+      frontal:     4,
+      central:     10,
+      midtemporal: 10,
+      parietal:    16,
+      posttemporal:18,
+      occipital:   22,
+      ear:         0,
+      other:       8,
+    }
+    for (let t = 0.5; t < duration - 0.6; t += ibi) {
+      const scratch = new Float32Array(cmplxLen)
+      injectTriphasicWave(scratch, 0, { amplitude: 140, duration: 0.35 })
+      const s0 = Math.round(t * sampleRate)
+      ELECTRODES_1020.forEach(label => {
+        const scale = bifrontalGradient(label)
+        if (scale <= 0.05) return
+        const lag = regionLag[regionOf(label)] ?? 8
+        for (let i = 0; i < cmplxLen; i++) {
+          const idx = s0 + i + lag
+          if (idx < 0 || idx >= nSamples) continue
+          channels[label][idx] += scratch[i] * scale
+        }
+      })
+    }
+  }
+
+  // ── FIRDA: bifrontal rhythmic 2–3 Hz delta bursts ──────────────────────
+  if (pattern === 'firda') {
+    const bursts = [
+      { t: 1.0, dur: 3.2 },
+      { t: 6.0, dur: 2.6 },
+    ]
+    bursts.forEach(({ t: tStart, dur }) => {
+      if (tStart + dur > duration - 0.2) return
+      const burstLen = Math.round(dur * sampleRate)
+      const freq = 2.5
+      const scratch = new Float32Array(burstLen)
+      const rampN = Math.round(sampleRate * 0.3)
+      for (let i = 0; i < burstLen; i++) {
+        const x = i / sampleRate
+        const env = i < rampN ? (i / rampN)
+                  : i > burstLen - rampN ? ((burstLen - i) / rampN)
+                  : 1
+        scratch[i] = env * 110 * Math.sin(2 * Math.PI * freq * x)
+      }
+      const s0 = Math.round(tStart * sampleRate)
+      ELECTRODES_1020.forEach(label => {
+        const scale = bifrontalGradient(label)
+        if (scale <= 0.05) return
+        for (let i = 0; i < burstLen; i++) {
+          const idx = s0 + i
+          if (idx >= nSamples) break
+          channels[label][idx] += scratch[i] * scale
+        }
+      })
+    })
+  }
+
+  // ── Slow spike-and-wave (Lennox-Gastaut): ~2 Hz, frontocentral max ─────
+  if (pattern === 'slow_spike_wave') {
+    const period     = Math.round(sampleRate / 2)
+    const burstStart = Math.round(0.6 * sampleRate)
+    const burstEnd   = Math.round((duration - 0.6) * sampleRate)
+    const cmplxLen   = Math.round(sampleRate * 0.52)
+    for (let s = burstStart; s < burstEnd; s += period) {
+      const scratch = new Float32Array(cmplxLen)
+      injectSpike(scratch, 14, { amplitude: 180, duration: 0.08, polarity: -1 })
+      const swStart = Math.round(sampleRate * 0.15)
+      const swLen   = Math.round(sampleRate * 0.40)
+      for (let i = 0; i < swLen; i++) {
+        const idx = swStart + i
+        if (idx >= cmplxLen) break
+        scratch[idx] += 100 * Math.sin(Math.PI * i / swLen)
+      }
+      ELECTRODES_1020.forEach(label => {
+        // slight asymmetry — LGS discharges often imperfectly synchronous
+        const scale = frontocentralGradient(label) * (0.85 + Math.random() * 0.25)
+        if (scale <= 0.05) return
+        for (let i = 0; i < cmplxLen; i++) {
+          const idx = s + i
+          if (idx >= nSamples) break
+          channels[label][idx] += scratch[i] * scale
+        }
+      })
+    }
+  }
+
+  // ── Polyspike-and-wave bursts (JME): 4–6 Hz in short runs ──────────────
+  if (pattern === 'polyspike_jme') {
+    const burstTimes = [1.5, 4.4, 7.2]
+    burstTimes.forEach(tStart => {
+      if (tStart >= duration - 0.8) return
+      const burstDur  = 0.8 + Math.random() * 0.6
+      const burstEnd  = tStart + burstDur
+      const complexPeriod = 1 / 5                          // 5 Hz
+      for (let t = tStart; t < burstEnd; t += complexPeriod) {
+        const cmplxLen = Math.round(sampleRate * 0.2)
+        const scratch  = new Float32Array(cmplxLen)
+        injectPolyspike(scratch, 16, { count: 3, spacing: 0.02 })
+        const swStart = Math.round(sampleRate * 0.08)
+        const swLen   = Math.round(sampleRate * 0.12)
+        for (let i = 0; i < swLen; i++) {
+          const idx = swStart + i
+          if (idx >= cmplxLen) break
+          scratch[idx] += 75 * Math.sin(Math.PI * i / swLen)
+        }
+        const s0 = Math.round(t * sampleRate)
+        ELECTRODES_1020.forEach(label => {
+          const scale = frontocentralGradient(label)
+          if (scale <= 0.05) return
+          for (let i = 0; i < cmplxLen; i++) {
+            const idx = s0 + i
+            if (idx >= nSamples) break
+            channels[label][idx] += scratch[i] * scale
+          }
+        })
+      }
+    })
+  }
+
+  // ── Centrotemporal spikes (BECTS): bilateral independent with dipole ──
+  if (pattern === 'centrotemporal_spikes') {
+    // Rolandic dipole: negative max centrotemporal, positive frontal.
+    const leftField = (label) => {
+      switch (label) {
+        case 'C3': case 'T3': return 1.00
+        case 'T5':            return 0.55
+        case 'P3':            return 0.45
+        case 'Cz':            return 0.35
+        case 'F3':            return -0.65           // dipole reversal
+        case 'Fp1':           return -0.45
+        case 'F7':            return -0.35
+        default: return 0
+      }
+    }
+    const rightField = (label) => {
+      switch (label) {
+        case 'C4': case 'T4': return 1.00
+        case 'T6':            return 0.55
+        case 'P4':            return 0.45
+        case 'Cz':            return 0.35
+        case 'F4':            return -0.65
+        case 'Fp2':           return -0.45
+        case 'F8':            return -0.35
+        default: return 0
+      }
+    }
+    const spikeSchedule = [
+      { t: 1.1, field: leftField  },
+      { t: 2.4, field: rightField },
+      { t: 3.6, field: leftField  },
+      { t: 5.3, field: leftField  },
+      { t: 6.5, field: rightField },
+      { t: 8.0, field: leftField  },
+      { t: 9.1, field: rightField },
+    ]
+    spikeSchedule.forEach(({ t, field }) => {
+      const cmplxLen = Math.round(sampleRate * 0.36)
+      const scratch  = new Float32Array(cmplxLen)
+      injectSharpWave(scratch, 16, { amplitude: 180, duration: 0.1, polarity: -1 })
+      const swStart = Math.round(sampleRate * 0.14)
+      const swLen   = Math.round(sampleRate * 0.22)
+      for (let i = 0; i < swLen; i++) {
+        const idx = swStart + i
+        if (idx >= cmplxLen) break
+        scratch[idx] += 85 * Math.sin(Math.PI * i / swLen)
+      }
+      const s0 = Math.round(t * sampleRate)
+      ELECTRODES_1020.forEach(label => {
+        const scale = field(label)
+        if (scale === 0) return
+        for (let i = 0; i < cmplxLen; i++) {
+          const idx = s0 + i
+          if (idx >= nSamples) break
+          channels[label][idx] += scratch[i] * scale
+        }
+      })
+    })
+  }
+
+  // ── Temporal sharps (TLE): left anterior-temporal interictal sharps ────
+  if (pattern === 'temporal_sharps') {
+    const times = [1.4, 3.2, 5.1, 7.0, 8.8]
+    times.forEach(t => {
+      const cmplxLen = Math.round(sampleRate * 0.4)
+      const scratch  = new Float32Array(cmplxLen)
+      injectSharpWave(scratch, 16, { amplitude: 140, duration: 0.12, polarity: -1 })
+      const swStart = Math.round(sampleRate * 0.17)
+      const swLen   = Math.round(sampleRate * 0.22)
+      for (let i = 0; i < swLen; i++) {
+        const idx = swStart + i
+        if (idx >= cmplxLen) break
+        scratch[idx] += 70 * Math.sin(Math.PI * i / swLen)
+      }
+      const s0 = Math.round(t * sampleRate)
+      ELECTRODES_1020.forEach(label => {
+        const scale = leftTemporalSpikeGradient(label)
+        if (scale <= 0.05) return
+        for (let i = 0; i < cmplxLen; i++) {
+          const idx = s0 + i
+          if (idx >= nSamples) break
+          channels[label][idx] += scratch[i] * scale
+        }
+      })
+    })
+  }
+
+  // ── Photoparoxysmal: photic driving at O1/O2, then generalized PPR ─────
+  if (pattern === 'photoparoxysmal') {
+    const flashFreq  = 16
+    const flashStart = 0.8
+    const flashEnd   = 4.2
+    // Photic driving — occipital following response at flash frequency
+    ;['O1', 'O2'].forEach(label => {
+      for (let t = flashStart; t < flashEnd; t += 1 / flashFreq) {
+        const s    = Math.round(t * sampleRate)
+        const durN = Math.round(sampleRate * 0.025)
+        for (let i = 0; i < durN; i++) {
+          const idx = s + i
+          if (idx >= nSamples) break
+          channels[label][idx] += 75 * Math.sin(Math.PI * i / durN)
+        }
+      }
+    })
+    // PPR — starts ~2.5 s after flash, outlasts the stimulus
+    const pprStart = 2.5
+    const pprEnd   = 6.5
+    const pprPeriod = 1 / 4.5                              // 4.5 Hz
+    for (let t = pprStart; t < pprEnd; t += pprPeriod) {
+      const cmplxLen = Math.round(sampleRate * 0.22)
+      const scratch  = new Float32Array(cmplxLen)
+      injectPolyspike(scratch, 16, { count: 3, spacing: 0.022 })
+      const swStart = Math.round(sampleRate * 0.08)
+      const swLen   = Math.round(sampleRate * 0.13)
+      for (let i = 0; i < swLen; i++) {
+        const idx = swStart + i
+        if (idx >= cmplxLen) break
+        scratch[idx] += 80 * Math.sin(Math.PI * i / swLen)
+      }
+      const s0 = Math.round(t * sampleRate)
+      ELECTRODES_1020.forEach(label => {
+        const scale = frontocentralGradient(label)
+        if (scale <= 0.05) return
+        for (let i = 0; i < cmplxLen; i++) {
+          const idx = s0 + i
+          if (idx >= nSamples) break
+          channels[label][idx] += scratch[i] * scale
+        }
+      })
+    }
+  }
+
+  return { channels, sampleRate, duration, nSamples, pattern }
+}
+
+// ─── Time Axis ────────────────────────────────────────────────────────────────
+
+/** Generate time axis array (seconds) for a given sample count */
+export function makeTimeAxis(nSamples, sampleRate = SAMPLE_RATE) {
+  return Array.from({ length: nSamples }, (_, i) => i / sampleRate)
+}

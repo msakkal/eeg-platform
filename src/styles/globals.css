@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: #0A0E1A;
+    color: #E8EDF5;
+    font-family: 'DM Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0A0E1A;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1E2A40;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #00D4FF44;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-eeg-card border border-eeg-border rounded-xl;
+  }
+
+  .btn-primary {
+    @apply bg-eeg-accent text-eeg-bg font-display font-semibold px-5 py-2.5 rounded-lg
+           hover:bg-opacity-90 transition-all duration-200 text-sm tracking-wide;
+  }
+
+  .btn-ghost {
+    @apply border border-eeg-border text-eeg-muted font-body px-5 py-2.5 rounded-lg
+           hover:border-eeg-accent hover:text-eeg-accent transition-all duration-200 text-sm;
+  }
+
+  .section-title {
+    @apply font-display font-bold text-3xl text-eeg-text tracking-tight;
+  }
+
+  .label-tag {
+    @apply text-xs font-mono uppercase tracking-widest text-eeg-accent bg-eeg-accent bg-opacity-10
+           px-2.5 py-1 rounded-md border border-eeg-accent border-opacity-20;
+  }
+
+  /* EEG trace canvas glow */
+  .eeg-canvas-glow {
+    filter: drop-shadow(0 0 6px #00FFB066);
+  }
+}
+
+/* Animated scanning line for EEG viewer */
+@keyframes scanLine {
+  from { left: 0%; }
+  to   { left: 100%; }
+}
+
+.scan-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom, transparent, #00D4FF88, transparent);
+  animation: scanLine 4s linear infinite;
+  pointer-events: none;
+}
+
+/* Grid background for EEG paper look */
+.eeg-paper {
+  background-color: #0D1424;
+  background-image:
+    linear-gradient(rgba(0, 212, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(rgba(0, 212, 255, 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 212, 255, 0.015) 1px, transparent 1px);
+  background-size: 40px 40px, 40px 40px, 8px 8px, 8px 8px;
+}

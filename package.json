@@ -1,0 +1,29 @@
+{
+  "name": "eeg-learning-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0",
+    "i18next": "^23.14.0",
+    "react-i18next": "^15.0.1",
+    "i18next-browser-languagedetector": "^8.0.0",
+    "plotly.js-dist-min": "^2.35.0",
+    "react-plotly.js": "^2.6.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.2",
+    "tailwindcss": "^3.4.10",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.41"
+  }
+}

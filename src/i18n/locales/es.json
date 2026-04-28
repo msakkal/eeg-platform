@@ -1,0 +1,87 @@
+{
+  "nav": {
+    "home": "Inicio",
+    "concepts": "Conceptos EEG",
+    "montages": "Montajes",
+    "waveforms": "Formas de onda",
+    "findings": "Hallazgos clínicos",
+    "sandbox": "Laboratorio",
+    "quiz": "Quiz",
+    "artifacts": "Artefactos"
+  },
+  "home": {
+    "hero_tag": "Educación EEG Interactiva",
+    "hero_title": "Domina la Interpretación del EEG",
+    "hero_subtitle": "Desde los fundamentos hasta los hallazgos clínicos — aprende, interactúa y pon a prueba tus conocimientos con una plataforma de simulación EEG totalmente interactiva.",
+    "cta_start": "Comenzar a aprender",
+    "cta_sandbox": "Abrir Laboratorio",
+    "modules": "Módulos de aprendizaje"
+  },
+  "concepts": {
+    "title": "Conceptos EEG",
+    "intro": "La electroencefalografía (EEG) mide la actividad eléctrica generada por el cerebro a través de electrodos colocados en el cuero cabelludo.",
+    "what_is_eeg": "¿Qué es el EEG?",
+    "how_it_works": "Cómo funciona",
+    "electrode_placement": "Colocación de electrodos",
+    "10_20_system": "El sistema 10-20",
+    "propagation": "Propagación del Campo Epiléptico"
+  },
+  "montages": {
+    "title": "Montajes",
+    "subtitle": "Un montaje define cómo se derivan los canales EEG de los pares de electrodos.",
+    "referential": "Referencial",
+    "bipolar": "Bipolar",
+    "laplacian": "Laplaciano",
+    "average_ref": "Referencia promedio",
+    "longitudinal": "Bipolar longitudinal (Doble Banana)",
+    "transverse": "Bipolar transverso",
+    "select_montage": "Seleccionar montaje",
+    "try_it": "Pruébalo interactivamente"
+  },
+  "waveforms": {
+    "title": "Formas de Onda",
+    "subtitle": "Aprende a reconocer los elementos básicos de los patrones EEG.",
+    "spike": "Punta",
+    "sharp_wave": "Onda aguda",
+    "polyspike": "Polipunta",
+    "spike_wave": "Punta-onda",
+    "slowing": "Enlentecimiento",
+    "burst_suppression": "Brote-supresión",
+    "alpha": "Alpha",
+    "beta": "Beta",
+    "theta": "Theta",
+    "delta": "Delta"
+  },
+  "findings": {
+    "title": "Hallazgos Clínicos",
+    "subtitle": "Patrones EEG normales vs. patológicos.",
+    "normal": "Normal",
+    "abnormal": "Anormal",
+    "epileptiform": "Epileptiforme",
+    "non_epileptiform": "No epileptiforme"
+  },
+  "sandbox": {
+    "title": "Laboratorio EEG",
+    "subtitle": "Genera y explora señales EEG de forma interactiva.",
+    "controls": "Controles de señal",
+    "montage": "Montaje",
+    "add_artifact": "Inyectar artefacto",
+    "add_spike": "Inyectar punta",
+    "noise_level": "Ruido",
+    "amplitude": "Amplitud",
+    "speed": "Velocidad de barrido",
+    "channels": "Canales"
+  },
+  "common": {
+    "learn_more": "Saber más",
+    "interactive": "Interactivo",
+    "loading": "Cargando…",
+    "language": "Idioma"
+  },
+  "quiz": {
+    "subtitle": "Pon a prueba tus conocimientos sobre patrones EEG, montajes y hallazgos clínicos."
+  },
+  "artifacts": {
+    "subtitle": "Artefactos EEG comunes con ejemplos multicanal y guías de identificación."
+  }
+}
