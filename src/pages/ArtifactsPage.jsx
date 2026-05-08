@@ -17,13 +17,13 @@ const AXIS_COLOR   = 'rgba(0,212,255,0.30)'
 const LABEL_COLOR  = '#5A6A82'
 const BG_PAPER     = '#0C1220'
 
-// Tabs within the detail panel
+// Tabs within the detail panel — labels resolved via i18n (`artifacts.detail_tabs.<id>`)
 const DETAIL_TABS = [
-  { id: 'overview',      label: 'Overview'       },
-  { id: 'identify',      label: 'Identification' },
-  { id: 'differentiate', label: 'Differentiate'  },
-  { id: 'reduce',        label: 'Reduction'      },
-  { id: 'clinical',      label: 'Clinical Note'  },
+  { id: 'overview'      },
+  { id: 'identify'      },
+  { id: 'differentiate' },
+  { id: 'reduce'        },
+  { id: 'clinical'      },
 ]
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ export default function ArtifactsPage() {
                     : 'border-transparent text-eeg-muted hover:text-eeg-text'
                   }`}
               >
-                {tab.label}
+                {t(`artifacts.detail_tabs.${tab.id}`)}
               </button>
             ))}
           </div>

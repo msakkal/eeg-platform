@@ -23,7 +23,7 @@ import {
   injectMuscleArtifact,
   injectEyeBlink,
   SAMPLE_RATE,
-} from './signalGenerator'
+} from './signalGenerator.js'
 
 // ─── Local helpers ───────────────────────────────────────────────────────────
 
@@ -89,17 +89,27 @@ function injectVertexSharp(sig, at, { amp = 120 } = {}) {
   }
 }
 
-/** Inject a K-complex: sharp negative then broad positive slow, ≥0.5 s. */
-function injectKComplex(sig, at, { amp = 180 } = {}) {
-  // Phase 1: sharp negative deflection ~150 ms
-  injectSharpWave(sig, at, { amplitude: amp, duration: 0.18, polarity: -1, asymmetry: 0.35 })
-  // Phase 2: slower positive wave ~450 ms
-  const s2  = at + Math.round(0.12 * SAMPLE_RATE)
-  const dur = Math.round(0.45 * SAMPLE_RATE)
+/**
+ * Inject a K-complex: brief sharp negative followed by a much LARGER positive
+ * slow wave, ≥0.5 s total. Real K-complexes are dominated by the positive
+ * slow wave (often 200–400 µV); the leading negative sharp is smaller
+ * (~50–100 µV). `amp` is interpreted as the peak positive-slow amplitude.
+ */
+function injectKComplex(sig, at, { amp = 250 } = {}) {
+  // Phase 1: brief sharp negative deflection ~100 ms (~⅓ of slow-wave amp)
+  injectSharpWave(sig, at, {
+    amplitude: amp * 0.4,
+    duration:  0.10,
+    polarity:  -1,
+    asymmetry: 0.35,
+  })
+  // Phase 2: dominant broad positive slow wave ~600 ms
+  const s2  = at + Math.round(0.08 * SAMPLE_RATE)
+  const dur = Math.round(0.60 * SAMPLE_RATE)
   for (let i = 0; i < dur; i++) {
     const idx = s2 + i
     if (idx >= sig.length) break
-    sig[idx] += amp * 0.55 * Math.sin(Math.PI * i / dur)
+    sig[idx] += amp * Math.sin(Math.PI * i / dur)
   }
 }
 
@@ -579,25 +589,30 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       const sig = new Float32Array(nSamples)
       addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 2, amplitude: 25, nComp: 2, envFloor: 0.5 })
-      injectKComplex(sig, Math.round(0.9 * sampleRate), { amp: 190 })
+      // `amp` is the dominant positive-slow peak (200–300 µV typical)
+      injectKComplex(sig, Math.round(0.9 * sampleRate), { amp: 280 })
       // K-complex often followed by a sleep spindle
       injectSpindle(sig, Math.round(1.55 * sampleRate), { amp: 35, durSec: 0.8, freq: 13 })
-      injectKComplex(sig, Math.round(2.3 * sampleRate), { amp: 150 })
+      injectKComplex(sig, Math.round(2.3 * sampleRate), { amp: 220 })
       return sig
     }
     case 'posts': {
       const sig = new Float32Array(nSamples)
       addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 2.5, amplitude: 20, nComp: 2, envFloor: 0.5 })
-      // Train at ~4 Hz from 0.4 s to 1.5 s
-      const period = Math.round(sampleRate / 4)
-      for (let s = Math.round(0.4 * sampleRate); s < Math.round(1.5 * sampleRate); s += period) {
-        injectPOSTS(sig, s, { amp: 60 + Math.random() * 20 })
+      // POSTS appear in trains at ~4 Hz but each spike is slightly irregular
+      // (±10% interval, varying amplitude). Two short trains.
+      const trainAt = (start, end, ampMean) => {
+        const ibi = 1 / 4
+        let t = start
+        while (t < end) {
+          injectPOSTS(sig, Math.round(t * sampleRate),
+            { amp: ampMean + Math.random() * 20 })
+          t += ibi * (0.90 + Math.random() * 0.20)
+        }
       }
-      // Shorter run later
-      for (let s = Math.round(2.0 * sampleRate); s < Math.round(2.6 * sampleRate); s += period) {
-        injectPOSTS(sig, s, { amp: 55 + Math.random() * 15 })
-      }
+      trainAt(0.4, 1.5, 60)
+      trainAt(2.0, 2.6, 55)
       return sig
     }
 
@@ -635,13 +650,18 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       return sig
     }
     case 'spike_wave': {
-      // Regular 3 Hz generalised spike-and-wave run
+      // ~3 Hz generalised spike-and-wave run with realistic timing jitter
+      // and slight slowing toward the end of the discharge.
       const sig = new Float32Array(nSamples)
       addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 9, amplitude: 20, nComp: 2, envFloor: 0.5 })
-      const period = Math.round(sampleRate / 3)
-      for (let s = Math.round(0.3 * sampleRate); s < nSamples - period; s += period) {
-        injectSpikeAndWave(sig, s, { frequency: 3 })
+      const t0 = 0.3, tEnd = dur - 0.4
+      let t = t0
+      while (t < tEnd) {
+        const x    = (t - t0) / (tEnd - t0)
+        const freq = 3.4 - 0.6 * x                     // 3.4 → 2.8 Hz
+        injectSpikeAndWave(sig, Math.round(t * sampleRate), { frequency: 3 })
+        t += (1 / freq) * (0.94 + Math.random() * 0.12)
       }
       return sig
     }
@@ -674,10 +694,13 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       // Diffuse theta background (metabolic)
       addRhythm(sig, sampleRate, { centerFreq: 5, amplitude: 25, nComp: 2, envFloor: 0.5 })
       addRhythm(sig, sampleRate, { centerFreq: 2, amplitude: 15, nComp: 2, envFloor: 0.6 })
-      // ~1.5 Hz triphasic train
-      const period = Math.round(sampleRate / 1.5)
-      for (let s = Math.round(0.25 * sampleRate); s < nSamples - period; s += period) {
-        injectTriphasic(sig, s, { amp: 130 + (Math.random() - 0.5) * 25 })
+      // ~1.5 Hz triphasic train with ±12% IBI jitter and amp variability
+      const ibiMean = 1 / 1.5
+      let t = 0.25
+      while (t < dur - ibiMean * 0.5) {
+        injectTriphasic(sig, Math.round(t * sampleRate),
+          { amp: 130 * (0.85 + Math.random() * 0.30) })
+        t += ibiMean * (0.88 + Math.random() * 0.24)
       }
       return sig
     }
@@ -686,18 +709,21 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       addNoise(sig, 4)
       // Severely suppressed / slow background
       addRhythm(sig, sampleRate, { centerFreq: 2, amplitude: 12, nComp: 2, envFloor: 0.6 })
-      // ~1 Hz periodic sharp-and-slow complex
-      const period = Math.round(sampleRate / 1.0)
-      for (let s = Math.round(0.2 * sampleRate); s < nSamples - period; s += period) {
-        // Sharp component
-        injectSharpWave(sig, s, { amplitude: 140, duration: 0.12, polarity: -1 })
-        // Brief after-going slow wave
+      // ~1 Hz periodic sharp-and-slow complex with ±12% IBI jitter
+      const ibiMean = 1.0
+      let t = 0.2
+      while (t < dur - ibiMean * 0.5) {
+        const ampJ = 0.85 + Math.random() * 0.30
+        const s    = Math.round(t * sampleRate)
+        injectSharpWave(sig, s,
+          { amplitude: 140 * ampJ, duration: 0.12, polarity: -1 })
         const swDur = Math.round(0.22 * sampleRate)
         for (let i = 0; i < swDur; i++) {
           const idx = s + Math.round(0.09 * sampleRate) + i
           if (idx >= nSamples) break
-          sig[idx] += 55 * Math.sin(Math.PI * i / swDur)
+          sig[idx] += 55 * ampJ * Math.sin(Math.PI * i / swDur)
         }
+        t += ibiMean * (0.88 + Math.random() * 0.24)
       }
       return sig
     }
@@ -707,13 +733,17 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       // Slowed focal background
       addRhythm(sig, sampleRate, { centerFreq: 3, amplitude: 30, nComp: 2, envFloor: 0.5 })
       addRhythm(sig, sampleRate, { centerFreq: 1.5, amplitude: 40, nComp: 2, envFloor: 0.5 })
-      // Periodic lateralized sharp complexes ~0.8 Hz
-      const period = Math.round(sampleRate / 0.8)
-      for (let s = Math.round(0.15 * sampleRate); s < nSamples - period; s += period) {
-        injectSharpWave(sig, s, { amplitude: 200, duration: 0.10, polarity: -1 })
-        // Smaller follower
+      // Periodic lateralized sharp complexes ~0.8 Hz with ±15% IBI jitter
+      const ibiMean = 1 / 0.8
+      let t = 0.15
+      while (t < dur - ibiMean * 0.5) {
+        const ampJ = 0.85 + Math.random() * 0.30
+        const s    = Math.round(t * sampleRate)
+        injectSharpWave(sig, s,
+          { amplitude: 200 * ampJ, duration: 0.10, polarity: -1 })
         injectSharpWave(sig, s + Math.round(0.07 * sampleRate),
-          { amplitude: 70, duration: 0.06, polarity: +1 })
+          { amplitude: 70 * ampJ, duration: 0.06, polarity: +1 })
+        t += ibiMean * (0.85 + Math.random() * 0.30)
       }
       return sig
     }

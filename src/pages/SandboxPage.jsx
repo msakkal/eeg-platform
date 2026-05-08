@@ -61,10 +61,17 @@ export default function SandboxPage() {
   }, [channels, specChannel])
 
   // ── Annotation handler ───────────────────────────────────────────────────
+  // Translate the preset id to a display string at creation time (the canvas
+  // renderer reads `ann.label` directly, so we resolve it once here).
   const handleAnnotate = useCallback((timeS, channelLabel) => {
     if (!annotateMode) return
-    addAnnotation({ timeS, label: activeAnnLabel.label, color: activeAnnLabel.color, channelLabel })
-  }, [annotateMode, activeAnnLabel, addAnnotation])
+    addAnnotation({
+      timeS,
+      label: t(`annotations.labels.${activeAnnLabel.id}`),
+      color: activeAnnLabel.color,
+      channelLabel,
+    })
+  }, [annotateMode, activeAnnLabel, addAnnotation, t])
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useKeyboardShortcuts({
@@ -129,22 +136,26 @@ export default function SandboxPage() {
           {/* Annotation label picker (only when in annotate mode) */}
           {annotateMode && (
             <div className="flex gap-1">
-              {ANNOTATION_LABELS.slice(0, 4).map(al => (
-                <button key={al.label}
-                  onClick={() => setActiveAnnLabel(al)}
-                  title={al.label}
-                  className={`text-xs font-mono px-2 py-1 rounded border transition-all
-                    ${activeAnnLabel.label === al.label
-                      ? 'text-eeg-text border-opacity-60'
-                      : 'border-eeg-border text-eeg-muted hover:text-eeg-text'
-                    }`}
-                  style={activeAnnLabel.label === al.label
-                    ? { borderColor: al.color, background: al.color + '22', color: al.color }
-                    : {}}
-                >
-                  {al.key}:{al.label.split(' ')[0]}
-                </button>
-              ))}
+              {ANNOTATION_LABELS.slice(0, 4).map(al => {
+                const label = t(`annotations.labels.${al.id}`)
+                const isActive = activeAnnLabel.id === al.id
+                return (
+                  <button key={al.id}
+                    onClick={() => setActiveAnnLabel(al)}
+                    title={label}
+                    className={`text-xs font-mono px-2 py-1 rounded border transition-all
+                      ${isActive
+                        ? 'text-eeg-text border-opacity-60'
+                        : 'border-eeg-border text-eeg-muted hover:text-eeg-text'
+                      }`}
+                    style={isActive
+                      ? { borderColor: al.color, background: al.color + '22', color: al.color }
+                      : {}}
+                  >
+                    {al.key}:{label.split(' ')[0]}
+                  </button>
+                )
+              })}
               {annotations.length > 0 && (
                 <button onClick={clearAnnotations}
                   className="text-xs font-mono px-2 py-1 rounded border border-eeg-border text-eeg-muted hover:text-red-400 hover:border-red-400 transition-all">

@@ -58,7 +58,15 @@
     "normal": "Normal",
     "abnormal": "Anormal",
     "epileptiform": "Epileptiforme",
-    "non_epileptiform": "No epileptiforme"
+    "non_epileptiform": "No epileptiforme",
+    "categories": {
+      "normal": "Normal",
+      "benign_variant": "Variantes benignas",
+      "epileptiform": "Epileptiforme",
+      "periodic": "Periódico (UCI)",
+      "abnormal": "Anormal no epileptiforme",
+      "coma": "Patrones de coma"
+    }
   },
   "sandbox": {
     "title": "Laboratorio EEG",
@@ -82,6 +90,23 @@
     "subtitle": "Pon a prueba tus conocimientos sobre patrones EEG, montajes y hallazgos clínicos."
   },
   "artifacts": {
-    "subtitle": "Artefactos EEG comunes con ejemplos multicanal y guías de identificación."
+    "subtitle": "Artefactos EEG comunes con ejemplos multicanal y guías de identificación.",
+    "detail_tabs": {
+      "overview": "Resumen",
+      "identify": "Identificación",
+      "differentiate": "Diferenciar",
+      "reduce": "Reducción",
+      "clinical": "Nota clínica"
+    }
+  },
+  "annotations": {
+    "labels": {
+      "spike": "Espiga",
+      "sharp_wave": "Onda aguda",
+      "artifact": "Artefacto",
+      "eye_blink": "Parpadeo",
+      "seizure_onset": "Inicio de crisis",
+      "note": "Nota"
+    }
   }
 }

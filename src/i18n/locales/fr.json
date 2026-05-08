@@ -58,7 +58,15 @@
     "normal": "Normal",
     "abnormal": "Anormal",
     "epileptiform": "Épileptiforme",
-    "non_epileptiform": "Non-épileptiforme"
+    "non_epileptiform": "Non-épileptiforme",
+    "categories": {
+      "normal": "Normal",
+      "benign_variant": "Variantes bénignes",
+      "epileptiform": "Épileptiforme",
+      "periodic": "Périodique (USI)",
+      "abnormal": "Anormal non épileptiforme",
+      "coma": "Schémas de coma"
+    }
   },
   "sandbox": {
     "title": "Bac à Sable EEG",
@@ -82,6 +90,23 @@
     "subtitle": "Testez vos connaissances sur les patterns EEG, montages et résultats cliniques."
   },
   "artifacts": {
-    "subtitle": "Artefacts EEG courants avec exemples multicanaux et guides d'identification."
+    "subtitle": "Artefacts EEG courants avec exemples multicanaux et guides d'identification.",
+    "detail_tabs": {
+      "overview": "Aperçu",
+      "identify": "Identification",
+      "differentiate": "Différencier",
+      "reduce": "Réduction",
+      "clinical": "Note clinique"
+    }
+  },
+  "annotations": {
+    "labels": {
+      "spike": "Pointe",
+      "sharp_wave": "Onde pointue",
+      "artifact": "Artefact",
+      "eye_blink": "Clignement",
+      "seizure_onset": "Début de crise",
+      "note": "Note"
+    }
   }
 }

@@ -58,7 +58,15 @@
     "normal": "طبيعي",
     "abnormal": "غير طبيعي",
     "epileptiform": "صرعي الشكل",
-    "non_epileptiform": "غير صرعي الشكل"
+    "non_epileptiform": "غير صرعي الشكل",
+    "categories": {
+      "normal": "طبيعي",
+      "benign_variant": "أنماط حميدة",
+      "epileptiform": "صرعي الشكل",
+      "periodic": "دوري (العناية المركزة)",
+      "abnormal": "غير طبيعي وغير صرعي",
+      "coma": "أنماط الغيبوبة"
+    }
   },
   "sandbox": {
     "title": "بيئة تجريب EEG",
@@ -82,6 +90,23 @@
     "subtitle": "اختبر معرفتك بأنماط EEG والمونتاجات والنتائج السريرية."
   },
   "artifacts": {
-    "subtitle": "قطع EEG الشائعة مع أمثلة متعددة القنوات وأدلة التعرف عليها."
+    "subtitle": "قطع EEG الشائعة مع أمثلة متعددة القنوات وأدلة التعرف عليها.",
+    "detail_tabs": {
+      "overview": "نظرة عامة",
+      "identify": "التعرف",
+      "differentiate": "التمييز",
+      "reduce": "التقليل",
+      "clinical": "ملاحظة سريرية"
+    }
+  },
+  "annotations": {
+    "labels": {
+      "spike": "نتوء",
+      "sharp_wave": "موجة حادة",
+      "artifact": "شائبة",
+      "eye_blink": "رمش",
+      "seizure_onset": "بداية النوبة",
+      "note": "ملاحظة"
+    }
   }
 }

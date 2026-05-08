@@ -20,7 +20,7 @@ import {
   generateBackground,
   injectEyeBlink,
   SAMPLE_RATE,
-} from './signalGenerator'
+} from './signalGenerator.js'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

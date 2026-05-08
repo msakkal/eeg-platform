@@ -25,12 +25,14 @@ export const useAnnotationStore = create((set, get) => ({
   },
 }))
 
-// Preset annotation labels used in the quick-mark toolbar
+// Preset annotation labels used in the quick-mark toolbar.
+// `id` is the i18n key (resolved via `annotations.labels.<id>` at render time).
+// `key` is the keyboard hotkey character.
 export const ANNOTATION_LABELS = [
-  { label: 'Spike',        color: '#FF4444', key: 'S' },
-  { label: 'Sharp wave',   color: '#FF6B35', key: 'W' },
-  { label: 'Artifact',     color: '#888888', key: 'A' },
-  { label: 'Eye blink',    color: '#66AAFF', key: 'E' },
-  { label: 'Seizure onset',color: '#FF0066', key: 'O' },
-  { label: 'Note',         color: '#FFD166', key: 'N' },
+  { id: 'spike',         color: '#FF4444', key: 'S' },
+  { id: 'sharp_wave',    color: '#FF6B35', key: 'W' },
+  { id: 'artifact',      color: '#888888', key: 'A' },
+  { id: 'eye_blink',     color: '#66AAFF', key: 'E' },
+  { id: 'seizure_onset', color: '#FF0066', key: 'O' },
+  { id: 'note',          color: '#FFD166', key: 'N' },
 ]

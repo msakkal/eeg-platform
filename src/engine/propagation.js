@@ -9,8 +9,8 @@
  *   - In bipolar montages:     phase reversal localises the generator
  */
 
-import { generateBackground, SAMPLE_RATE } from './signalGenerator'
-import { MONTAGES } from './montages'
+import { generateBackground, SAMPLE_RATE } from './signalGenerator.js'
+import { MONTAGES } from './montages.js'
 
 // ─── Electrode Positions (normalised -1..1, top-down view, nose = +y) ─────────
 
@@ -67,16 +67,32 @@ export function computePropagationWeights(sourceElec, sigma = 0.38) {
 export function generatePropagationEEG(weights, dischargeAmp = 200) {
   const duration      = 10
   const n             = duration * SAMPLE_RATE
-  const dischargeTimes = [1.4, 3.6, 5.8, 8.2]   // seconds
+  const dischargeTimes = [1.4, 3.6, 5.8, 8.2]   // seconds — fixed for pedagogy
   const channels      = {}
 
-  for (const [elec, pos] of Object.entries(ELECTRODE_POSITIONS_2D)) {
+  // Build ONE shared background trace — every electrode gets the same rhythmic
+  // content with a small amount of independent local noise added per channel.
+  // This makes the underlying background coherent across the head (the way
+  // real volume conduction works), so the focal discharge stands out visually
+  // rather than being lost in 19 independent random rhythms.
+  const sharedBg = generateBackground(n, SAMPLE_RATE, {
+    freqBands:  ['alpha', 'theta'],
+    amplitude:  32,
+    noiseLevel: 0.20,
+  })
+
+  for (const [elec] of Object.entries(ELECTRODE_POSITIONS_2D)) {
     const w    = weights[elec] ?? 0
-    const data = generateBackground(n, SAMPLE_RATE, {
-      freqBands:  ['alpha', 'theta'],
-      amplitude:  32,
-      noiseLevel: 0.20,
+    const data = new Float32Array(n)
+    // Shared background (full amplitude) + small per-channel local noise.
+    // Local noise breaks perfect identity so adjacent channels are highly
+    // correlated but not phase-identical — the goal is realism, not duplicates.
+    const localNoise = generateBackground(n, SAMPLE_RATE, {
+      freqBands:  ['theta'],
+      amplitude:  8,
+      noiseLevel: 0.30,
     })
+    for (let i = 0; i < n; i++) data[i] = sharedBg[i] + localNoise[i]
 
     dischargeTimes.forEach(t => {
       const s0 = Math.round(t * SAMPLE_RATE)

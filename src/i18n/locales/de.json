@@ -58,7 +58,15 @@
     "normal": "Normal",
     "abnormal": "Abnormal",
     "epileptiform": "Epileptiform",
-    "non_epileptiform": "Nicht-Epileptiform"
+    "non_epileptiform": "Nicht-Epileptiform",
+    "categories": {
+      "normal": "Normal",
+      "benign_variant": "Benigne Varianten",
+      "epileptiform": "Epileptiform",
+      "periodic": "Periodisch (Intensiv)",
+      "abnormal": "Nicht-epileptiform abnorm",
+      "coma": "Komamuster"
+    }
   },
   "sandbox": {
     "title": "EEG-Sandkasten",
@@ -82,6 +90,23 @@
     "subtitle": "Testen Sie Ihr Wissen über EEG-Muster, Montagen und klinische Befunde."
   },
   "artifacts": {
-    "subtitle": "Häufige EEG-Artefakte mit Mehrkanal-Beispielen und Identifikationsanleitungen."
+    "subtitle": "Häufige EEG-Artefakte mit Mehrkanal-Beispielen und Identifikationsanleitungen.",
+    "detail_tabs": {
+      "overview": "Übersicht",
+      "identify": "Identifikation",
+      "differentiate": "Abgrenzung",
+      "reduce": "Reduktion",
+      "clinical": "Klinische Notiz"
+    }
+  },
+  "annotations": {
+    "labels": {
+      "spike": "Spike",
+      "sharp_wave": "Steile Welle",
+      "artifact": "Artefakt",
+      "eye_blink": "Lidschlag",
+      "seizure_onset": "Anfallsbeginn",
+      "note": "Notiz"
+    }
   }
 }
