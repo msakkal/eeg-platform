@@ -4,7 +4,7 @@
  * to raw referential channel data.
  */
 
-import { ELECTRODES_1020 } from './signalGenerator'
+import { ELECTRODES_1020 } from './signalGenerator.js'
 
 // ─── Montage Definitions ─────────────────────────────────────────────────────
 

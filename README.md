@@ -22,14 +22,21 @@ src/
 ├── engine/
 │   ├── signalGenerator.js   # Core EEG signal synthesis (sine, noise, transients)
 │   ├── montages.js          # Montage definitions + transform engine
-│   └── waveforms.js         # Waveform pattern catalogue + demo generators
+│   ├── waveforms.js         # Waveform pattern catalogue + demo generators
+│   ├── artifacts.js         # Artifact synthesis (EMG, blink, ECG, electrode pop, etc.)
+│   ├── propagation.js       # Source dipole + scalp field propagation
+│   ├── filters.js           # Butterworth IIR (highpass / lowpass / notch) via biquad SOS
+│   ├── fft.js               # Cooley–Tukey radix-2 FFT + power spectral density
+│   └── quiz.js              # Quiz question bank + scoring engine
 │
 ├── hooks/
-│   ├── useEEGSignal.js      # Real-time streaming signal hook (ring buffer + rAF)
-│   └── useI18n.js           # RTL/LTR direction helper
+│   ├── useEEGSignal.js          # Real-time streaming signal hook (ring buffer + rAF)
+│   ├── useI18n.js               # RTL/LTR direction helper
+│   └── useKeyboardShortcuts.js  # Global keyboard shortcut bindings
 │
 ├── store/
-│   └── eegStore.js          # Zustand global state (montage, pattern, controls)
+│   ├── eegStore.js          # Zustand global state (montage, pattern, controls)
+│   └── annotationStore.js   # User annotations on the live trace
 │
 ├── i18n/
 │   ├── i18n.js              # i18next configuration
@@ -38,11 +45,18 @@ src/
 ├── components/
 │   ├── layout/Layout.jsx    # App shell + sidebar navigation
 │   ├── eeg/
-│   │   ├── EEGViewer.jsx    # Canvas-based multi-channel EEG renderer
-│   │   └── SandboxControls.jsx
+│   │   ├── EEGViewer.jsx           # Canvas-based multi-channel EEG renderer
+│   │   ├── SandboxControls.jsx     # Sandbox playback / pattern / artifact controls
+│   │   ├── FilterControls.jsx      # Highpass / lowpass / notch UI
+│   │   ├── PropagationSection.jsx  # Interactive scalp field propagation demo
+│   │   ├── ScalpElectrodeMap.jsx   # 10-20 electrode SVG map
+│   │   ├── ScalpTopoMap.jsx        # Topographic interpolation overlay
+│   │   ├── SpectrumViewer.jsx      # Per-channel PSD chart
+│   │   └── SpectrogramViewer.jsx   # Time-frequency spectrogram
 │   └── ui/
 │       ├── LanguageSwitcher.jsx
-│       └── LoadingScreen.jsx
+│       ├── LoadingScreen.jsx
+│       └── KeyboardHelpOverlay.jsx
 │
 └── pages/
     ├── HomePage.jsx         # Landing + module cards
@@ -50,6 +64,8 @@ src/
     ├── MontagesPage.jsx     # Interactive montage switcher
     ├── WaveformsPage.jsx    # Waveform catalogue with demo traces
     ├── FindingsPage.jsx     # Normal vs pathological findings
+    ├── ArtifactsPage.jsx    # Artifact catalogue + identification guide
+    ├── QuizPage.jsx         # Self-assessment module
     └── SandboxPage.jsx      # Full real-time EEG sandbox
 ```
 
@@ -106,10 +122,14 @@ npm run preview
 
 ## Roadmap
 
-- [ ] Quiz / self-assessment module
-- [ ] EEG case library (upload + annotate real EEG data)
-- [ ] Frequency spectrum visualiser (FFT power spectral density)
+- [x] Quiz / self-assessment module
+- [x] Frequency spectrum visualiser (FFT power spectral density)
+- [x] Spectrogram (time–frequency view)
+- [x] Artifact catalogue + identification guide
+- [x] Source propagation / scalp field demo
+- [x] Configurable bandpass + notch filters
+- [~] EEG case library — annotation store implemented; upload + persistence UI pending
+- [~] Sleep staging — sleep waveforms generated; dedicated staging UI pending
 - [ ] Electrode impedance map
-- [ ] Sleep staging module
 - [ ] PDF certificate generation
 - [ ] More languages (Portuguese, Chinese, Japanese)

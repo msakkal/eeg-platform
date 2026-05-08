@@ -61,51 +61,6 @@ function addNoise(sig, std = 4) {
   }
 }
 
-function addBaselineTexture(sig, fs, {
-  noise = 3,
-  driftAmp = 4,
-  driftFreq = 0.18 + Math.random() * 0.12,
-  betaAmp = 0,
-} = {}) {
-  addNoise(sig, noise)
-  const driftPhase = Math.random() * 2 * Math.PI
-  const slowPhase = Math.random() * 2 * Math.PI
-  for (let i = 0; i < sig.length; i++) {
-    const t = i / fs
-    sig[i] += driftAmp * Math.sin(2 * Math.PI * driftFreq * t + driftPhase)
-    sig[i] += driftAmp * 0.45 * Math.sin(2 * Math.PI * 0.05 * t + slowPhase)
-  }
-  if (betaAmp > 0) {
-    addRhythm(sig, fs, {
-      centerFreq: 18,
-      bandwidthHz: 8,
-      amplitude: betaAmp,
-      nComp: 4,
-      envFreq: 0.35,
-      envFloor: 0.45,
-    })
-  }
-}
-
-function injectAfterGoingSlow(sig, at, fs, {
-  amp = 55,
-  delaySec = 0.06,
-  durSec = 0.25,
-  polarity = +1,
-} = {}) {
-  const start = at + Math.round(delaySec * fs)
-  const dur = Math.round(durSec * fs)
-  for (let i = 0; i < dur; i++) {
-    const idx = start + i
-    if (idx < 0 || idx >= sig.length) continue
-    sig[idx] += polarity * amp * Math.sin(Math.PI * i / dur)
-  }
-}
-
-function jitteredSeconds(base, jitter = 0.05) {
-  return base + (Math.random() - 0.5) * jitter
-}
-
 /** Arched (mu-rhythm) oscillation: sinusoid with negative half flattened. */
 function addArched(sig, fs, { freq = 10, amp = 40, envFreq = 0.2, envFloor = 0.2 }) {
   const envPhase = Math.random() * 2 * Math.PI
@@ -121,8 +76,8 @@ function addArched(sig, fs, { freq = 10, amp = 40, envFreq = 0.2, envFloor = 0.2
 }
 
 /** Inject a vertex sharp wave — negative sharp transient (~150 ms). */
-function injectVertexSharp(sig, at, { amp = 120, sampleRate = SAMPLE_RATE } = {}) {
-  const dur = Math.round(0.15 * sampleRate)
+function injectVertexSharp(sig, at, { amp = 120 } = {}) {
+  const dur = Math.round(0.15 * SAMPLE_RATE)
   for (let i = -dur; i <= dur; i++) {
     const idx = at + i
     if (idx < 0 || idx >= sig.length) continue
@@ -134,36 +89,46 @@ function injectVertexSharp(sig, at, { amp = 120, sampleRate = SAMPLE_RATE } = {}
   }
 }
 
-/** Inject a K-complex: sharp negative then broad positive slow, ≥0.5 s. */
-function injectKComplex(sig, at, { amp = 180, sampleRate = SAMPLE_RATE } = {}) {
-  // Phase 1: sharp negative deflection ~150 ms
-  injectSharpWave(sig, at, { amplitude: amp, duration: 0.18, polarity: -1, asymmetry: 0.35, sampleRate })
-  // Phase 2: slower positive wave ~450 ms
-  const s2  = at + Math.round(0.12 * sampleRate)
-  const dur = Math.round(0.45 * sampleRate)
+/**
+ * Inject a K-complex: brief sharp negative followed by a much LARGER positive
+ * slow wave, ≥0.5 s total. Real K-complexes are dominated by the positive
+ * slow wave (often 200–400 µV); the leading negative sharp is smaller
+ * (~50–100 µV). `amp` is interpreted as the peak positive-slow amplitude.
+ */
+function injectKComplex(sig, at, { amp = 250 } = {}) {
+  // Phase 1: brief sharp negative deflection ~100 ms (~⅓ of slow-wave amp)
+  injectSharpWave(sig, at, {
+    amplitude: amp * 0.4,
+    duration:  0.10,
+    polarity:  -1,
+    asymmetry: 0.35,
+  })
+  // Phase 2: dominant broad positive slow wave ~600 ms
+  const s2  = at + Math.round(0.08 * SAMPLE_RATE)
+  const dur = Math.round(0.60 * SAMPLE_RATE)
   for (let i = 0; i < dur; i++) {
     const idx = s2 + i
     if (idx >= sig.length) break
-    sig[idx] += amp * 0.55 * Math.sin(Math.PI * i / dur)
+    sig[idx] += amp * Math.sin(Math.PI * i / dur)
   }
 }
 
 /** Inject a sleep spindle: 12–14 Hz, 0.5–1.5 s, waxing/waning envelope. */
-function injectSpindle(sig, at, { amp = 35, durSec = 1.0, freq = 13, sampleRate = SAMPLE_RATE } = {}) {
-  const dur = Math.round(durSec * sampleRate)
+function injectSpindle(sig, at, { amp = 35, durSec = 1.0, freq = 13 } = {}) {
+  const dur = Math.round(durSec * SAMPLE_RATE)
   for (let i = 0; i < dur; i++) {
     const idx = at + i
     if (idx >= sig.length) break
     const env = Math.sin(Math.PI * i / dur)    // 0..1..0
-    sig[idx] += amp * env * Math.sin(2 * Math.PI * freq * i / sampleRate)
+    sig[idx] += amp * env * Math.sin(2 * Math.PI * freq * i / SAMPLE_RATE)
   }
 }
 
 /** Inject a triphasic wave: brief positive → large negative → large positive. */
-function injectTriphasic(sig, at, { amp = 120, sampleRate = SAMPLE_RATE } = {}) {
-  const p1 = Math.round(0.08 * sampleRate)   // short positive bump
-  const p2 = Math.round(0.12 * sampleRate)   // large negative
-  const p3 = Math.round(0.22 * sampleRate)   // broad positive
+function injectTriphasic(sig, at, { amp = 120 } = {}) {
+  const p1 = Math.round(0.08 * SAMPLE_RATE)   // short positive bump
+  const p2 = Math.round(0.12 * SAMPLE_RATE)   // large negative
+  const p3 = Math.round(0.22 * SAMPLE_RATE)   // broad positive
   let idx = at
   for (let i = 0; i < p1; i++, idx++) {
     if (idx >= sig.length) return
@@ -180,10 +145,10 @@ function injectTriphasic(sig, at, { amp = 120, sampleRate = SAMPLE_RATE } = {}) 
 }
 
 /** Inject a POSTS: surface-positive sharp triangular wave (~4 Hz trains). */
-function injectPOSTS(sig, at, { amp = 60, sampleRate = SAMPLE_RATE } = {}) {
+function injectPOSTS(sig, at, { amp = 60 } = {}) {
   // Asymmetric triangular: steep rise, slower fall
-  const riseN = Math.round(0.04 * sampleRate)
-  const fallN = Math.round(0.11 * sampleRate)
+  const riseN = Math.round(0.04 * SAMPLE_RATE)
+  const fallN = Math.round(0.11 * SAMPLE_RATE)
   for (let i = 0; i < riseN + fallN; i++) {
     const idx = at + i
     if (idx >= sig.length) return
@@ -551,32 +516,32 @@ export const WAVEFORM_GROUPS = {
  */
 export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
   const dur      = 3
-  const nSamples = Math.round(dur * sampleRate)
+  const nSamples = dur * sampleRate
 
   switch (patternId) {
 
     // ── Background rhythms (waxing/waning) ───────────────────────────────
     case 'alpha': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 2.5, betaAmp: 4 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, {
-        centerFreq: 10, bandwidthHz: 0.9, amplitude: 58, nComp: 4,
-        envFreq: 0.16, envFloor: 0.42,
+        centerFreq: 10, bandwidthHz: 1.2, amplitude: 60, nComp: 3,
+        envFreq: 0.2, envFloor: 0.35,
       })
       return sig
     }
     case 'beta': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 1.5 })
+      addNoise(sig, 4)
       addRhythm(sig, sampleRate, {
-        centerFreq: 20, bandwidthHz: 8, amplitude: 22, nComp: 6,
+        centerFreq: 20, bandwidthHz: 6, amplitude: 22, nComp: 4,
         envFreq: 0.4, envFloor: 0.45,
       })
       return sig
     }
     case 'theta': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 4, driftAmp: 4, betaAmp: 3 })
+      addNoise(sig, 5)
       addRhythm(sig, sampleRate, {
         centerFreq: 6, bandwidthHz: 2.0, amplitude: 70, nComp: 3,
         envFreq: 0.15, envFloor: 0.4,
@@ -585,16 +550,16 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
     }
     case 'delta': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 5, driftAmp: 8 })
+      addNoise(sig, 6)
       addRhythm(sig, sampleRate, {
-        centerFreq: 1.8, bandwidthHz: 1.8, amplitude: 130, nComp: 5,
-        envFreq: 0.08, envFloor: 0.45,
+        centerFreq: 1.8, bandwidthHz: 1.5, amplitude: 130, nComp: 3,
+        envFreq: 0.1, envFloor: 0.5,
       })
       return sig
     }
     case 'mu': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 3, driftAmp: 2, betaAmp: 5 })
+      addNoise(sig, 4)
       addArched(sig, sampleRate, { freq: 10, amp: 55, envFreq: 0.15, envFloor: 0.2 })
       // A dusting of background alpha/beta for context
       addRhythm(sig, sampleRate, { centerFreq: 20, amplitude: 10, nComp: 2, envFloor: 0.5 })
@@ -604,107 +569,105 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
     // ── Sleep features ───────────────────────────────────────────────────
     case 'vertex_sharp_wave': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 3 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 6, amplitude: 25, nComp: 2, envFloor: 0.5 })
       ;[0.6, 1.5, 2.4].forEach(t =>
-        injectVertexSharp(sig, Math.round(jitteredSeconds(t, 0.08) * sampleRate), {
-          amp: 125 + Math.random() * 35,
-          sampleRate,
-        }))
+        injectVertexSharp(sig, Math.round(t * sampleRate), { amp: 140 }))
       return sig
     }
     case 'sleep_spindle': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 3 })
+      addNoise(sig, 3)
       // Light N2-like background
       addRhythm(sig, sampleRate, { centerFreq: 2, amplitude: 25, nComp: 2, envFloor: 0.5 })
       addRhythm(sig, sampleRate, { centerFreq: 6, amplitude: 20, nComp: 2, envFloor: 0.5 })
-      injectSpindle(sig, Math.round(0.5 * sampleRate), { amp: 45, durSec: 1.1, freq: 13, sampleRate })
-      injectSpindle(sig, Math.round(1.9 * sampleRate), { amp: 40, durSec: 0.9, freq: 12.5, sampleRate })
+      injectSpindle(sig, Math.round(0.5 * sampleRate), { amp: 45, durSec: 1.1, freq: 13 })
+      injectSpindle(sig, Math.round(1.9 * sampleRate), { amp: 40, durSec: 0.9, freq: 12.5 })
       return sig
     }
     case 'k_complex': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 4 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 2, amplitude: 25, nComp: 2, envFloor: 0.5 })
-      injectKComplex(sig, Math.round(0.9 * sampleRate), { amp: 190, sampleRate })
+      // `amp` is the dominant positive-slow peak (200–300 µV typical)
+      injectKComplex(sig, Math.round(0.9 * sampleRate), { amp: 280 })
       // K-complex often followed by a sleep spindle
-      injectSpindle(sig, Math.round(1.55 * sampleRate), { amp: 35, durSec: 0.8, freq: 13, sampleRate })
-      injectKComplex(sig, Math.round(2.3 * sampleRate), { amp: 150, sampleRate })
+      injectSpindle(sig, Math.round(1.55 * sampleRate), { amp: 35, durSec: 0.8, freq: 13 })
+      injectKComplex(sig, Math.round(2.3 * sampleRate), { amp: 220 })
       return sig
     }
     case 'posts': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 2 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 2.5, amplitude: 20, nComp: 2, envFloor: 0.5 })
-      // Train at ~4 Hz from 0.4 s to 1.5 s
-      const period = Math.round(sampleRate / 4)
-      for (let s = Math.round(0.4 * sampleRate); s < Math.round(1.5 * sampleRate); s += period) {
-        injectPOSTS(sig, s + Math.round(gauss(0, 0.012) * sampleRate), { amp: 60 + Math.random() * 20, sampleRate })
+      // POSTS appear in trains at ~4 Hz but each spike is slightly irregular
+      // (±10% interval, varying amplitude). Two short trains.
+      const trainAt = (start, end, ampMean) => {
+        const ibi = 1 / 4
+        let t = start
+        while (t < end) {
+          injectPOSTS(sig, Math.round(t * sampleRate),
+            { amp: ampMean + Math.random() * 20 })
+          t += ibi * (0.90 + Math.random() * 0.20)
+        }
       }
-      // Shorter run later
-      for (let s = Math.round(2.0 * sampleRate); s < Math.round(2.6 * sampleRate); s += period) {
-        injectPOSTS(sig, s + Math.round(gauss(0, 0.012) * sampleRate), { amp: 55 + Math.random() * 15, sampleRate })
-      }
+      trainAt(0.4, 1.5, 60)
+      trainAt(2.0, 2.6, 55)
       return sig
     }
 
     // ── Epileptiform ─────────────────────────────────────────────────────
     case 'spike': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 3, betaAmp: 4 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 35, nComp: 2, envFloor: 0.5 })
       ;[0.6, 1.4, 2.2].forEach(t => {
-        const at = Math.round(jitteredSeconds(t, 0.07) * sampleRate)
-        injectSpike(sig, at, {
-          amplitude: 155 + Math.random() * 60,
-          duration: 0.04 + Math.random() * 0.02,
-          sampleRate,
-        })
-        injectAfterGoingSlow(sig, at, sampleRate, { amp: 38 + Math.random() * 20, durSec: 0.22 })
+        const at = Math.round(t * sampleRate)
+        injectSpike(sig, at, { amplitude: 180, duration: 0.05 })
+        // After-going slow wave
+        const sw = at + Math.round(0.05 * sampleRate)
+        const swDur = Math.round(0.18 * sampleRate)
+        for (let i = 0; i < swDur; i++) {
+          const idx = sw + i
+          if (idx >= nSamples) break
+          sig[idx] += 40 * Math.sin(Math.PI * i / swDur)
+        }
       })
       return sig
     }
     case 'sharp_wave': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 3, betaAmp: 3 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 35, nComp: 2, envFloor: 0.5 })
-      ;[0.7, 1.6, 2.4].forEach(t => {
-        const at = Math.round(jitteredSeconds(t, 0.08) * sampleRate)
-        injectSharpWave(sig, at, {
-          amplitude: 95 + Math.random() * 55,
-          duration: 0.10 + Math.random() * 0.05,
-          sampleRate,
-        })
-        injectAfterGoingSlow(sig, at, sampleRate, { amp: 28 + Math.random() * 18, delaySec: 0.10, durSec: 0.26 })
-      })
+      ;[0.7, 1.6, 2.4].forEach(t => injectSharpWave(sig, Math.round(t * sampleRate)))
       return sig
     }
     case 'polyspike': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 2, betaAmp: 5 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 25, nComp: 2, envFloor: 0.4 })
-      ;[0.8, 1.8].forEach(t => {
-        const at = Math.round(jitteredSeconds(t, 0.07) * sampleRate)
-        injectPolyspike(sig, at, { count: 4 + Math.round(Math.random() * 2), spacing: 0.02, sampleRate })
-        injectAfterGoingSlow(sig, at, sampleRate, { amp: 45, delaySec: 0.11, durSec: 0.24 })
-      })
+      ;[0.8, 1.8].forEach(t => injectPolyspike(sig, Math.round(t * sampleRate), { count: 5 }))
       return sig
     }
     case 'spike_wave': {
-      // Regular 3 Hz generalised spike-and-wave run
+      // ~3 Hz generalised spike-and-wave run with realistic timing jitter
+      // and slight slowing toward the end of the discharge.
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 3 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 9, amplitude: 20, nComp: 2, envFloor: 0.5 })
-      const period = Math.round(sampleRate / 3)
-      for (let s = Math.round(0.3 * sampleRate); s < nSamples - period; s += period) {
-        injectSpikeAndWave(sig, s + Math.round(gauss(0, 0.008) * sampleRate), { frequency: 3, sampleRate })
+      const t0 = 0.3, tEnd = dur - 0.4
+      let t = t0
+      while (t < tEnd) {
+        const x    = (t - t0) / (tEnd - t0)
+        const freq = 3.4 - 0.6 * x                     // 3.4 → 2.8 Hz
+        injectSpikeAndWave(sig, Math.round(t * sampleRate), { frequency: 3 })
+        t += (1 / freq) * (0.94 + Math.random() * 0.12)
       }
       return sig
     }
     case 'hypsarrhythmia': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 12, driftAmp: 18 })
+      addNoise(sig, 12)
       // Chaotic high-amplitude slow background
       addRhythm(sig, sampleRate, { centerFreq: 1.2, bandwidthHz: 1.5, amplitude: 140, nComp: 4, envFloor: 0.2 })
       addRhythm(sig, sampleRate, { centerFreq: 3,   bandwidthHz: 2,   amplitude:  90, nComp: 3, envFloor: 0.2 })
@@ -719,7 +682,6 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
           amplitude: 150 + Math.random() * 180,
           duration:  0.04 + Math.random() * 0.08,
           polarity,
-          sampleRate,
         })
       }
       return sig
@@ -728,50 +690,60 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
     // ── Periodic patterns ────────────────────────────────────────────────
     case 'triphasic_waves': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 4.5, driftAmp: 6 })
+      addNoise(sig, 5)
       // Diffuse theta background (metabolic)
       addRhythm(sig, sampleRate, { centerFreq: 5, amplitude: 25, nComp: 2, envFloor: 0.5 })
       addRhythm(sig, sampleRate, { centerFreq: 2, amplitude: 15, nComp: 2, envFloor: 0.6 })
-      // ~1.5 Hz triphasic train
-      const period = Math.round(sampleRate / 1.5)
-      for (let s = Math.round(0.25 * sampleRate); s < nSamples - period; s += period) {
-        injectTriphasic(sig, s + Math.round(gauss(0, 0.018) * sampleRate), {
-          amp: 125 + (Math.random() - 0.5) * 30,
-          sampleRate,
-        })
+      // ~1.5 Hz triphasic train with ±12% IBI jitter and amp variability
+      const ibiMean = 1 / 1.5
+      let t = 0.25
+      while (t < dur - ibiMean * 0.5) {
+        injectTriphasic(sig, Math.round(t * sampleRate),
+          { amp: 130 * (0.85 + Math.random() * 0.30) })
+        t += ibiMean * (0.88 + Math.random() * 0.24)
       }
       return sig
     }
     case 'gpds': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 3.5, driftAmp: 3 })
+      addNoise(sig, 4)
       // Severely suppressed / slow background
       addRhythm(sig, sampleRate, { centerFreq: 2, amplitude: 12, nComp: 2, envFloor: 0.6 })
-      // ~1 Hz periodic sharp-and-slow complex
-      const period = Math.round(sampleRate / 1.0)
-      for (let s = Math.round(0.2 * sampleRate); s < nSamples - period; s += period) {
-        // Sharp component
-        const at = s + Math.round(gauss(0, 0.015) * sampleRate)
-        injectSharpWave(sig, at, { amplitude: 130 + Math.random() * 25, duration: 0.12, polarity: -1, sampleRate })
-        injectAfterGoingSlow(sig, at, sampleRate, { amp: 50 + Math.random() * 15, delaySec: 0.09, durSec: 0.24 })
+      // ~1 Hz periodic sharp-and-slow complex with ±12% IBI jitter
+      const ibiMean = 1.0
+      let t = 0.2
+      while (t < dur - ibiMean * 0.5) {
+        const ampJ = 0.85 + Math.random() * 0.30
+        const s    = Math.round(t * sampleRate)
+        injectSharpWave(sig, s,
+          { amplitude: 140 * ampJ, duration: 0.12, polarity: -1 })
+        const swDur = Math.round(0.22 * sampleRate)
+        for (let i = 0; i < swDur; i++) {
+          const idx = s + Math.round(0.09 * sampleRate) + i
+          if (idx >= nSamples) break
+          sig[idx] += 55 * ampJ * Math.sin(Math.PI * i / swDur)
+        }
+        t += ibiMean * (0.88 + Math.random() * 0.24)
       }
       return sig
     }
     case 'lpds': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 4.5, driftAmp: 5 })
+      addNoise(sig, 5)
       // Slowed focal background
       addRhythm(sig, sampleRate, { centerFreq: 3, amplitude: 30, nComp: 2, envFloor: 0.5 })
       addRhythm(sig, sampleRate, { centerFreq: 1.5, amplitude: 40, nComp: 2, envFloor: 0.5 })
-      // Periodic lateralized sharp complexes ~0.8 Hz
-      const period = Math.round(sampleRate / 0.8)
-      for (let s = Math.round(0.15 * sampleRate); s < nSamples - period; s += period) {
-        const at = s + Math.round(gauss(0, 0.02) * sampleRate)
-        injectSharpWave(sig, at, { amplitude: 180 + Math.random() * 45, duration: 0.10, polarity: -1, sampleRate })
-        // Smaller follower
-        injectSharpWave(sig, at + Math.round(0.07 * sampleRate),
-          { amplitude: 65, duration: 0.06, polarity: +1, sampleRate })
-        injectAfterGoingSlow(sig, at, sampleRate, { amp: 42, delaySec: 0.12, durSec: 0.25 })
+      // Periodic lateralized sharp complexes ~0.8 Hz with ±15% IBI jitter
+      const ibiMean = 1 / 0.8
+      let t = 0.15
+      while (t < dur - ibiMean * 0.5) {
+        const ampJ = 0.85 + Math.random() * 0.30
+        const s    = Math.round(t * sampleRate)
+        injectSharpWave(sig, s,
+          { amplitude: 200 * ampJ, duration: 0.10, polarity: -1 })
+        injectSharpWave(sig, s + Math.round(0.07 * sampleRate),
+          { amplitude: 70 * ampJ, duration: 0.06, polarity: +1 })
+        t += ibiMean * (0.85 + Math.random() * 0.30)
       }
       return sig
     }
@@ -779,7 +751,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
     // ── Abnormal non-epileptiform ────────────────────────────────────────
     case 'focal_slowing': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 5.5, driftAmp: 8 })
+      addNoise(sig, 6)
       // Polymorphic delta/theta, irregular
       addRhythm(sig, sampleRate, { centerFreq: 2, bandwidthHz: 2, amplitude: 110, nComp: 4, envFloor: 0.3 })
       addRhythm(sig, sampleRate, { centerFreq: 5, bandwidthHz: 2, amplitude: 60,  nComp: 3, envFloor: 0.3 })
@@ -789,7 +761,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
     }
     case 'firda': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 3.5, driftAmp: 5 })
+      addNoise(sig, 4)
       addRhythm(sig, sampleRate, { centerFreq: 7, amplitude: 18, nComp: 2, envFloor: 0.5 })
       // FIRDA bursts — rhythmic 2.5 Hz trains, ~1–2 s each
       const bursts = [
@@ -797,7 +769,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
         { t0: 2.0, dur: 0.9 },
       ]
       bursts.forEach(({ t0, dur: bDur }) => {
-        const s0 = Math.round(jitteredSeconds(t0, 0.08) * sampleRate)
+        const s0 = Math.round(t0 * sampleRate)
         const n  = Math.round(bDur * sampleRate)
         const freq = 2.5 + (Math.random() - 0.5) * 0.3
         for (let i = 0; i < n; i++) {
@@ -866,7 +838,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
     }
     case 'breach_rhythm': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 2, betaAmp: 6 })
+      addNoise(sig, 3)
       // High-amplitude, sharp-contoured beta and alpha — breach accentuates
       // normal rhythms rather than producing abnormal content.
       addArched(sig, sampleRate, { freq: 10, amp: 90, envFreq: 0.2, envFloor: 0.3 })
@@ -879,25 +851,22 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
     // ── Artifacts ────────────────────────────────────────────────────────
     case 'muscle_artifact': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 2 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 25, nComp: 2, envFloor: 0.5 })
-      injectMuscleArtifact(sig, Math.round(1.0 * sampleRate), { duration: 1.0, amplitude: 100, sampleRate })
+      injectMuscleArtifact(sig, Math.round(1.0 * sampleRate), { duration: 1.0, amplitude: 100 })
       return sig
     }
     case 'eye_blink': {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 4 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 22, nComp: 2, envFloor: 0.5 })
       ;[0.5, 1.5, 2.4].forEach(t =>
-        injectEyeBlink(sig, Math.round(jitteredSeconds(t, 0.06) * sampleRate), {
-          amplitude: 240 + Math.random() * 70,
-          sampleRate,
-        }))
+        injectEyeBlink(sig, Math.round(t * sampleRate), { amplitude: 280 }))
       return sig
     }
     default: {
       const sig = new Float32Array(nSamples)
-      addBaselineTexture(sig, sampleRate, { noise: 2.5, driftAmp: 3 })
+      addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 50, nComp: 3, envFloor: 0.4 })
       return sig
     }

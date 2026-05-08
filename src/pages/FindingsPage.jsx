@@ -7,13 +7,14 @@ import { SAMPLE_RATE }          from '@/engine/signalGenerator'
 
 // ─── Category metadata ───────────────────────────────────────────────────────
 
+// Category metadata — labels come from i18n (`findings.categories.<id>`)
 const CATEGORIES = {
-  normal:          { label: 'Normal',                    color: '#00FFB0' },
-  benign_variant:  { label: 'Benign Variants',           color: '#7FFFD4' },
-  epileptiform:    { label: 'Epileptiform',              color: '#FF4444' },
-  periodic:        { label: 'Periodic (ICU)',            color: '#FFA552' },
-  abnormal:        { label: 'Non-Epileptiform Abnormal', color: '#FFD166' },
-  coma:            { label: 'Coma Patterns',             color: '#A0A0FF' },
+  normal:          { color: '#00FFB0' },
+  benign_variant:  { color: '#7FFFD4' },
+  epileptiform:    { color: '#FF4444' },
+  periodic:        { color: '#FFA552' },
+  abnormal:        { color: '#FFD166' },
+  coma:            { color: '#A0A0FF' },
 }
 
 // ─── Findings catalogue ──────────────────────────────────────────────────────
@@ -851,7 +852,7 @@ export default function FindingsPage() {
             <FilterChip
               key={id}
               id={id}
-              label={CATEGORIES[id].label}
+              label={t(`findings.categories.${id}`)}
               color={CATEGORIES[id].color}
               active={cat === id}
               onClick={() => setCat(id)}
@@ -868,7 +869,7 @@ export default function FindingsPage() {
             <div key={g.id}>
               <p className="text-[10px] font-mono uppercase tracking-widest mb-1.5 px-1"
                  style={{ color: g.meta.color }}>
-                {g.meta.label}
+                {t(`findings.categories.${g.id}`)}
               </p>
               <div className="space-y-0.5">
                 {g.items.map(f => (
@@ -903,7 +904,7 @@ export default function FindingsPage() {
                   borderColor: `${CATEGORIES[finding.category].color}44`,
                   background: `${CATEGORIES[finding.category].color}11`,
                 }}>
-                {CATEGORIES[finding.category].label}
+                {t(`findings.categories.${finding.category}`)}
               </span>
             </div>
             <h1 className="section-title mb-3">{finding.title}</h1>

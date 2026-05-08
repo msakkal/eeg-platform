@@ -58,7 +58,15 @@
     "normal": "Normal",
     "abnormal": "Abnormal",
     "epileptiform": "Epileptiform",
-    "non_epileptiform": "Non-Epileptiform"
+    "non_epileptiform": "Non-Epileptiform",
+    "categories": {
+      "normal": "Normal",
+      "benign_variant": "Benign Variants",
+      "epileptiform": "Epileptiform",
+      "periodic": "Periodic (ICU)",
+      "abnormal": "Non-Epileptiform Abnormal",
+      "coma": "Coma Patterns"
+    }
   },
   "sandbox": {
     "title": "EEG Sandbox",
@@ -82,6 +90,23 @@
     "subtitle": "Test your knowledge of EEG patterns, montages, and clinical findings."
   },
   "artifacts": {
-    "subtitle": "Common EEG artifacts with multi-channel examples and identification guides."
+    "subtitle": "Common EEG artifacts with multi-channel examples and identification guides.",
+    "detail_tabs": {
+      "overview": "Overview",
+      "identify": "Identification",
+      "differentiate": "Differentiate",
+      "reduce": "Reduction",
+      "clinical": "Clinical Note"
+    }
+  },
+  "annotations": {
+    "labels": {
+      "spike": "Spike",
+      "sharp_wave": "Sharp wave",
+      "artifact": "Artifact",
+      "eye_blink": "Eye blink",
+      "seizure_onset": "Seizure onset",
+      "note": "Note"
+    }
   }
 }
