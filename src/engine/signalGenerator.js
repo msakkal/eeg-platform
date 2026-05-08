@@ -146,6 +146,16 @@ function addPinkNoiseTo(signal, amplitude, noiseLevel) {
   for (let i = 0; i < signal.length; i++) signal[i] += noise[i] * amplitude * noiseLevel
 }
 
+function createModulatedSource(length, fs, options) {
+  const source = new Float32Array(length)
+  addModulatedBand(source, fs, { amplitude: 1, ...options })
+  return source
+}
+
+function addScaledSource(signal, source, scale) {
+  for (let i = 0; i < signal.length; i++) signal[i] += source[i] * scale
+}
+
 // ─── Transient Injectors ─────────────────────────────────────────────────────
 
 /**
@@ -160,9 +170,10 @@ export function injectSpike(signal, sampleIndex, options = {}) {
     duration  = 0.06,  // seconds (< 70 ms = spike)
     polarity  = -1,    // -1 = negative (classic EEG spike)
     asymmetry = 0.3,   // rise:fall ratio
+    sampleRate = SAMPLE_RATE,
   } = options
 
-  const halfW = Math.round((duration * SAMPLE_RATE) / 2)
+  const halfW = Math.max(1, Math.round((duration * sampleRate) / 2))
 
   for (let i = sampleIndex - halfW; i <= sampleIndex + halfW; i++) {
     if (i < 0 || i >= signal.length) continue
@@ -188,10 +199,10 @@ export function injectSharpWave(signal, sampleIndex, options = {}) {
 
 /** Inject spike-and-wave complex (spike followed by slow wave). */
 export function injectSpikeAndWave(signal, sampleIndex, options = {}) {
-  const { frequency = 3 } = options
-  injectSpike(signal, sampleIndex, { amplitude: 200, duration: 0.04, polarity: -1 })
-  const swStart    = sampleIndex + Math.round(SAMPLE_RATE * 0.06)
-  const swDuration = Math.round(SAMPLE_RATE * 0.25)
+  const { frequency = 3, sampleRate = SAMPLE_RATE } = options
+  injectSpike(signal, sampleIndex, { amplitude: 200, duration: 0.04, polarity: -1, sampleRate })
+  const swStart    = sampleIndex + Math.round(sampleRate * 0.06)
+  const swDuration = Math.round(sampleRate * Math.min(0.25, 0.8 / frequency))
   for (let i = 0; i < swDuration; i++) {
     const idx = swStart + i
     if (idx >= signal.length) break
@@ -202,13 +213,14 @@ export function injectSpikeAndWave(signal, sampleIndex, options = {}) {
 
 /** Inject polyspike burst. */
 export function injectPolyspike(signal, sampleIndex, options = {}) {
-  const { count = 4, spacing = 0.025 } = options
+  const { count = 4, spacing = 0.025, sampleRate = SAMPLE_RATE } = options
   for (let k = 0; k < count; k++) {
-    const idx = sampleIndex + Math.round(k * spacing * SAMPLE_RATE)
+    const idx = sampleIndex + Math.round(k * spacing * sampleRate)
     injectSpike(signal, idx, {
       amplitude: 120 - k * 15,
       duration:  0.03,
       polarity:  k % 2 === 0 ? -1 : 1,
+      sampleRate,
     })
   }
   return signal
@@ -223,8 +235,9 @@ export function injectTriphasicWave(signal, sampleIndex, options = {}) {
   const {
     amplitude = 120,
     duration  = 0.35,
+    sampleRate = SAMPLE_RATE,
   } = options
-  const total = Math.round(duration * SAMPLE_RATE)
+  const total = Math.round(duration * sampleRate)
   if (total < 3) return signal
   const p1End = Math.round(total * 0.18)   // phase 1: brief small positive
   const p2End = Math.round(total * 0.55)   // phase 2: dominant blunt negative
@@ -250,8 +263,8 @@ export function injectTriphasicWave(signal, sampleIndex, options = {}) {
 
 /** Inject muscle artifact (high-frequency burst). */
 export function injectMuscleArtifact(signal, sampleIndex, options = {}) {
-  const { duration = 0.5, amplitude = 80 } = options
-  const len = Math.round(duration * SAMPLE_RATE)
+  const { duration = 0.5, amplitude = 80, sampleRate = SAMPLE_RATE } = options
+  const len = Math.round(duration * sampleRate)
   for (let i = 0; i < len; i++) {
     const idx = sampleIndex + i
     if (idx >= signal.length) break
@@ -283,10 +296,11 @@ export function injectEyeBlink(signal, sampleIndex, options = {}) {
     riseMs    = 70,
     fallMs    = 220,
     polarity  = +1,
+    sampleRate = SAMPLE_RATE,
   } = options
 
-  const riseN = Math.round((riseMs / 1000) * SAMPLE_RATE)
-  const fallN = Math.round((fallMs / 1000) * SAMPLE_RATE)
+  const riseN = Math.round((riseMs / 1000) * sampleRate)
+  const fallN = Math.round((fallMs / 1000) * sampleRate)
   const total = riseN + fallN
 
   for (let i = 0; i < total; i++) {
@@ -540,6 +554,64 @@ export function generateMultiChannelEEG(options = {}) {
 
   const nSamples = Math.round(duration * sampleRate)
   const channels = {}
+  const sharedSources = {
+    alpha: createModulatedSource(nSamples, sampleRate, {
+      centerFreq: 10,
+      bandwidthHz: 0.9,
+      nComponents: 4,
+      envFreqMin: 0.08,
+      envFreqMax: 0.22,
+      envFloor: eyesClosed ? 0.55 : 0.25,
+    }),
+    drowsyAlpha: createModulatedSource(nSamples, sampleRate, {
+      centerFreq: 8.5,
+      bandwidthHz: 1.2,
+      nComponents: 3,
+      envFreqMin: 0.18,
+      envFreqMax: 0.35,
+      envFloor: 0.08,
+    }),
+    theta: createModulatedSource(nSamples, sampleRate, {
+      centerFreq: 5.3,
+      bandwidthHz: 2.0,
+      nComponents: 4,
+      envFreqMin: 0.08,
+      envFreqMax: 0.22,
+      envFloor: 0.45,
+    }),
+    delta: createModulatedSource(nSamples, sampleRate, {
+      centerFreq: 1.6,
+      bandwidthHz: 1.2,
+      nComponents: 4,
+      envFreqMin: 0.03,
+      envFreqMax: 0.10,
+      envFloor: 0.65,
+    }),
+    beta: createModulatedSource(nSamples, sampleRate, {
+      centerFreq: 20,
+      bandwidthHz: 5.0,
+      nComponents: 5,
+      envFreqMin: 0.15,
+      envFreqMax: 0.45,
+      envFloor: 0.35,
+    }),
+    muLeft: createModulatedSource(nSamples, sampleRate, {
+      centerFreq: 10.5,
+      bandwidthHz: 0.9,
+      nComponents: 3,
+      envFreqMin: 0.04,
+      envFreqMax: 0.13,
+      envFloor: 0.30,
+    }),
+    muRight: createModulatedSource(nSamples, sampleRate, {
+      centerFreq: 10.5,
+      bandwidthHz: 0.9,
+      nComponents: 3,
+      envFreqMin: 0.04,
+      envFreqMax: 0.13,
+      envFloor: 0.30,
+    }),
+  }
 
   // Emit a realistic awake background for one channel, taking the electrode
   // label and eye state into account.
@@ -550,10 +622,11 @@ export function generateMultiChannelEEG(options = {}) {
     // Alpha (posterior dominant rhythm) — strongly gated by eye state.
     const alphaAmp = alphaGradient(label) * amplitude * (eyesClosed ? 1.2 : 0.12)
     if (alphaAmp > 0.5) {
+      addScaledSource(sig, sharedSources.alpha, alphaAmp * 0.85)
       addModulatedBand(sig, sampleRate, {
         centerFreq:  10,                   // dominant alpha ~10 Hz
         bandwidthHz: 1.4,
-        amplitude:   alphaAmp,
+        amplitude:   alphaAmp * 0.28,
         nComponents: 3,
         envFreqMin:  0.12,
         envFreqMax:  0.28,
@@ -564,10 +637,12 @@ export function generateMultiChannelEEG(options = {}) {
     // Mu rhythm (central 8–12 Hz, arched) — present regardless of eye state.
     const muAmp = muGradient(label) * amplitude * 0.25
     if (muAmp > 0.5) {
+      const muSource = ['C4', 'F4', 'P4'].includes(label) ? sharedSources.muRight : sharedSources.muLeft
+      addScaledSource(sig, muSource, muAmp * 0.75)
       addModulatedBand(sig, sampleRate, {
         centerFreq:  10.5,
         bandwidthHz: 1.0,
-        amplitude:   muAmp,
+        amplitude:   muAmp * 0.35,
         nComponents: 2,
         envFreqMin:  0.05,
         envFreqMax:  0.15,
@@ -587,10 +662,11 @@ export function generateMultiChannelEEG(options = {}) {
     // (desynchronised, "alert" cortex).
     const betaAmp = frontalBetaGradient(label) * amplitude *
       (eyesClosed ? 0.12 : 0.22)
+    addScaledSource(sig, sharedSources.beta, betaAmp * 0.55)
     addModulatedBand(sig, sampleRate, {
       centerFreq:  20,
       bandwidthHz: 6,
-      amplitude:   betaAmp,
+      amplitude:   betaAmp * 0.65,
       nComponents: 3,
       envFreqMin:  0.2,
       envFreqMax:  0.6,
@@ -599,10 +675,11 @@ export function generateMultiChannelEEG(options = {}) {
 
     // A touch of temporal theta (more in mid-temporal channels, small in adults).
     if (regionOf(label) === 'midtemporal' || regionOf(label) === 'posttemporal') {
+      addScaledSource(sig, sharedSources.theta, amplitude * 0.08)
       addModulatedBand(sig, sampleRate, {
         centerFreq:  6,
         bandwidthHz: 2,
-        amplitude:   amplitude * 0.15,
+        amplitude:   amplitude * 0.10,
         nComponents: 2,
         envFreqMin:  0.08,
         envFreqMax:  0.2,
@@ -621,10 +698,11 @@ export function generateMultiChannelEEG(options = {}) {
     // Fragmented, slower alpha (posterior, attenuated)
     const alphaAmp = alphaGradient(label) * amplitude * 0.55
     if (alphaAmp > 0.5) {
+      addScaledSource(sig, sharedSources.drowsyAlpha, alphaAmp * 0.7)
       addModulatedBand(sig, sampleRate, {
         centerFreq:  8.5,
         bandwidthHz: 1.5,
-        amplitude:   alphaAmp,
+        amplitude:   alphaAmp * 0.45,
         nComponents: 2,
         envFreqMin:  0.15,
         envFreqMax:  0.3,
@@ -634,10 +712,11 @@ export function generateMultiChannelEEG(options = {}) {
     // Diffuse theta
     const thetaAmp = amplitude * 0.55 *
       (regionOf(label) === 'central' || regionOf(label) === 'frontal' ? 1.1 : 0.85)
+    addScaledSource(sig, sharedSources.theta, thetaAmp * 0.65)
     addModulatedBand(sig, sampleRate, {
       centerFreq:  5.5,
       bandwidthHz: 2,
-      amplitude:   thetaAmp,
+      amplitude:   thetaAmp * 0.50,
       nComponents: 3,
       envFreqMin:  0.1,
       envFreqMax:  0.25,
@@ -657,19 +736,21 @@ export function generateMultiChannelEEG(options = {}) {
                                regionOf(label) === 'frontopolar' ||
                                regionOf(label) === 'central'
     const deltaAmp = amplitude * (isFrontalOrCentral ? 1.7 : 1.0)
+    addScaledSource(sig, sharedSources.delta, deltaAmp * 0.55)
     addModulatedBand(sig, sampleRate, {
       centerFreq:  1.5,
       bandwidthHz: 1.8,
-      amplitude:   deltaAmp,
+      amplitude:   deltaAmp * 0.65,
       nComponents: 3,
       envFreqMin:  0.05,
       envFreqMax:  0.15,
       envFloor:    0.6,
     })
+    addScaledSource(sig, sharedSources.theta, amplitude * 0.22)
     addModulatedBand(sig, sampleRate, {
       centerFreq:  4.5,
       bandwidthHz: 2,
-      amplitude:   amplitude * 0.5,
+      amplitude:   amplitude * 0.35,
       nComponents: 2,
       envFloor:    0.4,
     })
@@ -701,7 +782,7 @@ export function generateMultiChannelEEG(options = {}) {
       const vertexAmp = label === 'Cz' ? 110 : 75
       for (let k = 0; k < nVertex; k++) {
         const pos = Math.round((0.8 + Math.random() * (duration - 1.6)) * sampleRate)
-        injectSharpWave(sig, pos, { amplitude: vertexAmp, duration: 0.12, polarity: -1 })
+        injectSharpWave(sig, pos, { amplitude: vertexAmp, duration: 0.12, polarity: -1, sampleRate })
       }
     }
 
@@ -712,7 +793,7 @@ export function generateMultiChannelEEG(options = {}) {
       for (let k = 0; k < nK; k++) {
         const pos = Math.round((1.5 + Math.random() * (duration - 3)) * sampleRate)
         // Sharp negative wave followed by longer positive slow wave
-        injectSharpWave(sig, pos, { amplitude: 180 * kAmp, duration: 0.18, polarity: -1 })
+        injectSharpWave(sig, pos, { amplitude: 180 * kAmp, duration: 0.18, polarity: -1, sampleRate })
         const slowDur = Math.round(sampleRate * 0.45)
         for (let i = 0; i < slowDur; i++) {
           const idx = pos + Math.round(sampleRate * 0.12) + i
@@ -737,30 +818,33 @@ export function generateMultiChannelEEG(options = {}) {
     if (isLeftFocal) {
       addPinkNoiseTo(sig, amplitude, noiseLevel * 0.9)
       // Polymorphic delta
+      addScaledSource(sig, sharedSources.delta, amplitude * 0.75)
       addModulatedBand(sig, sampleRate, {
         centerFreq:  2,
         bandwidthHz: 2,
-        amplitude:   amplitude * 2.2,
+        amplitude:   amplitude * 1.75,
         nComponents: 4,
         envFreqMin:  0.15,
         envFreqMax:  0.4,
         envFloor:    0.3,
       })
       // Theta overlay
+      addScaledSource(sig, sharedSources.theta, amplitude * 0.35)
       addModulatedBand(sig, sampleRate, {
         centerFreq:  6,
         bandwidthHz: 2,
-        amplitude:   amplitude * 1.3,
+        amplitude:   amplitude * 0.95,
         nComponents: 3,
         envFloor:    0.4,
       })
       // Heavily attenuated alpha in the affected region
       const alphaAmp = alphaGradient(label) * amplitude * 0.25
       if (alphaAmp > 0.5) {
+        addScaledSource(sig, sharedSources.alpha, alphaAmp * 0.35)
         addModulatedBand(sig, sampleRate, {
           centerFreq:  9,
           bandwidthHz: 1.5,
-          amplitude:   alphaAmp,
+          amplitude:   alphaAmp * 0.55,
           nComponents: 2,
           envFloor:    0.2,
         })
@@ -818,19 +902,21 @@ export function generateMultiChannelEEG(options = {}) {
                            regionOf(label) === 'frontopolar' ||
                            regionOf(label) === 'central'
     const deltaAmp = amplitude * (frontalCentral ? 2.8 : 1.6)
+    addScaledSource(sig, sharedSources.delta, deltaAmp * 0.65)
     addModulatedBand(sig, sampleRate, {
       centerFreq:  1.2,
       bandwidthHz: 1.0,
-      amplitude:   deltaAmp,
+      amplitude:   deltaAmp * 0.60,
       nComponents: 3,
       envFreqMin:  0.03,
       envFreqMax:  0.10,
       envFloor:    0.75,
     })
+    addScaledSource(sig, sharedSources.delta, amplitude * 0.25)
     addModulatedBand(sig, sampleRate, {
       centerFreq:  2.5,
       bandwidthHz: 1.5,
-      amplitude:   amplitude * 0.8,
+      amplitude:   amplitude * 0.55,
       nComponents: 2,
       envFloor:    0.55,
     })
@@ -842,29 +928,32 @@ export function generateMultiChannelEEG(options = {}) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude, noiseLevel * 0.7)
     // Diffuse theta dominant
+    addScaledSource(sig, sharedSources.theta, amplitude * 0.55)
     addModulatedBand(sig, sampleRate, {
       centerFreq:  5,
       bandwidthHz: 2.2,
-      amplitude:   amplitude * 1.05,
+      amplitude:   amplitude * 0.65,
       nComponents: 3,
       envFloor:    0.55,
     })
     // Delta overlay — slightly more anteriorly
     const anterior = regionOf(label) === 'frontal' || regionOf(label) === 'frontopolar'
+    addScaledSource(sig, sharedSources.delta, amplitude * (anterior ? 0.35 : 0.20))
     addModulatedBand(sig, sampleRate, {
       centerFreq:  2,
       bandwidthHz: 1.5,
-      amplitude:   amplitude * (anterior ? 0.9 : 0.55),
+      amplitude:   amplitude * (anterior ? 0.65 : 0.40),
       nComponents: 2,
       envFloor:    0.5,
     })
     // Residual attenuated, slowed alpha preserving an A-P gradient
     const alphaAmp = alphaGradient(label) * amplitude * 0.30
     if (alphaAmp > 0.5) {
+      addScaledSource(sig, sharedSources.drowsyAlpha, alphaAmp * 0.35)
       addModulatedBand(sig, sampleRate, {
         centerFreq:  7.5,
         bandwidthHz: 1.2,
-        amplitude:   alphaAmp,
+        amplitude:   alphaAmp * 0.60,
         nComponents: 2,
         envFloor:    0.3,
       })
@@ -954,6 +1043,7 @@ export function generateMultiChannelEEG(options = {}) {
         amplitude: amp,
         duration:  0.08 + Math.random() * 0.1,
         polarity:  Math.random() > 0.5 ? -1 : +1,
+        sampleRate,
       })
     }
     return sig
@@ -1030,6 +1120,7 @@ export function generateMultiChannelEEG(options = {}) {
           riseMs,
           fallMs,
           polarity: +1,
+          sampleRate,
         })
       })
     })
@@ -1057,7 +1148,7 @@ export function generateMultiChannelEEG(options = {}) {
 
     for (let s = burstStart; s < burstEnd; s += period) {
       const scratch = new Float32Array(cmplxLen)
-      injectSpikeAndWave(scratch, spikeOffset, { frequency: 3 })
+      injectSpikeAndWave(scratch, spikeOffset, { frequency: 3, sampleRate })
       ELECTRODES_1020.forEach(label => {
         const scale = scaleFor(regionOf(label))
         if (scale <= 0) return
@@ -1076,7 +1167,7 @@ export function generateMultiChannelEEG(options = {}) {
     const cmplxLen = Math.round(sampleRate * 0.42)
     for (let t = 0.6; t < duration - 0.5; t += ibi) {
       const scratch = new Float32Array(cmplxLen)
-      injectSharpWave(scratch, 12, { amplitude: 130, duration: 0.11, polarity: -1 })
+      injectSharpWave(scratch, 12, { amplitude: 130, duration: 0.11, polarity: -1, sampleRate })
       // after-going slow wave
       const swStart = Math.round(sampleRate * 0.15)
       const swLen   = Math.round(sampleRate * 0.26)
@@ -1104,7 +1195,7 @@ export function generateMultiChannelEEG(options = {}) {
     const cmplxLen = Math.round(sampleRate * 0.38)
     for (let t = 0.7; t < duration - 0.5; t += ibi) {
       const scratch = new Float32Array(cmplxLen)
-      injectSharpWave(scratch, 12, { amplitude: 120, duration: 0.09, polarity: -1 })
+      injectSharpWave(scratch, 12, { amplitude: 120, duration: 0.09, polarity: -1, sampleRate })
       const swStart = Math.round(sampleRate * 0.13)
       const swLen   = Math.round(sampleRate * 0.22)
       for (let i = 0; i < swLen; i++) {
@@ -1143,7 +1234,7 @@ export function generateMultiChannelEEG(options = {}) {
     }
     for (let t = 0.5; t < duration - 0.6; t += ibi) {
       const scratch = new Float32Array(cmplxLen)
-      injectTriphasicWave(scratch, 0, { amplitude: 140, duration: 0.35 })
+      injectTriphasicWave(scratch, 0, { amplitude: 140, duration: 0.35, sampleRate })
       const s0 = Math.round(t * sampleRate)
       ELECTRODES_1020.forEach(label => {
         const scale = bifrontalGradient(label)
@@ -1198,7 +1289,7 @@ export function generateMultiChannelEEG(options = {}) {
     const cmplxLen   = Math.round(sampleRate * 0.52)
     for (let s = burstStart; s < burstEnd; s += period) {
       const scratch = new Float32Array(cmplxLen)
-      injectSpike(scratch, 14, { amplitude: 180, duration: 0.08, polarity: -1 })
+      injectSpike(scratch, 14, { amplitude: 180, duration: 0.08, polarity: -1, sampleRate })
       const swStart = Math.round(sampleRate * 0.15)
       const swLen   = Math.round(sampleRate * 0.40)
       for (let i = 0; i < swLen; i++) {
@@ -1230,7 +1321,7 @@ export function generateMultiChannelEEG(options = {}) {
       for (let t = tStart; t < burstEnd; t += complexPeriod) {
         const cmplxLen = Math.round(sampleRate * 0.2)
         const scratch  = new Float32Array(cmplxLen)
-        injectPolyspike(scratch, 16, { count: 3, spacing: 0.02 })
+        injectPolyspike(scratch, 16, { count: 3, spacing: 0.02, sampleRate })
         const swStart = Math.round(sampleRate * 0.08)
         const swLen   = Math.round(sampleRate * 0.12)
         for (let i = 0; i < swLen; i++) {
@@ -1291,7 +1382,7 @@ export function generateMultiChannelEEG(options = {}) {
     spikeSchedule.forEach(({ t, field }) => {
       const cmplxLen = Math.round(sampleRate * 0.36)
       const scratch  = new Float32Array(cmplxLen)
-      injectSharpWave(scratch, 16, { amplitude: 180, duration: 0.1, polarity: -1 })
+      injectSharpWave(scratch, 16, { amplitude: 180, duration: 0.1, polarity: -1, sampleRate })
       const swStart = Math.round(sampleRate * 0.14)
       const swLen   = Math.round(sampleRate * 0.22)
       for (let i = 0; i < swLen; i++) {
@@ -1318,7 +1409,7 @@ export function generateMultiChannelEEG(options = {}) {
     times.forEach(t => {
       const cmplxLen = Math.round(sampleRate * 0.4)
       const scratch  = new Float32Array(cmplxLen)
-      injectSharpWave(scratch, 16, { amplitude: 140, duration: 0.12, polarity: -1 })
+      injectSharpWave(scratch, 16, { amplitude: 140, duration: 0.12, polarity: -1, sampleRate })
       const swStart = Math.round(sampleRate * 0.17)
       const swLen   = Math.round(sampleRate * 0.22)
       for (let i = 0; i < swLen; i++) {
@@ -1363,7 +1454,7 @@ export function generateMultiChannelEEG(options = {}) {
     for (let t = pprStart; t < pprEnd; t += pprPeriod) {
       const cmplxLen = Math.round(sampleRate * 0.22)
       const scratch  = new Float32Array(cmplxLen)
-      injectPolyspike(scratch, 16, { count: 3, spacing: 0.022 })
+      injectPolyspike(scratch, 16, { count: 3, spacing: 0.022, sampleRate })
       const swStart = Math.round(sampleRate * 0.08)
       const swLen   = Math.round(sampleRate * 0.13)
       for (let i = 0; i < swLen; i++) {

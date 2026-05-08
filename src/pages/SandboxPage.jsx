@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { useTranslation }         from 'react-i18next'
 import { useEEGStore }            from '@/store/eegStore'
 import { useAnnotationStore, ANNOTATION_LABELS } from '@/store/annotationStore'
@@ -41,13 +41,12 @@ export default function SandboxPage() {
   const [annotateMode,   setAnnotateMode]   = useState(false)
   const [activeAnnLabel, setActiveAnnLabel] = useState(ANNOTATION_LABELS[0])
   const [showHelp,       setShowHelp]       = useState(false)
-  const windowStartRef = useRef(0)
 
   // ── Annotations ─────────────────────────────────────────────────────────
   const { annotations, addAnnotation, removeAnnotation, clearAnnotations } = useAnnotationStore()
 
   // ── Signal ──────────────────────────────────────────────────────────────
-  const { channels, timeAxis, isReady } = useEEGSignal({
+  const { channels, timeAxis, isReady, windowStart } = useEEGSignal({
     montageId, pattern, amplitude, noiseLevel, sweepSpeed,
     isPlaying, pendingSpike, pendingArtifact,
     onClearPending: clearPending,
@@ -188,7 +187,7 @@ export default function SandboxPage() {
                     isPlaying={isPlaying}
                     filterConfig={filterConfig}
                     annotations={annotations}
-                    windowStart={windowStartRef.current}
+                    windowStart={windowStart}
                     onAnnotate={annotateMode ? handleAnnotate : null}
                     className="w-full"
                   />
