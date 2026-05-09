@@ -21,9 +21,13 @@
     "title": "EEG-Konzepte",
     "intro": "Die Elektroenzephalographie (EEG) misst die vom Gehirn erzeugte elektrische Aktivität über Elektroden, die auf der Kopfhaut platziert werden.",
     "what_is_eeg": "Was ist EEG?",
-    "how_it_works": "Wie es funktioniert",
-    "electrode_placement": "Elektrodenplatzierung",
-    "10_20_system": "Das 10-20-System",
+    "neuron_dipole": "Das Neuron als Dipol",
+    "post_synaptic": "Postsynaptische Potentiale",
+    "summation": "Summation & Volumenleitung",
+    "electrodes_impedance": "Elektroden & Impedanz",
+    "differential_amplification": "Differenzverstärkung",
+    "placement_1020": "Elektrodenplatzierung & 10-20-System",
+    "frequency_bands": "Frequenzbänder",
     "propagation": "Epileptische Feldpropagation"
   },
   "montages": {

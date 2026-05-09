@@ -21,9 +21,13 @@
     "title": "Conceptos EEG",
     "intro": "La electroencefalografía (EEG) mide la actividad eléctrica generada por el cerebro a través de electrodos colocados en el cuero cabelludo.",
     "what_is_eeg": "¿Qué es el EEG?",
-    "how_it_works": "Cómo funciona",
-    "electrode_placement": "Colocación de electrodos",
-    "10_20_system": "El sistema 10-20",
+    "neuron_dipole": "La neurona como dipolo",
+    "post_synaptic": "Potenciales postsinápticos",
+    "summation": "Sumación y conducción volumétrica",
+    "electrodes_impedance": "Electrodos e impedancia",
+    "differential_amplification": "Amplificación diferencial",
+    "placement_1020": "Colocación de electrodos y sistema 10-20",
+    "frequency_bands": "Bandas de frecuencia",
     "propagation": "Propagación del Campo Epiléptico"
   },
   "montages": {
