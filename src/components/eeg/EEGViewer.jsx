@@ -154,7 +154,12 @@ export default function EEGViewer({
       if (!data || data.length === 0) return
 
       const nPts   = data.length
-      const maxAmp = 100 * gain
+      // Display calibration: at gain=1 a 50µV peak signal fills the half-band,
+      // i.e. a 100µV peak-to-peak signal fills the full channel band. This
+      // matches the clinical convention of "5–10µV/mm" sensitivity at typical
+      // screen resolutions, so a normal posterior alpha (~50–70µV pp) takes
+      // up roughly half the channel as it does on a real EEG monitor.
+      const maxAmp = 50 * gain
       const halfH  = CHANNEL_HEIGHT / 2 - 4
 
       ctx.strokeStyle = isHovered ? '#00D4FF' : SIGNAL_COLOR

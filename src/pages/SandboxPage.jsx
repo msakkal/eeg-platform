@@ -195,7 +195,7 @@ export default function SandboxPage() {
                   <EEGViewer
                     channels={channels}
                     timeAxis={timeAxis}
-                    gain={100 / amplitude}
+                    gain={50 / amplitude}
                     isPlaying={isPlaying}
                     filterConfig={filterConfig}
                     annotations={annotations}
