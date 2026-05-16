@@ -1,114 +1,176 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import {
-  generateMultiChannelEEG,
-  injectSpike,
-  injectMuscleArtifact,
-  makeTimeAxis,
-  SAMPLE_RATE,
-} from '@/engine/signalGenerator'
+import { SAMPLE_RATE, makeTimeAxis } from '@/engine/signalGenerator'
+import { createEngineForPattern }    from '@/engine/streaming'
 import { applyMontage } from '@/engine/montages'
 
 /**
  * useEEGSignal
- * Streams a sliding window of EEG data at the given sweep speed.
- * Regenerates data when pattern/montage/settings change.
+ * Drives a live streaming EEG display from `streaming.js`. Each animation
+ * frame advances the engine clock by `stepSec` seconds, appends the new
+ * samples to a per-channel ring buffer holding the visible window, applies
+ * the active montage transform, and pushes the result to React state.
  *
- * @returns { channels, timeAxis, isReady }
+ * Returns: { channels, timeAxis, isReady, windowStart }
+ *
+ * @param {object} opts
+ *   - montageId: string
+ *   - pattern: string (see streaming.js / signalGenerator.js)
+ *   - amplitude: number   - currently informational (engine self-calibrates)
+ *   - noiseLevel: number  - currently informational
+ *   - sweepSpeed: number  - samples advanced per ~33 ms frame (×30 ≈ samples/s)
+ *   - isPlaying: bool
+ *   - pendingSpike / pendingArtifact: optional injection flags
+ *   - onClearPending: callback after handling a pending injection
+ *   - eyesClosed, blinksEnabled, blinkRate: awake-state modifiers
+ *   - windowSecs: how many seconds the on-screen window represents (default 10)
  */
 export function useEEGSignal({
   montageId,
   pattern,
-  amplitude,
-  noiseLevel,
-  sweepSpeed,   // samples per frame advancement (controls visual speed)
+  // amplitude, noiseLevel are accepted for API stability but unused —
+  // the streaming engine uses fixed clinically-calibrated amplitudes.
+  amplitude,        // eslint-disable-line no-unused-vars
+  noiseLevel,       // eslint-disable-line no-unused-vars
+  sweepSpeed,
   isPlaying,
   pendingSpike,
   pendingArtifact,
   onClearPending,
   eyesClosed    = true,
   blinksEnabled = true,
-  blinkRate     = 18,
+  blinkRate     = 18, // eslint-disable-line no-unused-vars
   windowSecs    = 10,
 }) {
   const [derivedChannels, setDerivedChannels] = useState([])
   const [timeAxis,        setTimeAxis]        = useState([])
   const [isReady,         setIsReady]         = useState(false)
 
-  // Ring-buffer refs (don't need to trigger renders)
-  const rawRef      = useRef(null)
-  const cursorRef   = useRef(0)
-  const animFrameRef = useRef(null)
-  const windowRef   = useRef(windowSecs * SAMPLE_RATE)
+  // Streaming engine + per-channel ring buffer holding the visible window
+  const engineRef     = useRef(null)
+  const ringRef       = useRef(null)
+  const animFrameRef  = useRef(null)
+  const cursorSecRef  = useRef(0)
 
-  // ── Generate / Regenerate raw data ───────────────────────────────────────
+  // ── Build / rebuild engine when pattern or eye-state changes ────────────
   useEffect(() => {
     setIsReady(false)
-    const eeg = generateMultiChannelEEG({
-      duration:   60,          // generate 60s buffer, loop it
-      sampleRate: SAMPLE_RATE,
-      pattern,
-      noiseLevel,
-      amplitude,
+    const engine = createEngineForPattern(pattern, {
       eyesClosed,
       blinksEnabled,
-      blinkRate,
     })
-    rawRef.current  = eeg
-    cursorRef.current = 0
-    setIsReady(true)
-  }, [pattern, noiseLevel, amplitude, eyesClosed, blinksEnabled, blinkRate])
+    engineRef.current = engine
 
-  // ── Inject pending transients ─────────────────────────────────────────────
+    // Pre-fill the ring buffer with one full visible window so the user
+    // sees a populated trace immediately on switching pattern.
+    const N = Math.round(windowSecs * SAMPLE_RATE)
+    const initial = engine.fillWindow(windowSecs)
+    const labels = Object.keys(initial)
+    const ring = {
+      channels: {},
+      writeIdx: 0,     // points at oldest sample (= where next write goes)
+      length:   N,
+      labels,
+    }
+    for (const label of labels) {
+      ring.channels[label] = new Float32Array(N)
+      ring.channels[label].set(initial[label])
+    }
+    ringRef.current = ring
+    cursorSecRef.current = windowSecs
+    setIsReady(true)
+  }, [pattern, eyesClosed, blinksEnabled, windowSecs])
+
+  // ── Pending transient injection (spike / muscle artifact) ───────────────
+  // For the streaming engine these are stamped into the ring buffer at the
+  // newest sample position. A more elegant approach would be a one-shot
+  // overlay scheduled into the engine; that is a future refinement.
   useEffect(() => {
-    if (!rawRef.current) return
-    const { channels } = rawRef.current
-    const pos = (cursorRef.current + Math.round(0.5 * SAMPLE_RATE)) % rawRef.current.nSamples
+    const ring = ringRef.current
+    if (!ring) return
+    if (!pendingSpike && !pendingArtifact) return
 
     if (pendingSpike) {
-      Object.values(channels).forEach(ch => injectSpike(ch, pos, { amplitude: 200 }))
+      const stampPos = (ring.writeIdx + ring.length - 1) % ring.length
+      const halfW = Math.round(0.03 * SAMPLE_RATE)
+      const amp   = 200
+      for (const label of ring.labels) {
+        const buf = ring.channels[label]
+        for (let i = -halfW; i <= halfW; i++) {
+          const idx = ((stampPos + i) % ring.length + ring.length) % ring.length
+          const x = i / halfW
+          buf[idx] += -amp * Math.exp(-x * x * 6)
+        }
+      }
       onClearPending?.()
     }
     if (pendingArtifact) {
-      // Only frontal channels for muscle artifact
-      ;['Fp1','Fp2','F3','F4','F7','F8'].forEach(label => {
-        if (channels[label]) injectMuscleArtifact(channels[label], pos, { duration: 0.5 })
-      })
+      const len = Math.round(0.5 * SAMPLE_RATE)
+      const start = (ring.writeIdx + ring.length - len) % ring.length
+      const frontals = ['Fp1','Fp2','F3','F4','F7','F8']
+      for (const label of frontals) {
+        const buf = ring.channels[label]
+        if (!buf) continue
+        for (let i = 0; i < len; i++) {
+          const idx = (start + i) % ring.length
+          const env = Math.sin(Math.PI * i / len)
+          buf[idx] += (Math.random() - 0.5) * 160 * env
+        }
+      }
       onClearPending?.()
     }
-  }, [pendingSpike, pendingArtifact])
+  }, [pendingSpike, pendingArtifact, onClearPending])
 
-  // ── Animation loop ────────────────────────────────────────────────────────
+  // ── Animation loop ───────────────────────────────────────────────────────
   useEffect(() => {
-    if (!isReady || !rawRef.current) return
-
-    const windowN  = windowRef.current
-    const step     = Math.max(1, Math.round(sweepSpeed / 30))  // samples advanced per ~33ms frame
+    if (!isReady) return
 
     function frame() {
-      if (!isPlaying) { animFrameRef.current = requestAnimationFrame(frame); return }
+      if (!isPlaying) {
+        animFrameRef.current = requestAnimationFrame(frame)
+        return
+      }
 
-      const { channels, nSamples } = rawRef.current
-      const cursor = cursorRef.current
+      const ring = ringRef.current
+      const engine = engineRef.current
+      if (!ring || !engine) {
+        animFrameRef.current = requestAnimationFrame(frame)
+        return
+      }
 
-      // Extract window from ring buffer
+      // Advance engine by `step` samples per frame (≈ 33 ms at 60fps).
+      const step = Math.max(1, Math.round(sweepSpeed / 30))
+      const stepSec = step / SAMPLE_RATE
+      const incoming = engine.fillWindow(stepSec)
+      cursorSecRef.current += stepSec
+
+      // Append incoming samples into the ring buffer.
+      for (const label of ring.labels) {
+        const src = incoming[label]
+        const buf = ring.channels[label]
+        if (!src || !buf) continue
+        for (let i = 0; i < src.length; i++) {
+          buf[(ring.writeIdx + i) % ring.length] = src[i]
+        }
+      }
+      ring.writeIdx = (ring.writeIdx + step) % ring.length
+
+      // Materialise the visible window chronologically (oldest → newest)
+      // for the montage transform.
       const windowRaw = {}
-      const labels    = Object.keys(channels)
-      labels.forEach(label => {
-        const ch  = channels[label]
-        const win = new Float32Array(windowN)
-        for (let i = 0; i < windowN; i++) {
-          win[i] = ch[(cursor + i) % nSamples]
+      const N = ring.length
+      const start = ring.writeIdx
+      for (const label of ring.labels) {
+        const buf = ring.channels[label]
+        const win = new Float32Array(N)
+        for (let i = 0; i < N; i++) {
+          win[i] = buf[(start + i) % N]
         }
         windowRaw[label] = win
-      })
+      }
 
-      // Apply montage transform
       const derived = applyMontage(windowRaw, montageId)
       setDerivedChannels(derived)
-      setTimeAxis(makeTimeAxis(windowN, SAMPLE_RATE))
-
-      // Advance cursor
-      cursorRef.current = (cursor + step) % nSamples
+      setTimeAxis(makeTimeAxis(N, SAMPLE_RATE))
 
       animFrameRef.current = requestAnimationFrame(frame)
     }
@@ -117,5 +179,10 @@ export function useEEGSignal({
     return () => cancelAnimationFrame(animFrameRef.current)
   }, [isReady, isPlaying, montageId, sweepSpeed])
 
-  return { channels: derivedChannels, timeAxis, isReady, windowStart: cursorRef.current / SAMPLE_RATE }
+  return {
+    channels: derivedChannels,
+    timeAxis,
+    isReady,
+    windowStart: cursorSecRef.current - windowSecs,
+  }
 }
