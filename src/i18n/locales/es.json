@@ -80,7 +80,7 @@
     "add_artifact": "Inyectar artefacto",
     "add_spike": "Inyectar punta",
     "noise_level": "Ruido",
-    "amplitude": "Amplitud",
+    "sensitivity": "Sensibilidad",
     "speed": "Velocidad de barrido",
     "channels": "Canales"
   },

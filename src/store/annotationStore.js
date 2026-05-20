@@ -1,18 +1,20 @@
 import { create } from 'zustand'
 
+let _nextId = 1
+
 /**
  * Annotation store
  * Each annotation: { id, timeS, label, color, channelLabel }
  */
-export const useAnnotationStore = create((set, get) => ({
+export const useAnnotationStore = create((set) => ({
   annotations: [],
 
   addAnnotation(ann) {
     set(s => ({
       annotations: [
         ...s.annotations,
-        { id: Date.now(), color: '#FFD166', ...ann },
-      ]
+        { id: _nextId++, color: '#FFD166', ...ann },
+      ],
     }))
   },
 

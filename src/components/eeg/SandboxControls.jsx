@@ -1,6 +1,7 @@
 import React from 'react'
-import { useTranslation } from 'react-i18next'
-import { MONTAGE_LIST }   from '@/engine/montages'
+import { useTranslation }    from 'react-i18next'
+import { MONTAGE_LIST }      from '@/engine/montages'
+import { VIEWER_THEME_LIST, SENSITIVITY_STEPS, DEFAULT_SENSITIVITY } from '@/engine/viewerThemes'
 
 const PATTERN_GROUPS = [
   {
@@ -64,7 +65,7 @@ const PATTERN_GROUPS = [
 export default function SandboxControls({
   montageId, onMontageChange,
   pattern,   onPatternChange,
-  amplitude, onAmplitudeChange,
+  sensitivity, onSensitivityChange,
   noiseLevel,onNoiseLevelChange,
   sweepSpeed,onSweepSpeedChange,
   isPlaying, onTogglePlay,
@@ -73,6 +74,7 @@ export default function SandboxControls({
   eyesClosed, onToggleEyes,
   blinksEnabled, onToggleBlinks,
   blinkRate, onBlinkRateChange,
+  viewerTheme, onViewerThemeChange,
 }) {
   const { t } = useTranslation()
 
@@ -236,15 +238,48 @@ export default function SandboxControls({
 
       <Divider />
 
+      {/* Display theme selector */}
+      <div>
+        <Label>Display Theme</Label>
+        <div className="grid grid-cols-2 gap-1.5 mt-2">
+          {VIEWER_THEME_LIST.map(th => {
+            const isActive = viewerTheme === th.id
+            return (
+              <button
+                key={th.id}
+                onClick={() => onViewerThemeChange(th.id)}
+                title={th.blurb}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded-md border text-left transition-all
+                  ${isActive
+                    ? 'border-eeg-accent bg-eeg-accent bg-opacity-10'
+                    : 'border-eeg-border hover:border-eeg-muted'
+                  }`}
+              >
+                {/* Mini swatch: plot bg with a trace-coloured stroke */}
+                <span
+                  className="w-6 h-5 rounded-sm flex-shrink-0 border border-black/20 flex items-center justify-center overflow-hidden"
+                  style={{ background: th.plotBg }}
+                >
+                  <span className="w-full h-[2px]" style={{ background: th.signal }} />
+                </span>
+                <span className={`text-[11px] font-body truncate
+                  ${isActive ? 'text-eeg-text' : 'text-eeg-muted'}`}>
+                  {th.label}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <Divider />
+
       {/* Sliders */}
       <div className="flex flex-col gap-4">
-        <Slider
-          label={t('sandbox.amplitude')}
-          value={amplitude}
-          min={10} max={200} step={5}
-          unit="µV"
-          onChange={onAmplitudeChange}
-          color="#00FFB0"
+        <SensitivitySlider
+          label={t('sandbox.sensitivity')}
+          value={sensitivity}
+          onChange={onSensitivityChange}
         />
         <Slider
           label={t('sandbox.noise_level')}
@@ -296,6 +331,44 @@ function Slider({ label, value, min, max, step, unit, onChange, color }) {
           background: `linear-gradient(to right, ${color}88 ${pct}%, #1E2A40 ${pct}%)`,
         }}
       />
+    </div>
+  )
+}
+
+/**
+ * Sensitivity control — steps through the standard clinical µV/mm settings.
+ * Lower µV/mm = more amplification = larger on-screen deflection, exactly as
+ * the sensitivity control behaves on a clinical EEG review station.
+ */
+function SensitivitySlider({ label, value, onChange }) {
+  const color   = '#00FFB0'
+  let idx = SENSITIVITY_STEPS.indexOf(value)
+  if (idx < 0) idx = SENSITIVITY_STEPS.indexOf(DEFAULT_SENSITIVITY)
+  const lastIdx = SENSITIVITY_STEPS.length - 1
+  const pct     = (idx / lastIdx) * 100
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-1.5">
+        <span className="text-xs font-body text-eeg-muted">{label}</span>
+        <span className="text-xs font-mono" style={{ color }}>{value} µV/mm</span>
+      </div>
+      <input
+        type="range"
+        min={0} max={lastIdx} step={1}
+        value={idx}
+        onChange={e => onChange(SENSITIVITY_STEPS[Number(e.target.value)])}
+        className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+        style={{
+          background: `linear-gradient(to right, ${color}88 ${pct}%, #1E2A40 ${pct}%)`,
+        }}
+      />
+      <div className="flex justify-between text-[9px] font-mono text-eeg-muted mt-1">
+        <span>larger</span>
+        <span>smaller</span>
+      </div>
+      <p className="text-[10px] font-body text-eeg-muted mt-0.5 leading-snug">
+        Display gain only — routine adult EEG is read at 7 µV/mm.
+      </p>
     </div>
   )
 }

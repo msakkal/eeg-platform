@@ -254,7 +254,7 @@ function NeuronDipoleSection() {
         </table>
       </div>
       <Para>
-        Calcium's vanishing intracellular concentration is what makes it such an effective
+        Calcium\u2019s vanishing intracellular concentration is what makes it such an effective
         signaling molecule — even a small Ca²⁺ influx represents an enormous fold-change in
         cytoplasmic concentration, allowing it to gate enzymes and trigger neurotransmitter
         release.
@@ -402,7 +402,7 @@ function PSPSection() {
     <>
       <SectionTitle tk="concepts.post_synaptic" />
       <Lead>
-        Action potentials are the most dramatic events in a neuron's life — but the scalp
+        Action potentials are the most dramatic events in a neuron\u2019s life — but the scalp
         EEG hardly records them. The signal that actually reaches the electrode is something
         slower, smaller, and longer-lived: the post-synaptic potential.
       </Lead>
@@ -481,7 +481,7 @@ function PSPSection() {
         The practical takeaway: every alpha cycle, every spike-and-wave complex, every
         slow wave you see on an EEG represents the synchronous arrival of synaptic input
         at a population of cortical pyramidal cells — not the spikes they fire in
-        response. EEG is a window onto the brain's INPUT, not its output.
+        response. EEG is a window onto the brain\u2019s INPUT, not its output.
       </Para>
     </>
   )
@@ -590,7 +590,7 @@ function SummationSection() {
     <>
       <SectionTitle tk="concepts.summation" />
       <Lead>
-        A single neuron's PSP produces an extracellular voltage of just a few microvolts
+        A single neuron\u2019s PSP produces an extracellular voltage of just a few microvolts
         at the cell surface — far too small to detect through the skull. The EEG signal
         is what emerges when MASSIVE numbers of pyramidal cells fire in concert and
         their currents spread passively through the head as a volume conductor.
@@ -610,7 +610,7 @@ function SummationSection() {
           <Key>•</Key> <Highlight>Pyramidal cell alignment.</Highlight> About 75% of
           cortical neurons are pyramidal cells, and they are uniformly oriented:
           soma in deeper layers, apical dendrite pointing toward the cortical
-          surface. This "open-field" geometry means their dipoles ADD rather than
+          surface. This \u201copen-field\u201d geometry means their dipoles ADD rather than
           cancel.
         </li>
         <li>
@@ -648,7 +648,7 @@ function SummationSection() {
         </li>
         <li>
           <Key>•</Key> <Highlight>Cerebrospinal fluid (~0.6 Ω·m).</Highlight> A thin,
-          highly conductive layer that "smears" the cortical field laterally before
+          highly conductive layer that \u201csmears\u201d the cortical field laterally before
           it reaches the skull.
         </li>
         <li>
@@ -798,7 +798,7 @@ function ElectrodesSection() {
       <SectionTitle tk="concepts.electrodes_impedance" />
       <Lead>
         Before any signal can be recorded, current has to actually flow from the scalp
-        into the recording amplifier — and that's a surprisingly difficult problem.
+        into the recording amplifier — and that\u2019s a surprisingly difficult problem.
         Skin is a poor conductor; hair, oils, and the keratinised stratum corneum all
         stand between the underlying brain potential and the electrode wire.
       </Lead>
@@ -878,12 +878,12 @@ function ElectrodesSection() {
         <li>
           <Key>•</Key> <Highlight>Ground electrode</Highlight> — provides a return
           path to the amplifier and a stable common-mode reference. Modern digital
-          systems often use a "driven right leg"–style active ground.
+          systems often use a \u201cdriven right leg\u201d\u2013style active ground.
         </li>
       </ul>
       <Para>
-        The choice of reference shapes the entire trace: an "average reference" sums
-        all electrodes and subtracts the mean; a "linked-ears" reference uses A1+A2
+        The choice of reference shapes the entire trace: an \u201caverage reference\u201d sums
+        all electrodes and subtracts the mean; a \u201clinked-ears\u201d reference uses A1+A2
         bridged together. Each has different localising properties — see the
         Montages section for details.
       </Para>
@@ -1027,7 +1027,7 @@ function DifferentialAmpSection() {
         <li>
           <Key>4.</Key> <Highlight>Notch filter</Highlight> — sharp 50 Hz (Europe /
           Asia) or 60 Hz (Americas) reject to suppress any residual mains
-          interference that the differential stage didn't catch.
+          interference that the differential stage didn\u2019t catch.
         </li>
         <li>
           <Key>5.</Key> <Highlight>Anti-aliasing filter</Highlight> — low-pass
@@ -1212,7 +1212,7 @@ function FrequencyBandsSection() {
       <Para>
         Reading EEG is, at its core, asking repeatedly: <em>what frequencies are in
         this segment of trace, where on the scalp, and is that appropriate for the
-        patient's state?</em> A few canonical patterns:
+        patient\u2019s state?</em> A few canonical patterns:
       </Para>
       <ul className="font-body text-eeg-muted text-sm space-y-2 max-w-3xl mt-3 mb-2 list-none">
         <li>
@@ -1255,8 +1255,8 @@ function FrequencyBandsSection() {
           ICU monitoring (sedation depth, seizure detection, prognostication).
         </li>
         <li>
-          <Key>•</Key> <Highlight>Power-in-band</Highlight> (e.g. "alpha power") is
-          the integrated power over a band's frequency range — useful for tracking
+          <Key>•</Key> <Highlight>Power-in-band</Highlight> (e.g. \u201calpha power\u201d) is
+          the integrated power over a band\u2019s frequency range — useful for tracking
           sedation depth and seizure burden across long recordings.
         </li>
       </ul>
@@ -1418,13 +1418,13 @@ function PlacementSection() {
         Reproducible EEG interpretation requires that the same electrode label refer
         to the same anatomical location across patients, recording centres, and
         decades. The international <Highlight>10-20 system</Highlight> solves this by
-        defining each electrode's position as a percentage of the distance between
+        defining each electrode\u2019s position as a percentage of the distance between
         four bony landmarks on the skull.
       </Lead>
 
       <Subhead>The Anatomical Landmarks</Subhead>
       <Para>
-        Four palpable reference points anchor every electrode's position:
+        Four palpable reference points anchor every electrode\u2019s position:
       </Para>
       <ul className="font-body text-eeg-muted text-sm space-y-2 max-w-3xl mt-3 mb-2 list-none">
         <li>
@@ -1452,7 +1452,7 @@ function PlacementSection() {
         percentage along these arcs.
       </Para>
 
-      <Subhead>Why "10-20"?</Subhead>
+      <Subhead>Why \u201c10-20\u201d?</Subhead>
       <Para>
         Along the antero-posterior midline, electrodes are spaced at intervals of{' '}
         <Highlight>10%</Highlight> from the nasion (Fp), then four{' '}
@@ -1505,7 +1505,7 @@ function PlacementSection() {
       <Subhead>Standard and High-Density Layouts</Subhead>
       <Para>
         Routine clinical recordings use <Highlight>19–21 electrodes</Highlight> —
-        the so-called "standard" 10-20 array. Research and source-localisation
+        the so-called \u201cstandard\u201d 10-20 array. Research and source-localisation
         studies use high-density layouts of <Highlight>64</Highlight>,{' '}
         <Highlight>128</Highlight>, or even <Highlight>256</Highlight> channels.
         The naming convention scales: the{' '}

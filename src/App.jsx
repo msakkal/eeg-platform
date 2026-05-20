@@ -2,6 +2,7 @@ import React, { Suspense } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Layout from '@/components/layout/Layout'
 import LoadingScreen from '@/components/ui/LoadingScreen'
+import ErrorBoundary from '@/components/ui/ErrorBoundary'
 
 // Lazy-loaded pages for code splitting
 const HomePage       = React.lazy(() => import('@/pages/HomePage'))
@@ -16,18 +17,20 @@ const ArtifactsPage  = React.lazy(() => import('@/pages/ArtifactsPage'))
 export default function App() {
   return (
     <Layout>
-      <Suspense fallback={<LoadingScreen />}>
-        <Routes>
-          <Route path="/"           element={<HomePage />} />
-          <Route path="/concepts"   element={<ConceptsPage />} />
-          <Route path="/montages"   element={<MontagesPage />} />
-          <Route path="/waveforms"  element={<WaveformsPage />} />
-          <Route path="/findings"   element={<FindingsPage />} />
-          <Route path="/sandbox"    element={<SandboxPage />} />
-          <Route path="/quiz"       element={<QuizPage />} />
-          <Route path="/artifacts"  element={<ArtifactsPage />} />
-        </Routes>
-      </Suspense>
+      <ErrorBoundary>
+        <Suspense fallback={<LoadingScreen />}>
+          <Routes>
+            <Route path="/"           element={<HomePage />} />
+            <Route path="/concepts"   element={<ConceptsPage />} />
+            <Route path="/montages"   element={<MontagesPage />} />
+            <Route path="/waveforms"  element={<WaveformsPage />} />
+            <Route path="/findings"   element={<FindingsPage />} />
+            <Route path="/sandbox"    element={<SandboxPage />} />
+            <Route path="/quiz"       element={<QuizPage />} />
+            <Route path="/artifacts"  element={<ArtifactsPage />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </Layout>
   )
 }

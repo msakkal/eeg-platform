@@ -161,7 +161,7 @@ export default function PropagationSection() {
             Field Strength by Electrode
           </p>
           <p className="font-body text-xs text-eeg-muted mb-4 leading-relaxed">
-            Each electrode's distance from the source determines its share of the
+            Each electrode\u2019s distance from the source determines its share of the
             field. Use the spread slider to see how a more focal generator
             concentrates amplitude on a few sites, while a diffuse one spreads
             across the head.
@@ -454,7 +454,7 @@ function FieldExplanationCallout({ montageId, sourceElec, isBipolar, phaseRevers
           {isBipolar ? (
             <p className="font-body text-xs text-eeg-muted leading-relaxed">
               In a bipolar montage, the epileptic discharge appears with <span className="text-yellow-300">opposite polarity</span> in
-              channels on either side of the source electrode. This "phase reversal" marks the generator.
+              channels on either side of the source electrode. This \u201cphase reversal\u201d marks the generator.
               {phaseReversals.length > 0
                 ? <> With source <strong className="text-eeg-text">{sourceElec}</strong>, look for the phase reversal between <strong className="text-yellow-300">{phaseReversals[0].label1}</strong> and <strong className="text-yellow-300">{phaseReversals[0].label2}</strong>.</>
                 : <> Source <strong className="text-eeg-text">{sourceElec}</strong> may appear at the end of a chain — look for maximum amplitude rather than reversal.</>

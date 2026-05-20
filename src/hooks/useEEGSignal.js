@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { SAMPLE_RATE, makeTimeAxis } from '@/engine/signalGenerator'
 import { createEngineForPattern }    from '@/engine/streaming'
 import { applyMontage } from '@/engine/montages'
@@ -15,7 +15,6 @@ import { applyMontage } from '@/engine/montages'
  * @param {object} opts
  *   - montageId: string
  *   - pattern: string (see streaming.js / signalGenerator.js)
- *   - amplitude: number   - currently informational (engine self-calibrates)
  *   - noiseLevel: number  - currently informational
  *   - sweepSpeed: number  - samples advanced per ~33 ms frame (×30 ≈ samples/s)
  *   - isPlaying: bool
@@ -27,9 +26,8 @@ import { applyMontage } from '@/engine/montages'
 export function useEEGSignal({
   montageId,
   pattern,
-  // amplitude, noiseLevel are accepted for API stability but unused —
-  // the streaming engine uses fixed clinically-calibrated amplitudes.
-  amplitude,        // eslint-disable-line no-unused-vars
+  // noiseLevel is accepted for API stability but unused — the streaming
+  // engine uses fixed, clinically-calibrated amplitudes.
   noiseLevel,       // eslint-disable-line no-unused-vars
   sweepSpeed,
   isPlaying,
@@ -50,6 +48,14 @@ export function useEEGSignal({
   const ringRef       = useRef(null)
   const animFrameRef  = useRef(null)
   const cursorSecRef  = useRef(0)
+
+  // Refs for values that change during playback without restarting loop
+  const sweepSpeedRef  = useRef(sweepSpeed)
+  const montageIdRef   = useRef(montageId)
+  const isPlayingRef   = useRef(isPlaying)
+  sweepSpeedRef.current = sweepSpeed
+  montageIdRef.current  = montageId
+  isPlayingRef.current  = isPlaying
 
   // ── Build / rebuild engine when pattern or eye-state changes ────────────
   useEffect(() => {
@@ -77,6 +83,12 @@ export function useEEGSignal({
     }
     ringRef.current = ring
     cursorSecRef.current = windowSecs
+
+    // Publish the initial window immediately so the trace is visible the
+    // instant the panel mounts — without waiting for the first animation
+    // frame (and so a paused viewer still shows a populated trace).
+    setDerivedChannels(applyMontage(initial, montageIdRef.current))
+    setTimeAxis(makeTimeAxis(N, SAMPLE_RATE))
     setIsReady(true)
   }, [pattern, eyesClosed, blinksEnabled, windowSecs])
 
@@ -125,7 +137,7 @@ export function useEEGSignal({
     if (!isReady) return
 
     function frame() {
-      if (!isPlaying) {
+      if (!isPlayingRef.current) {
         animFrameRef.current = requestAnimationFrame(frame)
         return
       }
@@ -138,7 +150,7 @@ export function useEEGSignal({
       }
 
       // Advance engine by `step` samples per frame (≈ 33 ms at 60fps).
-      const step = Math.max(1, Math.round(sweepSpeed / 30))
+      const step = Math.max(1, Math.round(sweepSpeedRef.current / 30))
       const stepSec = step / SAMPLE_RATE
       const incoming = engine.fillWindow(stepSec)
       cursorSecRef.current += stepSec
@@ -168,7 +180,7 @@ export function useEEGSignal({
         windowRaw[label] = win
       }
 
-      const derived = applyMontage(windowRaw, montageId)
+      const derived = applyMontage(windowRaw, montageIdRef.current)
       setDerivedChannels(derived)
       setTimeAxis(makeTimeAxis(N, SAMPLE_RATE))
 
@@ -177,7 +189,7 @@ export function useEEGSignal({
 
     animFrameRef.current = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(animFrameRef.current)
-  }, [isReady, isPlaying, montageId, sweepSpeed])
+  }, [isReady])
 
   return {
     channels: derivedChannels,

@@ -7,7 +7,9 @@
     "findings": "Clinical Findings",
     "sandbox": "Sandbox",
     "quiz": "Quiz",
-    "artifacts": "Artifacts"
+    "artifacts": "Artifacts",
+    "sidebar": "Navigation sidebar",
+    "main": "Main navigation"
   },
   "home": {
     "hero_tag": "Interactive EEG Education",
@@ -80,7 +82,7 @@
     "add_artifact": "Inject Artifact",
     "add_spike": "Inject Spike",
     "noise_level": "Noise",
-    "amplitude": "Amplitude",
+    "sensitivity": "Sensitivity",
     "speed": "Sweep Speed",
     "channels": "Channels"
   },
@@ -88,7 +90,8 @@
     "learn_more": "Learn more",
     "interactive": "Interactive",
     "loading": "Loading…",
-    "language": "Language"
+    "language": "Language",
+    "skip_to_content": "Skip to main content"
   },
   "quiz": {
     "subtitle": "Test your knowledge of EEG patterns, montages, and clinical findings."

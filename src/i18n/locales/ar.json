@@ -80,7 +80,7 @@
     "add_artifact": "حقن قطعة أثرية",
     "add_spike": "حقن شوكة",
     "noise_level": "الضوضاء",
-    "amplitude": "السعة",
+    "sensitivity": "الحساسية",
     "speed": "سرعة الاجتياح",
     "channels": "القنوات"
   },

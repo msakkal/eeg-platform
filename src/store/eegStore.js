@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { DEFAULT_MONTAGE } from '@/engine/montages'
+import { DEFAULT_VIEWER_THEME, DEFAULT_SENSITIVITY } from '@/engine/viewerThemes'
 
 function resolveValue(valueOrUpdater, currentValue) {
   return typeof valueOrUpdater === 'function'
@@ -11,7 +12,7 @@ export const useEEGStore = create((set, get) => ({
   // ── EEG State ─────────────────────────────────────────────────────────────
   montageId:      DEFAULT_MONTAGE,
   pattern:        'normal_awake',
-  amplitude:      50,
+  sensitivity:    DEFAULT_SENSITIVITY,   // µV/mm — clinical display sensitivity
   noiseLevel:     0.25,
   sweepSpeed:     25,     // mm/s equivalent (affects how much data is shown)
   isPlaying:      true,
@@ -26,7 +27,7 @@ export const useEEGStore = create((set, get) => ({
   // ── Actions ───────────────────────────────────────────────────────────────
   setMontage:      (id)      => set({ montageId: id }),
   setPattern:      (p)       => set({ pattern: p }),
-  setAmplitude:    (v)       => set(s => ({ amplitude: resolveValue(v, s.amplitude) })),
+  setSensitivity:  (v)       => set(s => ({ sensitivity: resolveValue(v, s.sensitivity) })),
   setNoiseLevel:   (v)       => set(s => ({ noiseLevel: resolveValue(v, s.noiseLevel) })),
   setSweepSpeed:   (v)       => set(s => ({ sweepSpeed: resolveValue(v, s.sweepSpeed) })),
   togglePlay:      ()        => set(s => ({ isPlaying: !s.isPlaying })),
@@ -42,4 +43,8 @@ export const useEEGStore = create((set, get) => ({
   // ── UI State ──────────────────────────────────────────────────────────────
   sidebarOpen: true,
   toggleSidebar: () => set(s => ({ sidebarOpen: !s.sidebarOpen })),
+
+  // ── Viewer theme ──────────────────────────────────────────────────────────
+  viewerTheme:    DEFAULT_VIEWER_THEME,
+  setViewerTheme: (id) => set({ viewerTheme: id }),
 }))

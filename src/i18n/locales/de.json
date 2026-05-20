@@ -80,7 +80,7 @@
     "add_artifact": "Artefakt injizieren",
     "add_spike": "Spike injizieren",
     "noise_level": "Rauschen",
-    "amplitude": "Amplitude",
+    "sensitivity": "Empfindlichkeit",
     "speed": "Ablaufgeschwindigkeit",
     "channels": "Kanäle"
   },

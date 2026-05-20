@@ -30,105 +30,20 @@
  */
 
 import { ELECTRODES_1020 } from './signalGenerator.js'
+import {
+  regionOf,
+  blinkField,
+  lateralEogField,
+  frontocentralGradient,
+  bifrontalGradient,
+  leftHemisphereGradient,
+  cardiacAmpForRegion,
+} from './electrodes.js'
 
 export const SAMPLE_RATE = 256
 
 // ─── Region classification ───────────────────────────────────────────────────
-
-function regionOf(label) {
-  if (label === 'A1' || label === 'A2') return 'ear'
-  if (label.startsWith('Fp'))  return 'frontopolar'
-  if (label.startsWith('F'))   return 'frontal'
-  if (label === 'T3' || label === 'T4') return 'midtemporal'
-  if (label === 'T5' || label === 'T6') return 'posttemporal'
-  if (label.startsWith('C'))   return 'central'
-  if (label.startsWith('P'))   return 'parietal'
-  if (label.startsWith('O'))   return 'occipital'
-  return 'other'
-}
-
-// ─── Per-channel gradient functions (regional amplitude weights) ─────────────
-
-function alphaGradient(label) {
-  switch (label) {
-    case 'O1': case 'O2': return 1.00
-    case 'P3': case 'P4': return 0.80
-    case 'Pz':            return 0.75
-    case 'T5': case 'T6': return 0.70
-    case 'C3': case 'C4': return 0.35
-    case 'Cz':            return 0.30
-    case 'T3': case 'T4': return 0.35
-    case 'F3': case 'F4': return 0.18
-    case 'Fz':            return 0.18
-    case 'F7': case 'F8': return 0.20
-    case 'Fp1': case 'Fp2': return 0.12
-    default: return 0.05
-  }
-}
-
-function muGradient(label) {
-  switch (label) {
-    case 'C3': case 'C4': return 1.00
-    case 'Cz':            return 0.55
-    case 'F3': case 'F4': return 0.35
-    case 'P3': case 'P4': return 0.30
-    default: return 0
-  }
-}
-
-function frontalBetaGradient(label) {
-  switch (label) {
-    case 'F3': case 'F4': case 'Fz': return 1.00
-    case 'Fp1': case 'Fp2':           return 0.70
-    case 'F7':  case 'F8':            return 0.80
-    case 'C3':  case 'C4': case 'Cz': return 0.60
-    default: return 0.30
-  }
-}
-
-function blinkField(label) {
-  switch (regionOf(label)) {
-    case 'frontopolar':  return 1.00
-    case 'frontal':      return label === 'F7' || label === 'F8' ? 0.55 : 0.45
-    case 'midtemporal':  return 0.15
-    case 'central':      return 0.10
-    case 'posttemporal': return 0.05
-    case 'parietal':     return 0.03
-    case 'occipital':    return 0.02
-    case 'ear':          return 0.05
-    default:             return 0.05
-  }
-}
-
-function lateralEogField(label, direction = +1) {
-  switch (label) {
-    case 'F7':  return -1.00 * direction
-    case 'F8':  return +1.00 * direction
-    case 'Fp1': return -0.40 * direction
-    case 'Fp2': return +0.40 * direction
-    case 'T3':  return -0.35 * direction
-    case 'T4':  return +0.35 * direction
-    case 'F3':  return -0.20 * direction
-    case 'F4':  return +0.20 * direction
-    default:    return 0
-  }
-}
-
-function cardiacAmpForRegion(label) {
-  // µV peak amplitudes per region. Ear references often show prominent QRS
-  // contamination; temporal/posterior pick up smaller pulse from scalp arteries.
-  switch (regionOf(label)) {
-    case 'ear':           return 22
-    case 'posttemporal':  return 9
-    case 'midtemporal':   return 8
-    case 'parietal':      return 4.5
-    case 'occipital':     return 4.5
-    case 'central':       return 2
-    case 'frontal':       return 1.5
-    case 'frontopolar':   return 1
-    default:              return 1
-  }
-}
+// Electrode definitions and all gradient functions are now in electrodes.js.
 
 // ─── Deterministic PRNG (mulberry32) ─────────────────────────────────────────
 
@@ -199,12 +114,15 @@ function modeAmps(mode, region, posterior, eyesOpen) {
   switch (mode) {
     case 'normal_awake':
     case 'awake':
+      // Alpha amplitudes are PEAK µV. Posterior-dominant alpha is normally
+      // ~20-60 µV pp (peak ~10-30); the slow envelope can lift waxing bursts
+      // a little higher. Occipital peak 30 → ~60 µV pp average PDR.
       return {
-        A: region === 'occipital' ? (eyesOpen ? 4  : 46)
-         : region === 'parietal'  ? (eyesOpen ? 3  : 22)
-         : region === 'central'   ? 7
+        A: region === 'occipital' ? (eyesOpen ? 4  : 30)
+         : region === 'parietal'  ? (eyesOpen ? 3  : 16)
+         : region === 'central'   ? 6
          : region === 'frontal'   ? 4
-         : 6,
+         : 5,
         B: region === 'frontal' ? 10 : region === 'central' ? 8 : region === 'temporal' ? 7 : 5,
         T: region === 'midtemporal' || region === 'posttemporal' ? 4.5 : posterior ? 3.5 : 3.0,
         D: posterior ? 2.4 : 2.0,
@@ -326,11 +244,22 @@ class Channel {
     // identically. Tighter range (floor=0.80, ceil=1.20) so the local
     // component contributes per-channel variability rather than dominating.
     this.localAlphaEnv = new SlowEnvelope(rng, { floor: 0.80, ceil: 1.20, drive: 4.0 })
+    // Mains (line-noise) interference — small, with slight per-channel
+    // amplitude and phase variation so it isn't perfectly identical.
+    this.mainsAmp      = 0.7 + rng() * 1.1        // 0.7–1.8 µV
+    this.mainsPhaseOff = rng() * 2 * Math.PI
+    // Mu rhythm — central rolandic arched ~10 Hz oscillator.
+    this.muOffset      = (rng() - 0.5) * 0.6      // ±0.3 Hz detune
+    this.fmMu          = rng() * 2 * Math.PI
+    this.muEnvPhase    = rng() * 2 * Math.PI
+    // Frontotemporal EMG (muscle) haze — one-pole high-pass state.
+    this.emgHP   = 0
+    this.emgPrev = 0
     this.rng = rng
   }
 
   sample(t, opts) {
-    const { mode, eyesOpen, pdrPhase, pdrEnvelope, betaSharedPhase, thetaSharedPhase, deltaSharedPhase, sampleRate } = opts
+    const { mode, eyesOpen, pdrPhase, pdrEnvelope, betaSharedPhase, thetaSharedPhase, deltaSharedPhase, mainsPhase, sampleRate } = opts
     const { region, posterior, name } = this
     // Advance and read the per-channel local alpha envelope so it tracks
     // its own slow stochastic process (called once per channel per sample).
@@ -414,6 +343,46 @@ class Channel {
       0.7 * Math.sin(2 * Math.PI * this.driftF1 * t + this.driftPh1) +
       0.4 * Math.sin(2 * Math.PI * this.driftF2 * t + this.driftPh2)
     )
+
+    // Mu rhythm — arched (comb-shaped) central rhythm over the rolandic
+    // strip. Present in relaxed wakefulness regardless of eye state; the
+    // negative peaks are sharp and the positive peaks rounded. It fades out
+    // in drowsy/sleep states (no central muscle/rolandic idling there).
+    if (mode === 'normal_awake' || mode === 'awake') {
+      const muAmp = name === 'C3' || name === 'C4' ? 9.5
+                  : name === 'Cz'                  ? 5.5
+                  : region === 'central'           ? 6.0
+                  : region === 'frontal'           ? 2.2
+                  : 0
+      if (muAmp > 0) {
+        const fMu = 9.8 + this.muOffset +
+                    0.15 * Math.sin(2 * Math.PI * 0.06 * t + this.fmMu)
+        this.phMu += 2 * Math.PI * fMu / sampleRate
+        const raw    = Math.sin(this.phMu)
+        const arched = raw > 0 ? raw : raw * 0.32        // flatten the troughs
+        const muEnv  = Math.max(0.2,
+          0.55 + 0.45 * Math.sin(2 * Math.PI * 0.13 * t + this.muEnvPhase))
+        y += muAmp * muEnv * arched
+      }
+
+      // Frontalis / temporalis EMG haze — low-level muscle tone always
+      // present in the awake state, largest at frontopolar and temporal
+      // electrodes. High-passed white noise reads as fast (>~25 Hz) jitter.
+      const emgGain = region === 'frontopolar'  ? 3.0
+                    : region === 'midtemporal'  ? 3.4
+                    : region === 'posttemporal' ? 2.6
+                    : region === 'frontal'      ? 2.2
+                    : region === 'central'      ? 1.0
+                    : 0.5
+      const wm = (this.rng() - 0.5) * 2
+      this.emgHP   = 0.62 * (this.emgHP + wm - this.emgPrev)
+      this.emgPrev = wm
+      y += emgGain * this.emgHP
+    }
+
+    // Mains line-noise interference (50 Hz) — small. The viewer's notch
+    // filter (default 50 Hz) removes it, so the filter visibly does work.
+    y += this.mainsAmp * Math.sin(mainsPhase + this.mainsPhaseOff)
 
     return y
   }
@@ -554,53 +523,8 @@ class SaccadeOverlay {
 // Each pathology can be active alongside others. Each returns an
 // `{ overlay, preserve }` per (electrode, t). `preserve` < 1 attenuates the
 // underlying background (e.g. burst-suppression's near-flat phases).
-
-function frontocentralWeight(label) {
-  switch (label) {
-    case 'Fz': case 'Cz': return 1.00
-    case 'F3': case 'F4': case 'C3': case 'C4': return 0.88
-    case 'Fp1': case 'Fp2':           return 0.75
-    case 'F7':  case 'F8':            return 0.70
-    case 'Pz':                        return 0.60
-    case 'P3':  case 'P4':            return 0.55
-    case 'T3':  case 'T4':            return 0.45
-    case 'T5':  case 'T6':            return 0.35
-    case 'O1':  case 'O2':            return 0.30
-    default: return 0.05
-  }
-}
-
-function bifrontalWeight(label) {
-  switch (label) {
-    case 'Fz':                        return 1.00
-    case 'F3': case 'F4':             return 0.92
-    case 'Fp1': case 'Fp2':           return 0.85
-    case 'F7':  case 'F8':            return 0.72
-    case 'C3':  case 'C4': case 'Cz': return 0.40
-    case 'T3':  case 'T4':            return 0.25
-    case 'P3':  case 'P4': case 'Pz': return 0.18
-    case 'T5':  case 'T6':            return 0.14
-    case 'O1':  case 'O2':            return 0.10
-    default: return 0.05
-  }
-}
-
-function leftHemisphereWeight(label) {
-  switch (label) {
-    case 'F7':  return 1.00
-    case 'T3':  return 0.95
-    case 'T5':  return 0.82
-    case 'C3':  return 0.75
-    case 'F3':  return 0.70
-    case 'P3':  return 0.62
-    case 'Fp1': return 0.55
-    case 'O1':  return 0.38
-    case 'Fz':  return 0.22
-    case 'Cz':  return 0.18
-    case 'Pz':  return 0.15
-    default:    return 0.04
-  }
-}
+//
+// All field-weight functions are now in electrodes.js (imported at top).
 
 // FIRDA: bifrontal rhythmic delta bursts, intermittent.
 class FirdaOverlay {
@@ -615,7 +539,7 @@ class FirdaOverlay {
   }
   advance(/* t */) {}
   valueFor(label, t) {
-    const w = bifrontalWeight(label)
+    const w = bifrontalGradient(label)
     if (w < 0.10) return { overlay: 0, preserve: 1 }
     const gate = Math.pow(Math.max(0, Math.sin(2 * Math.PI * this.gateHz * t + this.phase)), 2.6)
     const overlay = w * this.amp * gate * Math.sin(2 * Math.PI * this.burstHz * t + this.phase * 0.5)
@@ -639,7 +563,7 @@ class GpdsOverlay {
     while (this.events.length && this.events[0].t0 < t - 0.6) this.events.shift()
   }
   valueFor(label, t) {
-    const w = frontocentralWeight(label)
+    const w = frontocentralGradient(label)
     if (w < 0.05) return { overlay: 0, preserve: 1 }
     let o = 0
     for (const ev of this.events) {
@@ -674,7 +598,7 @@ class LpdsOverlay {
     while (this.events.length && this.events[0].t0 < t - 0.5) this.events.shift()
   }
   valueFor(label, t) {
-    const w = leftHemisphereWeight(label)
+    const w = leftHemisphereGradient(label)
     if (w < 0.08) return { overlay: 0, preserve: 1 }
     let o = 0
     for (const ev of this.events) {
@@ -804,6 +728,7 @@ export class StreamingEEG {
     this.betaPhase  = this.rng() * 2 * Math.PI    // shared beta carrier
     this.thetaPhase = this.rng() * 2 * Math.PI    // shared theta carrier
     this.deltaPhase = this.rng() * 2 * Math.PI    // shared delta carrier
+    this.mainsPhase = this.rng() * 2 * Math.PI    // shared 50 Hz line noise
     // Global stochastic envelope for the shared posterior-driver alpha.
     // Mean is centred at 1.0 (floor+ceil = 2.0), and the swing produces a
     // ~2.6× peak-to-trough ratio matching the irregular wax/wane of real
@@ -843,6 +768,7 @@ export class StreamingEEG {
     const betaHz  = 20
     const thetaHz = 5.5
     const deltaHz = 2.0
+    const mainsHz = 50
 
     for (let i = 0; i < N; i++) {
       const t = this.clock + i / fs
@@ -852,6 +778,7 @@ export class StreamingEEG {
       this.betaPhase  += 2 * Math.PI * betaHz  / fs
       this.thetaPhase += 2 * Math.PI * thetaHz / fs
       this.deltaPhase += 2 * Math.PI * deltaHz / fs
+      this.mainsPhase += 2 * Math.PI * mainsHz / fs
 
       // Advance global alpha envelope (one step per timestep — shared
       // across all channels so O1 and O2 wax/wane together)
@@ -869,6 +796,7 @@ export class StreamingEEG {
         betaSharedPhase:  this.betaPhase,
         thetaSharedPhase: this.thetaPhase,
         deltaSharedPhase: this.deltaPhase,
+        mainsPhase:       this.mainsPhase,
         sampleRate: fs,
       }
 

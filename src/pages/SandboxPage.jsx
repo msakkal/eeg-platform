@@ -11,6 +11,7 @@ import SpectrogramViewer          from '@/components/eeg/SpectrogramViewer'
 import ScalpTopoMap               from '@/components/eeg/ScalpTopoMap'
 import FilterControls             from '@/components/eeg/FilterControls'
 import KeyboardHelpOverlay        from '@/components/ui/KeyboardHelpOverlay'
+import { getViewerTheme, SENSITIVITY_STEPS, DEFAULT_SENSITIVITY } from '@/engine/viewerThemes'
 
 const PANELS  = ['traces', 'spectrum', 'spectrogram', 'topo']
 const PATTERNS = ['normal_awake','normal_drowsy','normal_sleep','absence','focal_slowing','burst_suppression']
@@ -22,7 +23,7 @@ export default function SandboxPage() {
   const {
     montageId, setMontage,
     pattern,   setPattern,
-    amplitude, setAmplitude,
+    sensitivity, setSensitivity,
     noiseLevel,setNoiseLevel,
     sweepSpeed,setSweepSpeed,
     isPlaying, togglePlay,
@@ -32,7 +33,10 @@ export default function SandboxPage() {
     eyesClosed, toggleEyes,
     blinksEnabled, toggleBlinks,
     blinkRate, setBlinkRate,
+    viewerTheme, setViewerTheme,
   } = useEEGStore()
+
+  const theme = getViewerTheme(viewerTheme)
 
   // ── UI state ────────────────────────────────────────────────────────────
   const [activePanel,    setActivePanel]    = useState('traces')
@@ -47,7 +51,7 @@ export default function SandboxPage() {
 
   // ── Signal ──────────────────────────────────────────────────────────────
   const { channels, timeAxis, isReady, windowStart } = useEEGSignal({
-    montageId, pattern, amplitude, noiseLevel, sweepSpeed,
+    montageId, pattern, noiseLevel, sweepSpeed,
     isPlaying, pendingSpike, pendingArtifact,
     onClearPending: clearPending,
     eyesClosed, blinksEnabled, blinkRate,
@@ -72,14 +76,26 @@ export default function SandboxPage() {
     })
   }, [annotateMode, activeAnnLabel, addAnnotation, t])
 
+  // ── Sensitivity stepping (keyboard) ──────────────────────────────────────
+  // dir = -1 steps to a smaller µV/mm value → more amplification → larger
+  // trace; dir = +1 does the reverse.
+  const stepSensitivity = useCallback((dir) => {
+    setSensitivity(cur => {
+      let i = SENSITIVITY_STEPS.indexOf(cur)
+      if (i < 0) i = SENSITIVITY_STEPS.indexOf(DEFAULT_SENSITIVITY)
+      const next = Math.min(SENSITIVITY_STEPS.length - 1, Math.max(0, i + dir))
+      return SENSITIVITY_STEPS[next]
+    })
+  }, [setSensitivity])
+
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useKeyboardShortcuts({
     ' ':           togglePlay,
     's':           triggerSpike,
     'a':           triggerArtifact,
-    '+':           () => setAmplitude(v => Math.min(200, v + 10)),
-    '=':           () => setAmplitude(v => Math.min(200, v + 10)),
-    '-':           () => setAmplitude(v => Math.max(10,  v - 10)),
+    '+':           () => stepSensitivity(-1),
+    '=':           () => stepSensitivity(-1),
+    '-':           () => stepSensitivity(1),
     'arrowright':  () => setSweepSpeed(v => Math.min(60, v + 5)),
     'arrowleft':   () => setSweepSpeed(v => Math.max(5,  v - 5)),
     '1':           () => setPattern(PATTERNS[0]),
@@ -190,19 +206,27 @@ export default function SandboxPage() {
           ) : (
             <>
               {activePanel === 'traces' && (
-                <div className="relative eeg-paper">
+                <div className="relative" style={{ background: theme.pageBg }}>
                   <EEGViewer
                     channels={channels}
                     timeAxis={timeAxis}
-                    gain={50 / amplitude}
+                    sensitivity={sensitivity}
                     isPlaying={isPlaying}
                     filterConfig={filterConfig}
                     annotations={annotations}
                     windowStart={windowStart}
                     onAnnotate={annotateMode ? handleAnnotate : null}
+                    theme={viewerTheme}
                     className="w-full"
                   />
-                  {isPlaying && !annotateMode && <div className="scan-line" />}
+                  {isPlaying && !annotateMode && (
+                    <div
+                      className="scan-line"
+                      style={{
+                        background: `linear-gradient(to bottom, transparent, ${theme.scan}88, transparent)`,
+                      }}
+                    />
+                  )}
                 </div>
               )}
 
@@ -254,7 +278,9 @@ export default function SandboxPage() {
                           const rms = ch.data?.length
                             ? Math.sqrt(ch.data.reduce((s, v) => s + v*v, 0) / ch.data.length)
                             : 0
-                          const pct = Math.min(100, (rms / amplitude) * 100)
+                          // Bar scaled against a 60 µV full-scale reference
+                          // (a healthy posterior channel sits well within it).
+                          const pct = Math.min(100, (rms / 60) * 100)
                           return (
                             <div key={ch.label} className="flex items-center gap-2">
                               <span className="font-mono text-xs text-eeg-muted w-16 flex-shrink-0">{ch.label}</span>
@@ -283,7 +309,7 @@ export default function SandboxPage() {
         <SandboxControls
           montageId={montageId}       onMontageChange={setMontage}
           pattern={pattern}           onPatternChange={setPattern}
-          amplitude={amplitude}       onAmplitudeChange={setAmplitude}
+          sensitivity={sensitivity}   onSensitivityChange={setSensitivity}
           noiseLevel={noiseLevel}     onNoiseLevelChange={setNoiseLevel}
           sweepSpeed={sweepSpeed}     onSweepSpeedChange={setSweepSpeed}
           isPlaying={isPlaying}       onTogglePlay={togglePlay}
@@ -292,6 +318,7 @@ export default function SandboxPage() {
           eyesClosed={eyesClosed}     onToggleEyes={toggleEyes}
           blinksEnabled={blinksEnabled} onToggleBlinks={toggleBlinks}
           blinkRate={blinkRate}       onBlinkRateChange={setBlinkRate}
+          viewerTheme={viewerTheme}   onViewerThemeChange={setViewerTheme}
         />
         <div className="border-t border-eeg-border pt-4">
           <FilterControls config={filterConfig} onChange={setFilterConfig} />

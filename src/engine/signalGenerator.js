@@ -16,10 +16,25 @@
  * descriptions of normal awake / drowsy / sleep patterns.
  */
 
+import {
+  ELECTRODES_1020,
+  regionOf,
+  blinkField,
+  lateralEogField,
+  alphaGradient,
+  muGradient,
+  frontalBetaGradient,
+  frontocentralGradient,
+  bifrontalGradient,
+  leftHemisphereGradient,
+} from './electrodes.js'
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const SAMPLE_RATE = 256          // Hz
 export const WINDOW_SIZE = SAMPLE_RATE * 10  // 10-second window
+
+export { ELECTRODES_1020 }
 
 // ─── Rhythm Definitions ──────────────────────────────────────────────────────
 
@@ -468,20 +483,9 @@ export function injectLateralEyeMovement(signal, sampleIndex, options = {}) {
 /**
  * Field factor for a lateral (horizontal) eye movement at a given electrode.
  * `direction` is +1 (rightward gaze: F8 positive) or -1 (leftward: F7 positive).
+ * Re-exported from electrodes.js for backward compatibility.
  */
-export function lateralEogField(label, direction = +1) {
-  switch (label) {
-    case 'F7':  return -1.00 * direction
-    case 'F8':  return +1.00 * direction
-    case 'Fp1': return -0.40 * direction
-    case 'Fp2': return +0.40 * direction
-    case 'T3':  return -0.35 * direction
-    case 'T4':  return +0.35 * direction
-    case 'F3':  return -0.20 * direction
-    case 'F4':  return +0.20 * direction
-    default:    return 0
-  }
-}
+export { lateralEogField } from './electrodes.js'
 
 /**
  * Generate a train of saccade events (seconds) with random direction. Real
@@ -529,147 +533,8 @@ export function generateBlinkTimes(durationSec, ratePerMin = 18) {
 
 // ─── Multi-Channel EEG Generator ─────────────────────────────────────────────
 
-/**
- * Standard 10-20 electrode labels used across the platform.
- */
-export const ELECTRODES_1020 = [
-  'Fp1','Fp2',
-  'F7','F3','Fz','F4','F8',
-  'T3','C3','Cz','C4','T4',
-  'T5','P3','Pz','P4','T6',
-  'O1','O2',
-  'A1','A2',   // ear reference electrodes
-]
-
-/** Classify an electrode by broad scalp region. */
-function regionOf(label) {
-  if (label === 'A1' || label === 'A2') return 'ear'
-  if (label.startsWith('Fp'))  return 'frontopolar'
-  if (label.startsWith('F'))   return 'frontal'
-  if (label === 'T3' || label === 'T4') return 'midtemporal'
-  if (label === 'T5' || label === 'T6') return 'posttemporal'
-  if (label.startsWith('C'))   return 'central'
-  if (label.startsWith('P'))   return 'parietal'
-  if (label.startsWith('O'))   return 'occipital'
-  return 'other'
-}
-
-/**
- * Field factor for an eye-blink at each electrode — reflects the actual
- * corneoretinal dipole field distribution. Fp1/Fp2 are maximal; amplitude
- * falls off rapidly with increasing distance from the forehead.
- */
-function blinkField(label) {
-  switch (regionOf(label)) {
-    case 'frontopolar':  return 1.00
-    case 'frontal':      return label === 'F7' || label === 'F8' ? 0.55 : 0.45
-    case 'midtemporal':  return 0.15
-    case 'central':      return 0.10
-    case 'posttemporal': return 0.05
-    case 'parietal':     return 0.03
-    case 'occipital':    return 0.02
-    case 'ear':          return 0.05
-    default:             return 0.05
-  }
-}
-
-/**
- * Alpha amplitude gradient (posterior-dominant) relative to O1/O2.
- * Matches the typical clinical observation that the posterior dominant
- * rhythm is largest occipitally and tapers anteriorly.
- */
-function alphaGradient(label) {
-  switch (label) {
-    case 'O1': case 'O2': return 1.00
-    case 'P3': case 'P4': return 0.80
-    case 'Pz':            return 0.75
-    case 'T5': case 'T6': return 0.70
-    case 'C3': case 'C4': return 0.35
-    case 'Cz':            return 0.30
-    case 'T3': case 'T4': return 0.35
-    case 'F3': case 'F4': return 0.18
-    case 'Fz':            return 0.18
-    case 'F7': case 'F8': return 0.20
-    case 'Fp1': case 'Fp2': return 0.12
-    default: return 0.05
-  }
-}
-
-/** Mu rhythm amplitude at each site — maximal at C3/C4 (rolandic). */
-function muGradient(label) {
-  switch (label) {
-    case 'C3': case 'C4': return 1.00
-    case 'Cz':            return 0.55
-    case 'F3': case 'F4': return 0.35
-    case 'P3': case 'P4': return 0.30
-    default: return 0
-  }
-}
-
-/** Frontal beta amplitude — most prominent at F3/F4/Fz, smaller elsewhere. */
-function frontalBetaGradient(label) {
-  switch (label) {
-    case 'F3': case 'F4': case 'Fz': return 1.00
-    case 'Fp1': case 'Fp2':           return 0.70
-    case 'F7':  case 'F8':            return 0.80
-    case 'C3':  case 'C4': case 'Cz': return 0.60
-    default: return 0.30
-  }
-}
-
-/**
- * Generalised frontocentral-max field — used by GPDs, slow spike-wave,
- * polyspike-wave, and generalized epileptiform discharges where the
- * negative maximum sits over the midline frontal-central region.
- */
-function frontocentralGradient(label) {
-  switch (label) {
-    case 'Fz': case 'Cz': return 1.00
-    case 'F3': case 'F4': case 'C3': case 'C4': return 0.88
-    case 'Fp1': case 'Fp2':           return 0.75
-    case 'F7':  case 'F8':            return 0.70
-    case 'Pz':                        return 0.60
-    case 'P3':  case 'P4':            return 0.55
-    case 'T3':  case 'T4':            return 0.45
-    case 'T5':  case 'T6':            return 0.35
-    case 'O1':  case 'O2':            return 0.30
-    default: return 0.05
-  }
-}
-
-/** Bifrontal maximum — for FIRDA and triphasic waves. */
-function bifrontalGradient(label) {
-  switch (label) {
-    case 'Fz':                        return 1.00
-    case 'F3': case 'F4':             return 0.92
-    case 'Fp1': case 'Fp2':           return 0.85
-    case 'F7':  case 'F8':            return 0.72
-    case 'C3':  case 'C4': case 'Cz': return 0.40
-    case 'T3':  case 'T4':            return 0.25
-    case 'P3':  case 'P4': case 'Pz': return 0.18
-    case 'T5':  case 'T6':            return 0.14
-    case 'O1':  case 'O2':            return 0.10
-    default: return 0.05
-  }
-}
-
-/** Left-hemisphere field — for LPDs lateralised to the left. */
-function leftHemisphereGradient(label) {
-  switch (label) {
-    case 'F7':                        return 1.00
-    case 'T3':                        return 0.95
-    case 'T5':                        return 0.82
-    case 'C3':                        return 0.75
-    case 'F3':                        return 0.70
-    case 'P3':                        return 0.62
-    case 'Fp1':                       return 0.55
-    case 'O1':                        return 0.38
-    case 'Fz':                        return 0.22
-    case 'Cz':                        return 0.18
-    case 'Pz':                        return 0.15
-    default: return 0.04               // right hemisphere minimally involved
-  }
-}
+// Electrode definitions and gradient functions are now in electrodes.js.
+// Unique-to-this-file gradients below:
 
 /** Left anterior-temporal field — for TLE interictal sharps. */
 function leftTemporalSpikeGradient(label) {

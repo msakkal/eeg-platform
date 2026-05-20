@@ -89,7 +89,7 @@ export default function MontagesPage() {
         {/* EEG preview */}
         <div className="flex-1 overflow-y-auto eeg-paper">
           {channels.length > 0 ? (
-            <EEGViewer channels={channels} timeAxis={timeAxis} gain={1} isPlaying={false} />
+            <EEGViewer channels={channels} timeAxis={timeAxis} sensitivity={5} isPlaying={false} />
           ) : (
             <div className="flex items-center justify-center h-full text-eeg-muted font-mono text-sm">
               {t('common.loading')}

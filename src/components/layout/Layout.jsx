@@ -29,24 +29,31 @@ export default function Layout({ children }) {
   return (
     <div className="flex h-screen overflow-hidden bg-eeg-bg" dir={dir}>
 
+      {/* Skip to content link */}
+      <a href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:bg-eeg-accent focus:text-eeg-bg focus:rounded-lg focus:font-mono focus:text-sm focus:outline-none">
+        {t('common.skip_to_content')}
+      </a>
+
       {/* ── Sidebar ───────────────────────────────────────────────────────── */}
-      <aside className="w-56 flex-shrink-0 flex flex-col border-r border-eeg-border bg-eeg-surface">
+      <aside className="w-56 flex-shrink-0 flex flex-col border-r border-eeg-border bg-eeg-surface"
+        aria-label={t('nav.sidebar')}>
 
         {/* Logo */}
         <div className="px-5 py-6 border-b border-eeg-border">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-eeg-accent bg-opacity-15 border border-eeg-accent border-opacity-30 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-eeg-accent bg-opacity-15 border border-eeg-accent border-opacity-30 flex items-center justify-center" aria-hidden="true">
               <BrainIcon className="w-4 h-4 text-eeg-accent" />
             </div>
             <div>
-              <p className="font-display font-bold text-sm text-eeg-text leading-tight">NeuroLearn</p>
+              <p className="font-display font-bold text-sm text-eeg-text leading-tight" aria-label="NeuroLearn">NeuroLearn</p>
               <p className="font-mono text-xs text-eeg-muted leading-tight">EEG Platform</p>
             </div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto" aria-label={t('nav.main')}>
           {NAV_ITEMS.map(({ path, key, icon: Icon }) => (
             <NavLink
               key={path}
@@ -59,8 +66,9 @@ export default function Layout({ children }) {
                   : 'text-eeg-muted hover:text-eeg-text hover:bg-eeg-border hover:bg-opacity-50'
                 }`
               }
+              aria-label={t(`nav.${key}`)}
             >
-              <Icon className="w-4 h-4 flex-shrink-0" />
+              <Icon className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
               <span className="font-body">{t(`nav.${key}`)}</span>
             </NavLink>
           ))}
@@ -73,7 +81,7 @@ export default function Layout({ children }) {
       </aside>
 
       {/* ── Main Content ──────────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto" id="main-content" tabIndex={-1}>
         <div className="animate-fade-in">
           {children}
         </div>
