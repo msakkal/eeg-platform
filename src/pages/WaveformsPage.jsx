@@ -1,12 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { useTranslation }   from 'react-i18next'
-import { WAVEFORM_PATTERNS, WAVEFORM_GROUPS, generateDemoTrace } from '@/engine/waveforms'
-import { makeTimeAxis, SAMPLE_RATE } from '@/engine/signalGenerator'
+import { useState } from 'react'
+import { WAVEFORM_PATTERNS, WAVEFORM_GROUPS } from '@/engine/waveforms'
+import DemoTraceViewer from '@/components/eeg/DemoTraceViewer'
 
 const GROUPS_ORDER = ['background','sleep','epileptiform','periodic','abnormal','artifact']
 
 export default function WaveformsPage() {
-  const { t } = useTranslation()
   const [selected, setSelected] = useState('alpha')
 
   const pattern = WAVEFORM_PATTERNS[selected]
@@ -67,7 +65,7 @@ export default function WaveformsPage() {
               <span className="text-xs font-mono text-eeg-muted">Demo trace — {pattern.label}</span>
             </div>
             <div className="eeg-paper p-2">
-              <MiniTrace patternId={selected} color={pattern.color} />
+              <DemoTraceViewer patternId={selected} color={pattern.color} height={84} label={pattern.label} />
             </div>
           </div>
 
@@ -92,51 +90,4 @@ export default function WaveformsPage() {
       </div>
     </div>
   )
-}
-
-// ─── Mini trace canvas ────────────────────────────────────────────────────────
-
-function MiniTrace({ patternId, color }) {
-  const canvasRef  = useRef(null)
-  const sampleRate = SAMPLE_RATE
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const data  = generateDemoTrace(patternId, sampleRate)
-    const time  = makeTimeAxis(data.length, sampleRate)
-    const dpr   = window.devicePixelRatio || 1
-    const W     = canvas.clientWidth
-    const H     = 80
-
-    canvas.width  = W * dpr
-    canvas.height = H * dpr
-    canvas.style.height = `${H}px`
-
-    const ctx = canvas.getContext('2d')
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, W, H)
-
-    // Baseline
-    ctx.strokeStyle = 'rgba(0,212,255,0.1)'
-    ctx.lineWidth = 0.5
-    ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke()
-
-    // Signal
-    const maxV = Math.max(...Array.from(data).map(Math.abs)) || 1
-    ctx.strokeStyle = color
-    ctx.lineWidth   = 1.5
-    ctx.shadowColor = color
-    ctx.shadowBlur  = 6
-    ctx.beginPath()
-    data.forEach((v, i) => {
-      const x = (i / data.length) * W
-      const y = H/2 - (v / maxV) * (H/2 - 8)
-      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y)
-    })
-    ctx.stroke()
-  }, [patternId, color])
-
-  return <canvas ref={canvasRef} className="w-full block" />
 }

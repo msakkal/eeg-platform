@@ -68,7 +68,7 @@ function makeRng(seed) {
 // The output is squashed via tanh into a fixed [floor, ceil] amplitude range.
 
 class SlowEnvelope {
-  constructor(rng, { floor = 0.35, ceil = 1.0, drive = 0.30, seed = 0 } = {}) {
+  constructor(rng, { floor = 0.35, ceil = 1.0, drive = 0.30, _seed = 0 } = {}) {
     this.rng = rng
     this.floor = floor
     this.ceil  = ceil
@@ -176,6 +176,8 @@ function modeAmps(mode, region, posterior, eyesOpen) {
         B: 1.5, T: 2, D: 2,
         noiseGain: 0.36,
       }
+    case 'electrocerebral_inactivity':
+      return { A: 0, B: 0, T: 0, D: 0, noiseGain: 0.05 }
     default:
       return { A: 6, B: 5, T: 5, D: 3, noiseGain: 0.78 }
   }
@@ -259,7 +261,18 @@ class Channel {
   }
 
   sample(t, opts) {
-    const { mode, eyesOpen, pdrPhase, pdrEnvelope, betaSharedPhase, thetaSharedPhase, deltaSharedPhase, mainsPhase, sampleRate } = opts
+    const {
+      mode,
+      eyesOpen,
+      pdrPhase,
+      pdrEnvelope,
+      betaSharedPhase,
+      thetaSharedPhase,
+      deltaSharedPhase,
+      mainsPhase,
+      sampleRate,
+      noiseScale = 1,
+    } = opts
     const { region, posterior, name } = this
     // Advance and read the per-channel local alpha envelope so it tracks
     // its own slow stochastic process (called once per channel per sample).
@@ -333,13 +346,15 @@ class Channel {
     this.b1 = 0.99332 * this.b1 + w * 0.0750
     this.b2 = 0.96900 * this.b2 + w * 0.1538
     const pink = (this.b0 + this.b1 + this.b2 + w * 0.5) * 1.1
-    y += noiseGain * 4 * pink
+    y += noiseScale * noiseGain * 4 * pink
+
+    if (mode === 'electrocerebral_inactivity') return y
 
     // Slow baseline drift (0.05–0.30 Hz), bigger at temporal/posterior
     const isPostOrTemp = region === 'midtemporal' || region === 'posttemporal' ||
                         region === 'parietal'    || region === 'occipital'
     const driftAmp = isPostOrTemp ? 7 : 3.5
-    y += driftAmp * (
+    y += noiseScale * driftAmp * (
       0.7 * Math.sin(2 * Math.PI * this.driftF1 * t + this.driftPh1) +
       0.4 * Math.sin(2 * Math.PI * this.driftF2 * t + this.driftPh2)
     )
@@ -377,12 +392,12 @@ class Channel {
       const wm = (this.rng() - 0.5) * 2
       this.emgHP   = 0.62 * (this.emgHP + wm - this.emgPrev)
       this.emgPrev = wm
-      y += emgGain * this.emgHP
+      y += noiseScale * emgGain * this.emgHP
     }
 
     // Mains line-noise interference (50 Hz) — small. The viewer's notch
     // filter (default 50 Hz) removes it, so the filter visibly does work.
-    y += this.mainsAmp * Math.sin(mainsPhase + this.mainsPhaseOff)
+    y += noiseScale * this.mainsAmp * Math.sin(mainsPhase + this.mainsPhaseOff)
 
     return y
   }
@@ -714,11 +729,449 @@ class BurstSuppressionOverlay {
 
 // ─── Streaming engine ───────────────────────────────────────────────────────
 
+function gaussianPulse(dt, center, width, amp) {
+  const x = (dt - center) / width
+  return amp * Math.exp(-x * x * 6)
+}
+
+function slowHalfSine(dt, start, durSec, amp) {
+  if (dt < start || dt > start + durSec) return 0
+  return amp * Math.sin(Math.PI * (dt - start) / durSec)
+}
+
+function sharpSlow(dt, {
+  sharpAmp = -130,
+  sharpCenter = 0.045,
+  sharpWidth = 0.030,
+  slowAmp = 65,
+  slowStart = 0.10,
+  slowDur = 0.28,
+} = {}) {
+  return gaussianPulse(dt, sharpCenter, sharpWidth, sharpAmp) +
+    slowHalfSine(dt, slowStart, slowDur, slowAmp)
+}
+
+function polyspikeWave(dt, {
+  amp = 120,
+  count = 3,
+  spacing = 0.022,
+  slowAmp = 60,
+} = {}) {
+  let o = 0
+  for (let i = 0; i < count; i++) {
+    o += gaussianPulse(dt, 0.025 + i * spacing, 0.012, -amp * (1 - i * 0.12))
+    o += gaussianPulse(dt, 0.038 + i * spacing, 0.014, amp * 0.36)
+  }
+  o += slowHalfSine(dt, 0.10, 0.18, slowAmp)
+  return o
+}
+
+function hemisphereOf(label) {
+  if (label.endsWith('1') || ['F7', 'T3', 'T5', 'C3', 'F3', 'P3', 'O1', 'A1'].includes(label)) return 'left'
+  if (label.endsWith('2') || ['F8', 'T4', 'T6', 'C4', 'F4', 'P4', 'O2', 'A2'].includes(label)) return 'right'
+  if (label.endsWith('z')) return 'midline'
+  return 'midline'
+}
+
+function leftTemporalField(label) {
+  const map = {
+    T3: 1.00, F7: 0.82, T5: 0.76,
+    F3: 0.42, C3: 0.42, P3: 0.35,
+    Fp1: 0.24, O1: 0.20,
+    Fz: 0.12, Cz: 0.10, Pz: 0.08,
+    A1: 0.06,
+  }
+  return map[label] ?? 0
+}
+
+function breachField(label) {
+  const map = {
+    C3: 1.00, T3: 0.90,
+    F3: 0.75, P3: 0.65,
+    F7: 0.45, T5: 0.45,
+    Cz: 0.22, Fz: 0.12, Pz: 0.12,
+  }
+  return map[label] ?? 0
+}
+
+function centrotemporalField(side, label) {
+  const left = {
+    C3: 1.00, T3: 0.95, T5: 0.55, P3: 0.45, Cz: 0.35,
+    F3: -0.65, Fp1: -0.45, F7: -0.35,
+  }
+  const right = {
+    C4: 1.00, T4: 0.95, T6: 0.55, P4: 0.45, Cz: 0.35,
+    F4: -0.65, Fp2: -0.45, F8: -0.35,
+  }
+  return side === 'left' ? (left[label] ?? 0) : (right[label] ?? 0)
+}
+
+function posteriorPhoticField(label) {
+  const map = {
+    O1: 1.00, O2: 1.00,
+    P3: 0.66, P4: 0.66, Pz: 0.60,
+    T5: 0.38, T6: 0.38,
+  }
+  return map[label] ?? 0
+}
+
+function regionLagSeconds(label) {
+  switch (regionOf(label)) {
+    case 'frontopolar': return 0.000
+    case 'frontal': return 0.025
+    case 'central':
+    case 'midtemporal': return 0.060
+    case 'parietal': return 0.095
+    case 'posttemporal': return 0.105
+    case 'occipital': return 0.120
+    default: return 0.070
+  }
+}
+
+function multifocalField(focus, label) {
+  if (label === focus) return 1
+  if (regionOf(label) === 'ear') return 0
+
+  const focusRegion = regionOf(focus)
+  const labelRegion = regionOf(label)
+  const focusHem = hemisphereOf(focus)
+  const labelHem = hemisphereOf(label)
+
+  if (focusHem === labelHem && focusRegion === labelRegion) return 0.55
+  if (labelHem === 'midline') return 0.28
+  if (focusHem === labelHem) return 0.32
+  if (focusRegion === labelRegion) return 0.18
+  return 0.08
+}
+
+class FocalSlowingOverlay {
+  constructor(rng) {
+    this.phaseDelta = rng() * 2 * Math.PI
+    this.phaseTheta = rng() * 2 * Math.PI
+    this.phaseEnv = rng() * 2 * Math.PI
+  }
+  advance(/* t */) {}
+  valueFor(label, t) {
+    const w = leftTemporalField(label)
+    if (w < 0.05) return { overlay: 0, preserve: 1 }
+    const env = 0.82 + 0.18 * Math.sin(2 * Math.PI * 0.075 * t + this.phaseEnv)
+    const slow = 48 * Math.sin(2 * Math.PI * 1.7 * t + this.phaseDelta) +
+      22 * Math.sin(2 * Math.PI * 4.2 * t + this.phaseTheta)
+    return { overlay: w * env * slow, preserve: 1 - 0.25 * w }
+  }
+}
+
+class SlowSpikeWaveOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.ibiMean = 0.52
+    this.nextT = 0.35
+    this.events = []
+  }
+  advance(t) {
+    if (t >= this.nextT) {
+      this.events.push({ t0: this.nextT, ampJ: 0.86 + this.rng() * 0.28 })
+      this.nextT += this.ibiMean * (0.86 + this.rng() * 0.28)
+    }
+    while (this.events.length && this.events[0].t0 < t - 0.7) this.events.shift()
+  }
+  valueFor(label, t) {
+    const w = frontocentralGradient(label)
+    if (w < 0.05) return { overlay: 0, preserve: 1 }
+    let o = 0
+    let active = false
+    for (const ev of this.events) {
+      const dt = t - ev.t0
+      if (dt < -0.02 || dt > 0.52) continue
+      active = true
+      o += w * ev.ampJ * sharpSlow(dt, {
+        sharpAmp: -115,
+        sharpCenter: 0.050,
+        sharpWidth: 0.035,
+        slowAmp: 82,
+        slowStart: 0.12,
+        slowDur: 0.36,
+      })
+    }
+    return { overlay: o, preserve: active ? 0.94 : 1 }
+  }
+}
+
+class PolyspikeJmeOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.8
+    this.events = []
+  }
+  advance(t) {
+    if (t >= this.nextT) {
+      const durSec = 0.65 + this.rng() * 0.35
+      this.events.push({
+        t0: this.nextT,
+        durSec,
+        ampJ: 0.88 + this.rng() * 0.26,
+        hz: 3.8 + this.rng() * 0.9,
+      })
+      this.nextT += durSec + 2.6 + this.rng() * 3.4
+    }
+    while (this.events.length && this.events[0].t0 + this.events[0].durSec < t - 0.3) this.events.shift()
+  }
+  valueFor(label, t) {
+    const w = frontocentralGradient(label)
+    if (w < 0.05) return { overlay: 0, preserve: 1 }
+    let o = 0
+    let active = false
+    for (const ev of this.events) {
+      const dt = t - ev.t0
+      if (dt < 0 || dt > ev.durSec) continue
+      active = true
+      const env = Math.sin(Math.PI * dt / ev.durSec)
+      const cycle = 1 / ev.hz
+      const inCycle = dt % cycle
+      if (inCycle <= 0.26) {
+        o += w * ev.ampJ * env * polyspikeWave(inCycle, {
+          amp: 145,
+          count: 3 + Math.floor(ev.ampJ * 2),
+          slowAmp: 55,
+        })
+      }
+    }
+    return { overlay: o, preserve: active ? 0.92 : 1 }
+  }
+}
+
+class CentrotemporalSpikesOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.7
+    this.events = []
+  }
+  advance(t) {
+    if (t >= this.nextT) {
+      this.events.push({
+        t0: this.nextT,
+        side: this.rng() > 0.48 ? 'left' : 'right',
+        ampJ: 0.82 + this.rng() * 0.34,
+      })
+      const u = Math.max(1e-6, this.rng())
+      this.nextT += 0.55 + -1.4 * Math.log(u)
+    }
+    while (this.events.length && this.events[0].t0 < t - 0.45) this.events.shift()
+  }
+  valueFor(label, t) {
+    let o = 0
+    let active = false
+    for (const ev of this.events) {
+      const w = centrotemporalField(ev.side, label)
+      if (Math.abs(w) < 0.05) continue
+      const dt = t - ev.t0
+      if (dt < -0.02 || dt > 0.34) continue
+      active = true
+      o += w * ev.ampJ * sharpSlow(dt, {
+        sharpAmp: -155,
+        sharpCenter: 0.040,
+        sharpWidth: 0.024,
+        slowAmp: 56,
+        slowStart: 0.095,
+        slowDur: 0.22,
+      })
+    }
+    return { overlay: o, preserve: active ? 0.96 : 1 }
+  }
+}
+
+class TemporalSharpsOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.9
+    this.events = []
+  }
+  advance(t) {
+    if (t >= this.nextT) {
+      this.events.push({ t0: this.nextT, ampJ: 0.82 + this.rng() * 0.30 })
+      const u = Math.max(1e-6, this.rng())
+      this.nextT += 1.15 + -1.0 * Math.log(u)
+    }
+    while (this.events.length && this.events[0].t0 < t - 0.42) this.events.shift()
+  }
+  valueFor(label, t) {
+    const w = leftTemporalField(label)
+    if (w < 0.05) return { overlay: 0, preserve: 1 }
+    let o = 0
+    let active = false
+    for (const ev of this.events) {
+      const dt = t - ev.t0
+      if (dt < -0.02 || dt > 0.34) continue
+      active = true
+      o += w * ev.ampJ * sharpSlow(dt, {
+        sharpAmp: -135,
+        sharpCenter: 0.042,
+        sharpWidth: 0.025,
+        slowAmp: 52,
+        slowStart: 0.095,
+        slowDur: 0.20,
+      })
+    }
+    return { overlay: o, preserve: active ? 0.96 : 1 }
+  }
+}
+
+class HypsarrhythmiaOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.25
+    this.events = []
+    this.focuses = ['Fp1', 'F3', 'C3', 'T3', 'T5', 'P3', 'O1', 'Fp2', 'F4', 'C4', 'T4', 'T6', 'P4', 'O2', 'Pz']
+    this.states = {}
+    for (const label of ELECTRODES_1020) {
+      this.states[label] = {
+        f1: 0.85 + rng() * 1.05,
+        f2: 2.0 + rng() * 1.7,
+        f3: 4.0 + rng() * 2.4,
+        p1: rng() * 2 * Math.PI,
+        p2: rng() * 2 * Math.PI,
+        p3: rng() * 2 * Math.PI,
+        amp: 0.75 + rng() * 0.55,
+      }
+    }
+  }
+  advance(t) {
+    if (t >= this.nextT) {
+      const focus = this.focuses[Math.floor(this.rng() * this.focuses.length)]
+      this.events.push({ t0: this.nextT, focus, ampJ: 0.75 + this.rng() * 0.55 })
+      this.nextT += 0.18 + this.rng() * 0.42
+    }
+    while (this.events.length && this.events[0].t0 < t - 0.45) this.events.shift()
+  }
+  valueFor(label, t) {
+    if (regionOf(label) === 'ear') return { overlay: 0, preserve: 1 }
+    const s = this.states[label]
+    const env = 0.85 + 0.15 * Math.sin(2 * Math.PI * 0.07 * t + s.p3)
+    let o = s.amp * env * (
+      58 * Math.sin(2 * Math.PI * s.f1 * t + s.p1) +
+      34 * Math.sin(2 * Math.PI * s.f2 * t + s.p2) +
+      18 * Math.sin(2 * Math.PI * s.f3 * t + s.p3)
+    )
+    for (const ev of this.events) {
+      const w = multifocalField(ev.focus, label)
+      if (w < 0.05) continue
+      const dt = t - ev.t0
+      if (dt < -0.02 || dt > 0.34) continue
+      o += w * ev.ampJ * sharpSlow(dt, {
+        sharpAmp: -170,
+        sharpCenter: 0.035,
+        sharpWidth: 0.022,
+        slowAmp: 50,
+        slowStart: 0.085,
+        slowDur: 0.22,
+      })
+    }
+    return { overlay: o, preserve: 0.55 }
+  }
+}
+
+class PhotoparoxysmalOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.cycleSec = 8
+    this.pprStart = 2.5
+    this.pprEnd = 6.5
+    this.driveStart = 0.8
+    this.driveEnd = 4.2
+    this.nextT = this.pprStart
+    this.events = []
+    this.phase = rng() * 2 * Math.PI
+  }
+  advance(t) {
+    const p = t % this.cycleSec
+    if (p < this.pprStart) {
+      this.nextT = Math.max(this.nextT, t + (this.pprStart - p))
+    }
+    if (p >= this.pprStart && p <= this.pprEnd && t >= this.nextT) {
+      this.events.push({ t0: this.nextT, ampJ: 0.90 + this.rng() * 0.25 })
+      this.nextT += (1 / (4.1 + this.rng() * 0.8)) * (0.92 + this.rng() * 0.16)
+    }
+    while (this.events.length && this.events[0].t0 < t - 0.38) this.events.shift()
+  }
+  valueFor(label, t) {
+    const p = t % this.cycleSec
+    let o = 0
+    const posterior = posteriorPhoticField(label)
+    if (p >= this.driveStart && p <= this.driveEnd && posterior > 0) {
+      const rise = Math.min(1, (p - this.driveStart) / 0.35)
+      const fall = Math.min(1, (this.driveEnd - p) / 0.35)
+      const gate = Math.max(0, Math.min(rise, fall))
+      o += posterior * 28 * gate * Math.sin(2 * Math.PI * 16 * t + this.phase)
+    }
+    const w = Math.max(frontocentralGradient(label), posterior * 0.82)
+    if (w >= 0.05) {
+      for (const ev of this.events) {
+        const dt = t - ev.t0
+        if (dt < -0.02 || dt > 0.34) continue
+        o += w * ev.ampJ * polyspikeWave(dt, { amp: 115, count: 2, slowAmp: 72 })
+      }
+    }
+    return { overlay: o, preserve: o ? 0.94 : 1 }
+  }
+}
+
+class TriphasicWavesOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.6
+    this.events = []
+  }
+  advance(t) {
+    if (t >= this.nextT) {
+      this.events.push({ t0: this.nextT, ampJ: 0.82 + this.rng() * 0.32 })
+      this.nextT += 0.72 + this.rng() * 0.42
+    }
+    while (this.events.length && this.events[0].t0 < t - 0.75) this.events.shift()
+  }
+  valueFor(label, t) {
+    const w = bifrontalGradient(label)
+    if (w < 0.05) return { overlay: 0, preserve: 1 }
+    let o = 0
+    let active = false
+    for (const ev of this.events) {
+      const dt = t - (ev.t0 + regionLagSeconds(label))
+      if (dt < -0.04 || dt > 0.46) continue
+      active = true
+      o += w * ev.ampJ * (
+        gaussianPulse(dt, 0.035, 0.030, -44) +
+        gaussianPulse(dt, 0.120, 0.055, 136) +
+        gaussianPulse(dt, 0.260, 0.080, -66)
+      )
+    }
+    return { overlay: o, preserve: active ? 0.95 : 1 }
+  }
+}
+
+class BreachRhythmOverlay {
+  constructor(rng) {
+    this.phaseA = rng() * 2 * Math.PI
+    this.phaseB = rng() * 2 * Math.PI
+    this.phaseEnv = rng() * 2 * Math.PI
+  }
+  advance(/* t */) {}
+  valueFor(label, t) {
+    const w = breachField(label)
+    if (w < 0.05) return { overlay: 0, preserve: 1 }
+    const env = 0.72 + 0.28 * Math.sin(2 * Math.PI * 0.18 * t + this.phaseEnv)
+    const alphaRaw = Math.sin(2 * Math.PI * 10.8 * t + this.phaseA)
+    const alpha = Math.sign(alphaRaw) * Math.pow(Math.abs(alphaRaw), 0.55)
+    const beta = 14 * Math.sin(2 * Math.PI * 18.5 * t + this.phaseB) +
+      9 * Math.sin(2 * Math.PI * 23.0 * t + this.phaseB * 0.7)
+    return { overlay: w * env * (30 * alpha + beta), preserve: 1 }
+  }
+}
+
 export class StreamingEEG {
-  constructor({ sampleRate = SAMPLE_RATE, seed = Date.now() } = {}) {
+  constructor({ sampleRate = SAMPLE_RATE, seed = Date.now(), noiseScale = 1 } = {}) {
     this.sampleRate = sampleRate
     this.clock = 0
     this.rng = makeRng(seed | 0)
+    this.noiseScale = Math.max(0, Number.isFinite(noiseScale) ? noiseScale : 1)
     this.channels = {}
     for (const elec of ELECTRODES_1020) {
       this.channels[elec] = new Channel(elec, this.rng)
@@ -743,6 +1196,9 @@ export class StreamingEEG {
 
   setMode(mode) { this.mode = mode }
   setEyesOpen(eyesOpen) { this.eyesOpen = !!eyesOpen }
+  setNoiseScale(noiseScale) {
+    this.noiseScale = Math.max(0, Number.isFinite(noiseScale) ? noiseScale : 1)
+  }
 
   addOverlay(overlay) { this.overlays.push(overlay) }
   removeOverlay(overlay) {
@@ -798,6 +1254,7 @@ export class StreamingEEG {
         deltaSharedPhase: this.deltaPhase,
         mainsPhase:       this.mainsPhase,
         sampleRate: fs,
+        noiseScale: this.noiseScale,
       }
 
       for (const e of elecs) {
@@ -838,11 +1295,18 @@ export class StreamingEEG {
  * base; gpds → diffuse_slowing base + GpdsOverlay).
  */
 export function createEngineForPattern(pattern, options = {}) {
-  const { eyesClosed = true, blinksEnabled = true, seed = (Date.now() & 0xffffffff) } = options
+  const {
+    eyesClosed = true,
+    blinksEnabled = true,
+    noiseLevel = 0.25,
+    seed = (Date.now() & 0xffffffff),
+  } = options
   const engine = new StreamingEEG({ seed })
   engine.setEyesOpen(!eyesClosed)
+  engine.setNoiseScale(0.2 + Math.max(0, noiseLevel) * 3.2)
 
   const eyesOpen = !eyesClosed
+  const isEci = pattern === 'electrocerebral_silence'
   const awakePatterns = new Set([
     'normal_awake', 'absence', 'temporal_sharps', 'polyspike_jme',
     'photoparoxysmal', 'centrotemporal_spikes', 'breach_rhythm',
@@ -850,7 +1314,9 @@ export function createEngineForPattern(pattern, options = {}) {
   const ambientHr = 60 + Math.round(engine.rng() * 12)
 
   // Always-on artifacts
-  engine.addOverlay(new CardiacOverlay(engine.rng, ambientHr))
+  if (!isEci) {
+    engine.addOverlay(new CardiacOverlay(engine.rng, ambientHr))
+  }
   if (blinksEnabled && eyesOpen && awakePatterns.has(pattern)) {
     engine.addOverlay(new BlinkOverlay(engine.rng))
   }
@@ -866,6 +1332,10 @@ export function createEngineForPattern(pattern, options = {}) {
     case 'slow_wave_sleep':      engine.setMode('slow_wave_sleep'); break
     case 'diffuse_slowing':      engine.setMode('diffuse_slowing'); break
     case 'alpha_coma':           engine.setMode('alpha_coma'); break
+    case 'focal_slowing':
+      engine.setMode('normal_awake')
+      engine.addOverlay(new FocalSlowingOverlay(engine.rng))
+      break
     case 'firda':
       engine.setMode('diffuse_slowing')
       engine.addOverlay(new FirdaOverlay(engine.rng))
@@ -882,9 +1352,44 @@ export function createEngineForPattern(pattern, options = {}) {
       engine.setMode('normal_awake')
       engine.addOverlay(new AbsenceOverlay(engine.rng))
       break
+    case 'slow_spike_wave':
+      engine.setMode('diffuse_slowing')
+      engine.addOverlay(new SlowSpikeWaveOverlay(engine.rng))
+      break
+    case 'polyspike_jme':
+      engine.setMode('normal_awake')
+      engine.addOverlay(new PolyspikeJmeOverlay(engine.rng))
+      break
+    case 'centrotemporal_spikes':
+      engine.setMode('normal_drowsy')
+      engine.addOverlay(new CentrotemporalSpikesOverlay(engine.rng))
+      break
+    case 'temporal_sharps':
+      engine.setMode('normal_drowsy')
+      engine.addOverlay(new TemporalSharpsOverlay(engine.rng))
+      break
+    case 'hypsarrhythmia':
+      engine.setMode('normal_sleep')
+      engine.addOverlay(new HypsarrhythmiaOverlay(engine.rng))
+      break
+    case 'photoparoxysmal':
+      engine.setMode('normal_awake')
+      engine.addOverlay(new PhotoparoxysmalOverlay(engine.rng))
+      break
+    case 'triphasic_waves':
+      engine.setMode('diffuse_slowing')
+      engine.addOverlay(new TriphasicWavesOverlay(engine.rng))
+      break
+    case 'breach_rhythm':
+      engine.setMode('normal_awake')
+      engine.addOverlay(new BreachRhythmOverlay(engine.rng))
+      break
     case 'burst_suppression':
       engine.setMode('slow_wave_sleep')          // very low-amp base
       engine.addOverlay(new BurstSuppressionOverlay(engine.rng))
+      break
+    case 'electrocerebral_silence':
+      engine.setMode('electrocerebral_inactivity')
       break
     default:
       engine.setMode('normal_awake')
@@ -904,4 +1409,13 @@ export {
   LpdsOverlay,
   AbsenceOverlay,
   BurstSuppressionOverlay,
+  FocalSlowingOverlay,
+  SlowSpikeWaveOverlay,
+  PolyspikeJmeOverlay,
+  CentrotemporalSpikesOverlay,
+  TemporalSharpsOverlay,
+  HypsarrhythmiaOverlay,
+  PhotoparoxysmalOverlay,
+  TriphasicWavesOverlay,
+  BreachRhythmOverlay,
 }

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Waveform Pattern Catalogue
  * Defines EEG waveform types with metadata and generator presets.
  *
@@ -15,7 +15,6 @@
  */
 
 import {
-  generateBackground,
   injectSpike,
   injectSharpWave,
   injectPolyspike,
@@ -27,21 +26,48 @@ import {
 
 // ─── Local helpers ───────────────────────────────────────────────────────────
 
+const nativeRandom = Math.random
+let activeRandom = nativeRandom
+
+function random() {
+  return activeRandom()
+}
+
+function makeRng(seed) {
+  let a = seed | 0
+  return function rng() {
+    a = (a + 0x6D2B79F5) | 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function seedFromString(value) {
+  let h = 2166136261
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h | 0
+}
+
 function gauss(mean = 0, std = 1) {
-  const u = 1 - Math.random(), v = Math.random()
+  const u = 1 - random(), v = random()
   return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
 }
 
 /** Add a narrow-band rhythm with slow (0.1–0.3 Hz) amplitude envelope. */
 function addRhythm(sig, fs, {
   centerFreq, bandwidthHz = 1.2, amplitude = 40, nComp = 3,
-  envFreq = 0.15 + Math.random() * 0.2, envFloor = 0.3,
+  envFreq = 0.15 + random() * 0.2, envFloor = 0.3,
 }) {
-  const envPhase = Math.random() * 2 * Math.PI
+  const envPhase = random() * 2 * Math.PI
   for (let c = 0; c < nComp; c++) {
-    const f     = centerFreq + (Math.random() - 0.5) * bandwidthHz
-    const ph    = Math.random() * 2 * Math.PI
-    const amp   = amplitude * (0.6 + Math.random() * 0.4) / nComp
+    const f     = centerFreq + (random() - 0.5) * bandwidthHz
+    const ph    = random() * 2 * Math.PI
+    const amp   = amplitude * (0.6 + random() * 0.4) / nComp
     for (let i = 0; i < sig.length; i++) {
       const t  = i / fs
       const e  = envFloor + (1 - envFloor) *
@@ -63,7 +89,7 @@ function addNoise(sig, std = 4) {
 
 /** Arched (mu-rhythm) oscillation: sinusoid with negative half flattened. */
 function addArched(sig, fs, { freq = 10, amp = 40, envFreq = 0.2, envFloor = 0.2 }) {
-  const envPhase = Math.random() * 2 * Math.PI
+  const envPhase = random() * 2 * Math.PI
   for (let i = 0; i < sig.length; i++) {
     const t = i / fs
     const e = envFloor + (1 - envFloor) *
@@ -514,7 +540,12 @@ export const WAVEFORM_GROUPS = {
  * Generate a short demo trace for a given waveform pattern.
  * Returns Float32Array (single channel).
  */
-export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
+export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options = {}) {
+  const { seed = seedFromString(patternId) } = options
+  const previousRandom = activeRandom
+  if (seed != null) activeRandom = makeRng(seed)
+
+  try {
   const dur      = 3
   const nSamples = dur * sampleRate
 
@@ -607,8 +638,8 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
         let t = start
         while (t < end) {
           injectPOSTS(sig, Math.round(t * sampleRate),
-            { amp: ampMean + Math.random() * 20 })
-          t += ibi * (0.90 + Math.random() * 0.20)
+            { amp: ampMean + random() * 20 })
+          t += ibi * (0.90 + random() * 0.20)
         }
       }
       trainAt(0.4, 1.5, 60)
@@ -661,7 +692,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
         const x    = (t - t0) / (tEnd - t0)
         const freq = 3.4 - 0.6 * x                     // 3.4 → 2.8 Hz
         injectSpikeAndWave(sig, Math.round(t * sampleRate), { frequency: 3 })
-        t += (1 / freq) * (0.94 + Math.random() * 0.12)
+        t += (1 / freq) * (0.94 + random() * 0.12)
       }
       return sig
     }
@@ -675,12 +706,12 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       // Multifocal, asynchronous spikes at random times
       const nSpikes = 18
       for (let k = 0; k < nSpikes; k++) {
-        const t = Math.random() * (dur - 0.1)
+        const t = random() * (dur - 0.1)
         const at = Math.round(t * sampleRate)
-        const polarity = Math.random() > 0.5 ? -1 : 1
+        const polarity = random() > 0.5 ? -1 : 1
         injectSpike(sig, at, {
-          amplitude: 150 + Math.random() * 180,
-          duration:  0.04 + Math.random() * 0.08,
+          amplitude: 150 + random() * 180,
+          duration:  0.04 + random() * 0.08,
           polarity,
         })
       }
@@ -699,8 +730,8 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       let t = 0.25
       while (t < dur - ibiMean * 0.5) {
         injectTriphasic(sig, Math.round(t * sampleRate),
-          { amp: 130 * (0.85 + Math.random() * 0.30) })
-        t += ibiMean * (0.88 + Math.random() * 0.24)
+          { amp: 130 * (0.85 + random() * 0.30) })
+        t += ibiMean * (0.88 + random() * 0.24)
       }
       return sig
     }
@@ -713,7 +744,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       const ibiMean = 1.0
       let t = 0.2
       while (t < dur - ibiMean * 0.5) {
-        const ampJ = 0.85 + Math.random() * 0.30
+        const ampJ = 0.85 + random() * 0.30
         const s    = Math.round(t * sampleRate)
         injectSharpWave(sig, s,
           { amplitude: 140 * ampJ, duration: 0.12, polarity: -1 })
@@ -723,7 +754,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
           if (idx >= nSamples) break
           sig[idx] += 55 * ampJ * Math.sin(Math.PI * i / swDur)
         }
-        t += ibiMean * (0.88 + Math.random() * 0.24)
+        t += ibiMean * (0.88 + random() * 0.24)
       }
       return sig
     }
@@ -737,13 +768,13 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       const ibiMean = 1 / 0.8
       let t = 0.15
       while (t < dur - ibiMean * 0.5) {
-        const ampJ = 0.85 + Math.random() * 0.30
+        const ampJ = 0.85 + random() * 0.30
         const s    = Math.round(t * sampleRate)
         injectSharpWave(sig, s,
           { amplitude: 200 * ampJ, duration: 0.10, polarity: -1 })
         injectSharpWave(sig, s + Math.round(0.07 * sampleRate),
           { amplitude: 70 * ampJ, duration: 0.06, polarity: +1 })
-        t += ibiMean * (0.85 + Math.random() * 0.30)
+        t += ibiMean * (0.85 + random() * 0.30)
       }
       return sig
     }
@@ -771,7 +802,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       bursts.forEach(({ t0, dur: bDur }) => {
         const s0 = Math.round(t0 * sampleRate)
         const n  = Math.round(bDur * sampleRate)
-        const freq = 2.5 + (Math.random() - 0.5) * 0.3
+        const freq = 2.5 + (random() - 0.5) * 0.3
         for (let i = 0; i < n; i++) {
           const idx = s0 + i
           if (idx >= nSamples) break
@@ -871,4 +902,8 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE) {
       return sig
     }
   }
+  } finally {
+    if (seed != null) activeRandom = previousRandom
+  }
 }
+

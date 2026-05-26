@@ -3,6 +3,7 @@ import { useTranslation }        from 'react-i18next'
 import { MONTAGES, MONTAGE_LIST, applyMontage } from '@/engine/montages'
 import { generateMultiChannelEEG, makeTimeAxis }  from '@/engine/signalGenerator'
 import EEGViewer                 from '@/components/eeg/EEGViewer'
+import { ChannelHoverPanel }     from '@/components/eeg/ChannelHoverMap'
 
 export default function MontagesPage() {
   const { t } = useTranslation()
@@ -10,6 +11,7 @@ export default function MontagesPage() {
   const [channels,   setChannels]     = useState([])
   const [timeAxis,   setTimeAxis]     = useState([])
   const [rawEEG,     setRawEEG]       = useState(null)
+  const [hoveredChannel, setHoveredChannel] = useState(null)
 
   // Generate raw data once
   useEffect(() => {
@@ -87,14 +89,26 @@ export default function MontagesPage() {
         </div>
 
         {/* EEG preview */}
-        <div className="flex-1 overflow-y-auto eeg-paper">
-          {channels.length > 0 ? (
-            <EEGViewer channels={channels} timeAxis={timeAxis} sensitivity={5} isPlaying={false} />
-          ) : (
-            <div className="flex items-center justify-center h-full text-eeg-muted font-mono text-sm">
-              {t('common.loading')}
-            </div>
-          )}
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
+          <div className="flex-1 min-w-0 overflow-y-auto eeg-paper">
+            {channels.length > 0 ? (
+              <EEGViewer
+                channels={channels}
+                timeAxis={timeAxis}
+                sensitivity={5}
+                isPlaying={false}
+                onHoverChannel={setHoveredChannel}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-eeg-muted font-mono text-sm">
+                {t('common.loading')}
+              </div>
+            )}
+          </div>
+          <ChannelHoverPanel
+            channelLabel={hoveredChannel}
+            className="lg:w-52 lg:flex-shrink-0 lg:border-l border-eeg-border"
+          />
         </div>
 
       </div>

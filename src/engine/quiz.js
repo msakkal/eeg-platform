@@ -112,7 +112,7 @@ export const QUIZ_QUESTIONS = [
       { id: 'c', text: 'Hypsarrhythmia',      correct: false },
       { id: 'd', text: 'NCSE pattern',        correct: false },
     ],
-    explanation: 'Burst-suppression is characterised by alternating bursts of high-amplitude mixed-frequency activity and periods of near-electrocerebral silence (suppression < 10 µV). It indicates profound global brain dysfunction.',
+    explanation: 'Burst-suppression is characterised by alternating bursts of high-amplitude mixed-frequency activity and periods of very low-voltage suppression (< 10 µV). It indicates profound global brain dysfunction.',
     reference: 'Hirsch et al. — ACNS Standardised EEG Terminology (2021)',
   },
 

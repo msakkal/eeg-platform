@@ -1,66 +1,8 @@
 import React from 'react'
 import { useTranslation }    from 'react-i18next'
 import { MONTAGE_LIST }      from '@/engine/montages'
+import { PATTERN_GROUPS }    from '@/engine/patterns'
 import { VIEWER_THEME_LIST, SENSITIVITY_STEPS, DEFAULT_SENSITIVITY } from '@/engine/viewerThemes'
-
-const PATTERN_GROUPS = [
-  {
-    id: 'normal',
-    label: 'Normal',
-    color: '#00FFB0',
-    patterns: [
-      { id: 'normal_awake',      label: 'Awake',              color: '#00FFB0' },
-      { id: 'normal_drowsy',     label: 'Drowsy (N1)',        color: '#88DDAA' },
-      { id: 'normal_sleep',      label: 'Stage N2',           color: '#00D4FF' },
-      { id: 'slow_wave_sleep',   label: 'Slow Wave (N3)',     color: '#7B5EA7' },
-    ],
-  },
-  {
-    id: 'epileptiform',
-    label: 'Epileptiform',
-    color: '#FF4444',
-    patterns: [
-      { id: 'absence',               label: '3 Hz Absence',       color: '#FF4444' },
-      { id: 'slow_spike_wave',       label: 'Slow S/W (LGS)',     color: '#FF3377' },
-      { id: 'polyspike_jme',         label: 'JME Polyspike',      color: '#FF0066' },
-      { id: 'centrotemporal_spikes', label: 'BECTS',              color: '#FF6B35' },
-      { id: 'temporal_sharps',       label: 'TLE Sharps',         color: '#FF5544' },
-      { id: 'hypsarrhythmia',        label: 'Hypsarrhythmia',     color: '#FF2255' },
-      { id: 'photoparoxysmal',       label: 'Photoparoxysmal',    color: '#FF8866' },
-    ],
-  },
-  {
-    id: 'periodic',
-    label: 'Periodic (ICU)',
-    color: '#FFA552',
-    patterns: [
-      { id: 'gpds',            label: 'GPDs',             color: '#FFA552' },
-      { id: 'lpds',            label: 'LPDs',             color: '#FF8B40' },
-      { id: 'triphasic_waves', label: 'Triphasic Waves',  color: '#FFB347' },
-    ],
-  },
-  {
-    id: 'abnormal',
-    label: 'Non-Epileptiform',
-    color: '#FFD166',
-    patterns: [
-      { id: 'focal_slowing',   label: 'Focal Slowing',    color: '#FFD166' },
-      { id: 'firda',           label: 'FIRDA',            color: '#FFC27A' },
-      { id: 'diffuse_slowing', label: 'Diffuse Slowing',  color: '#FFDC7A' },
-      { id: 'breach_rhythm',   label: 'Breach Rhythm',    color: '#BFA4FF' },
-    ],
-  },
-  {
-    id: 'coma',
-    label: 'Coma Patterns',
-    color: '#A0A0FF',
-    patterns: [
-      { id: 'burst_suppression',       label: 'Burst-Suppression', color: '#A0A0FF' },
-      { id: 'alpha_coma',              label: 'Alpha Coma',        color: '#99AACC' },
-      { id: 'electrocerebral_silence', label: 'ECS (Brain Death)', color: '#6B7BA0' },
-    ],
-  },
-]
 
 export default function SandboxControls({
   montageId, onMontageChange,

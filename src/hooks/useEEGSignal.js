@@ -3,6 +3,8 @@ import { SAMPLE_RATE, makeTimeAxis } from '@/engine/signalGenerator'
 import { createEngineForPattern }    from '@/engine/streaming'
 import { applyMontage } from '@/engine/montages'
 
+const STREAM_FRAME_MS = 1000 / 30
+
 /**
  * useEEGSignal
  * Drives a live streaming EEG display from `streaming.js`. Each animation
@@ -15,7 +17,7 @@ import { applyMontage } from '@/engine/montages'
  * @param {object} opts
  *   - montageId: string
  *   - pattern: string (see streaming.js / signalGenerator.js)
- *   - noiseLevel: number  - currently informational
+ *   - noiseLevel: number
  *   - sweepSpeed: number  - samples advanced per ~33 ms frame (×30 ≈ samples/s)
  *   - isPlaying: bool
  *   - pendingSpike / pendingArtifact: optional injection flags
@@ -26,9 +28,7 @@ import { applyMontage } from '@/engine/montages'
 export function useEEGSignal({
   montageId,
   pattern,
-  // noiseLevel is accepted for API stability but unused — the streaming
-  // engine uses fixed, clinically-calibrated amplitudes.
-  noiseLevel,       // eslint-disable-line no-unused-vars
+  noiseLevel,
   sweepSpeed,
   isPlaying,
   pendingSpike,
@@ -48,6 +48,7 @@ export function useEEGSignal({
   const ringRef       = useRef(null)
   const animFrameRef  = useRef(null)
   const cursorSecRef  = useRef(0)
+  const lastFrameMsRef = useRef(0)
 
   // Refs for values that change during playback without restarting loop
   const sweepSpeedRef  = useRef(sweepSpeed)
@@ -63,6 +64,7 @@ export function useEEGSignal({
     const engine = createEngineForPattern(pattern, {
       eyesClosed,
       blinksEnabled,
+      noiseLevel,
     })
     engineRef.current = engine
 
@@ -90,7 +92,7 @@ export function useEEGSignal({
     setDerivedChannels(applyMontage(initial, montageIdRef.current))
     setTimeAxis(makeTimeAxis(N, SAMPLE_RATE))
     setIsReady(true)
-  }, [pattern, eyesClosed, blinksEnabled, windowSecs])
+  }, [pattern, eyesClosed, blinksEnabled, noiseLevel, windowSecs])
 
   // ── Pending transient injection (spike / muscle artifact) ───────────────
   // For the streaming engine these are stamped into the ring buffer at the
@@ -136,11 +138,18 @@ export function useEEGSignal({
   useEffect(() => {
     if (!isReady) return
 
-    function frame() {
+    function frame(now = performance.now()) {
       if (!isPlayingRef.current) {
+        lastFrameMsRef.current = now
         animFrameRef.current = requestAnimationFrame(frame)
         return
       }
+
+      if (now - lastFrameMsRef.current < STREAM_FRAME_MS) {
+        animFrameRef.current = requestAnimationFrame(frame)
+        return
+      }
+      lastFrameMsRef.current = now
 
       const ring = ringRef.current
       const engine = engineRef.current
@@ -182,7 +191,6 @@ export function useEEGSignal({
 
       const derived = applyMontage(windowRaw, montageIdRef.current)
       setDerivedChannels(derived)
-      setTimeAxis(makeTimeAxis(N, SAMPLE_RATE))
 
       animFrameRef.current = requestAnimationFrame(frame)
     }

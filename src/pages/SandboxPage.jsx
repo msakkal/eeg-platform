@@ -5,6 +5,7 @@ import { useAnnotationStore, ANNOTATION_LABELS } from '@/store/annotationStore'
 import { useEEGSignal }           from '@/hooks/useEEGSignal'
 import { useKeyboardShortcuts }   from '@/hooks/useKeyboardShortcuts'
 import EEGViewer                  from '@/components/eeg/EEGViewer'
+import { ChannelHoverPanel }      from '@/components/eeg/ChannelHoverMap'
 import SandboxControls            from '@/components/eeg/SandboxControls'
 import SpectrumViewer             from '@/components/eeg/SpectrumViewer'
 import SpectrogramViewer          from '@/components/eeg/SpectrogramViewer'
@@ -45,6 +46,7 @@ export default function SandboxPage() {
   const [annotateMode,   setAnnotateMode]   = useState(false)
   const [activeAnnLabel, setActiveAnnLabel] = useState(ANNOTATION_LABELS[0])
   const [showHelp,       setShowHelp]       = useState(false)
+  const [hoveredTraceChannel, setHoveredTraceChannel] = useState(null)
 
   // ── Annotations ─────────────────────────────────────────────────────────
   const { annotations, addAnnotation, removeAnnotation, clearAnnotations } = useAnnotationStore()
@@ -206,27 +208,34 @@ export default function SandboxPage() {
           ) : (
             <>
               {activePanel === 'traces' && (
-                <div className="relative" style={{ background: theme.pageBg }}>
-                  <EEGViewer
-                    channels={channels}
-                    timeAxis={timeAxis}
-                    sensitivity={sensitivity}
-                    isPlaying={isPlaying}
-                    filterConfig={filterConfig}
-                    annotations={annotations}
-                    windowStart={windowStart}
-                    onAnnotate={annotateMode ? handleAnnotate : null}
-                    theme={viewerTheme}
-                    className="w-full"
-                  />
-                  {isPlaying && !annotateMode && (
-                    <div
-                      className="scan-line"
-                      style={{
-                        background: `linear-gradient(to bottom, transparent, ${theme.scan}88, transparent)`,
-                      }}
+                <div className="flex flex-col lg:flex-row min-h-full" style={{ background: theme.pageBg }}>
+                  <div className="relative flex-1 min-w-0 overflow-hidden">
+                    <EEGViewer
+                      channels={channels}
+                      timeAxis={timeAxis}
+                      sensitivity={sensitivity}
+                      isPlaying={isPlaying}
+                      filterConfig={filterConfig}
+                      annotations={annotations}
+                      windowStart={windowStart}
+                      onAnnotate={annotateMode ? handleAnnotate : null}
+                      onHoverChannel={setHoveredTraceChannel}
+                      theme={viewerTheme}
+                      className="w-full"
                     />
-                  )}
+                    {isPlaying && !annotateMode && (
+                      <div
+                        className="scan-line"
+                        style={{
+                          background: `linear-gradient(to bottom, transparent, ${theme.scan}88, transparent)`,
+                        }}
+                      />
+                    )}
+                  </div>
+                  <ChannelHoverPanel
+                    channelLabel={hoveredTraceChannel}
+                    className="lg:w-52 lg:flex-shrink-0 lg:border-l border-eeg-border"
+                  />
                 </div>
               )}
 

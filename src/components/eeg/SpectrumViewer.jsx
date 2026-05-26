@@ -25,17 +25,25 @@ export default function SpectrumViewer({
   const barCanvasRef  = useRef(null)
   const dpr           = window.devicePixelRatio || 1
 
-  // Compute PSD
-  const { freqs, psd } = useMemo(() => {
-    if (!signal || signal.length < 64) return { freqs: new Float64Array(), psd: new Float64Array() }
-    return computePSD(signal, SAMPLE_RATE, { dbScale: true })
+  // Compute dB PSD for plotting and linear PSD for relative band power.
+  const { freqs, psd, linearPsd } = useMemo(() => {
+    if (!signal || signal.length < 64) {
+      return {
+        freqs: new Float64Array(),
+        psd: new Float64Array(),
+        linearPsd: new Float64Array(),
+      }
+    }
+    const db = computePSD(signal, SAMPLE_RATE, { dbScale: true })
+    const linear = computePSD(signal, SAMPLE_RATE, { dbScale: false })
+    return { freqs: db.freqs, psd: db.psd, linearPsd: linear.psd }
   }, [signal])
 
   // Compute band powers
   const bands = useMemo(() => {
     if (!freqs.length) return {}
-    return computeBandPowers(freqs, psd)
-  }, [freqs, psd])
+    return computeBandPowers(freqs, linearPsd)
+  }, [freqs, linearPsd])
 
   // ── Draw PSD curve ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -61,7 +69,7 @@ export default function SpectrumViewer({
 
     // ── Band region tints ────────────────────────────────────────────────
     const fScale = (f) => PADDING.left + (f / maxFreq) * plotW
-    Object.values(EEG_BANDS).forEach(({ min, max, color: bc }) => {
+    Object.entries(EEG_BANDS).forEach(([key, { min, max, color: bc }]) => {
       if (min > maxFreq) return
       const x1 = fScale(Math.max(0, min))
       const x2 = fScale(Math.min(maxFreq, max))
@@ -71,7 +79,7 @@ export default function SpectrumViewer({
       ctx.fillStyle = bc + '88'
       ctx.font = `8px "DM Mono", monospace`
       ctx.textAlign = 'center'
-      ctx.fillText(bc.split(' ')[0], (x1 + x2) / 2, PADDING.top + plotH + 10)
+      ctx.fillText(key.toUpperCase(), (x1 + x2) / 2, PADDING.top + plotH + 10)
     })
 
     // ── Grid lines ────────────────────────────────────────────────────────

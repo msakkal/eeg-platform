@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import { useState, useMemo } from 'react'
 import {
   ELECTRODE_POSITIONS_2D,
   SELECTABLE_ELECTRODES,
@@ -9,8 +9,10 @@ import {
   weightToColor,
   weightToFill,
 } from '@/engine/propagation'
-import { applyMontage, MONTAGES, MONTAGE_LIST } from '@/engine/montages'
+import { applyMontage, MONTAGES } from '@/engine/montages'
 import { makeTimeAxis, SAMPLE_RATE } from '@/engine/signalGenerator'
+import { ChannelHoverPanel } from '@/components/eeg/ChannelHoverMap'
+import EEGViewer from '@/components/eeg/EEGViewer'
 
 // ─── Scalp map geometry ───────────────────────────────────────────────────────
 const MAP_SIZE = 220
@@ -32,13 +34,6 @@ const MONTAGE_OPTIONS = [
 
 // ─── Discharge times (seconds) shown in the EEG window ───────────────────────
 const DISCHARGE_TIMES = [1.4, 3.6, 5.8, 8.2]
-
-// ─── EEG canvas constants ─────────────────────────────────────────────────────
-const CH_H     = 46
-const LABEL_W  = 88
-const AXIS_COL = 'rgba(0,212,255,0.12)'
-const GRID_COL = 'rgba(0,212,255,0.06)'
-const BG_COL   = '#0D1424'
 
 // =============================================================================
 // MAIN COMPONENT
@@ -102,9 +97,49 @@ export default function PropagationSection() {
     }
   }, [hoveredChannel, channelInfo])
 
+  const hoveredElectrodeList = useMemo(
+    () => [hoveredElectrodes.pos, hoveredElectrodes.neg].filter(Boolean),
+    [hoveredElectrodes]
+  )
+
   // Whether the current montage is bipolar (affects annotation messaging)
   const isBipolar = montageId.includes('bipolar')
-  const isReferential = !isBipolar
+  const propagationAnnotations = useMemo(() => (
+    DISCHARGE_TIMES.map((timeS, idx) => ({
+      id: `discharge-${idx}`,
+      timeS,
+      label: 'Spike',
+      color: '#FF6B35',
+    }))
+  ), [])
+
+  const phaseReversalChannelLabels = useMemo(
+    () => phaseReversals.flatMap(p => [p.label1, p.label2]),
+    [phaseReversals]
+  )
+
+  const highlightedPropagationChannels = useMemo(() => {
+    const labels = new Set(phaseReversalChannelLabels)
+    channelInfo.forEach(info => {
+      if (info.containsSrc || (info.netAmplitude ?? 0) > 0.4) {
+        labels.add(info.label)
+      }
+    })
+    return Array.from(labels)
+  }, [channelInfo, phaseReversalChannelLabels])
+
+  const propagationChannelColor = useMemo(() => {
+    const infoByLabel = Object.fromEntries(channelInfo.map(info => [info.label, info]))
+    const phaseLabels = new Set(phaseReversalChannelLabels)
+
+    return (label) => {
+      const info = infoByLabel[label]
+      if (isBipolar && phaseLabels.has(label)) return '#FFD166'
+      if (info?.containsSrc) return (info.polarity ?? 0) > 0 ? '#FF6B35' : '#00D4FF'
+      if ((info?.netAmplitude ?? 0) > 0.4) return '#88DDBB'
+      return '#00FFB0'
+    }
+  }, [channelInfo, isBipolar, phaseReversalChannelLabels])
 
   return (
     <div className="mt-12 space-y-8">
@@ -220,7 +255,6 @@ export default function PropagationSection() {
 
         {/* Field explanation: phase-reversal / amplitude-gradient */}
         <FieldExplanationCallout
-          montageId={montageId}
           sourceElec={sourceElec}
           isBipolar={isBipolar}
           phaseReversals={phaseReversals}
@@ -251,38 +285,37 @@ export default function PropagationSection() {
           </div>
         </div>
 
-        {/* Body: canvas (left, scrollable) + sticky mini-map (right) */}
+        {/* Body: unified EEG viewer (left, scrollable) + sticky mini-map (right) */}
         <div className="flex flex-col lg:flex-row">
           <div className="flex-1 min-w-0 eeg-paper overflow-y-auto overflow-x-hidden"
                style={{ maxHeight: '680px' }}>
-            <PropagationEEGCanvas
+            <EEGViewer
               channels={derivedChannels}
               timeAxis={timeAxis}
-              channelInfo={channelInfo}
-              phaseReversals={phaseReversals}
-              isBipolar={isBipolar}
-              sourceElec={sourceElec}
+              isPlaying={false}
+              annotations={propagationAnnotations}
+              scaleMode="global-fit"
+              channelHeight={46}
+              leftLabelWidth={88}
+              footerHeight={32}
+              signalColor="#00FFB0"
+              highlightedChannels={highlightedPropagationChannels}
+              highlightColor="#FFD166"
+              channelColor={propagationChannelColor}
+              showChannelAmplitudes
               onHoverChannel={setHoveredChannel}
             />
           </div>
-          <div className="lg:w-52 lg:flex-shrink-0 lg:border-l border-eeg-border bg-eeg-surface
-                          p-4 flex flex-col gap-2 items-center">
-            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted self-start mb-1">
-              Hovered channel
-            </p>
-            <ChannelMiniMap
-              hoveredElectrodes={hoveredElectrodes}
-              hoveredChannelLabel={hoveredChannel}
-              sourceElec={sourceElec}
-              isBipolar={isBipolar}
-            />
-            <p className="text-[10px] font-mono text-eeg-muted text-center mt-2 leading-relaxed">
-              {hoveredChannel
-                ? <>Hover any channel in the trace to see which scalp electrodes contribute to it.</>
-                : <>Move the cursor over the EEG trace to highlight the source pair on the head.</>
-              }
-            </p>
-          </div>
+          <ChannelHoverPanel
+            channelLabel={hoveredChannel}
+            electrodes={hoveredElectrodeList}
+            sourceElec={sourceElec}
+            isBipolar={isBipolar}
+            polarity={hoveredElectrodes.polarity}
+            activeText="Hover any channel in the trace to see which scalp electrodes contribute to it."
+            idleText="Move the cursor over the EEG trace to highlight the source pair on the head."
+            className="lg:w-52 lg:flex-shrink-0 lg:border-l border-eeg-border"
+          />
         </div>
       </div>
 
@@ -432,7 +465,7 @@ function ScalpSourceMap({ weights, source, onSelect, sigma }) {
 // FIELD EXPLANATION CALLOUT
 // =============================================================================
 
-function FieldExplanationCallout({ montageId, sourceElec, isBipolar, phaseReversals, channelInfo }) {
+function FieldExplanationCallout({ sourceElec, isBipolar, phaseReversals, channelInfo }) {
   const sourceChannels = channelInfo.filter(c => c.containsSrc)
   const maxAmplitudeChannel = channelInfo.reduce((best, c) =>
     c.netAmplitude > (best?.netAmplitude ?? 0) ? c : best, null
@@ -507,264 +540,6 @@ function FieldExplanationCallout({ montageId, sourceElec, isBipolar, phaseRevers
       </div>
 
     </div>
-  )
-}
-
-// =============================================================================
-// PROPAGATION EEG CANVAS
-// =============================================================================
-
-function PropagationEEGCanvas({ channels, timeAxis, channelInfo, phaseReversals, isBipolar, sourceElec, onHoverChannel }) {
-  const canvasRef = useRef(null)
-  const dpr       = window.devicePixelRatio || 1
-  // Hovered channel index — local state so we can highlight the row in canvas
-  // and report the channel label up via onHoverChannel.
-  const [hoverIdx, setHoverIdx] = useState(null)
-
-  // Build a lookup from channel label → info
-  const infoMap = useMemo(() => {
-    const m = {}
-    channelInfo.forEach(c => { m[c.label] = c })
-    return m
-  }, [channelInfo])
-
-  // Phase-reversal channel labels
-  const prLabels = useMemo(() => new Set(phaseReversals.flatMap(p => [p.label1, p.label2])), [phaseReversals])
-
-  // Tell the parent which channel is hovered (or null when off the canvas)
-  useEffect(() => {
-    if (!onHoverChannel) return
-    onHoverChannel(hoverIdx == null ? null : channels[hoverIdx]?.label ?? null)
-  }, [hoverIdx, channels, onHoverChannel])
-
-  const handleMouseMove = useCallback((e) => {
-    const canvas = canvasRef.current
-    if (!canvas || channels.length === 0) return
-    const rect = canvas.getBoundingClientRect()
-    const y    = e.clientY - rect.top
-    const idx  = Math.floor(y / CH_H)
-    setHoverIdx(idx >= 0 && idx < channels.length ? idx : null)
-  }, [channels])
-
-  const handleMouseLeave = useCallback(() => setHoverIdx(null), [])
-
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas || channels.length === 0) return
-
-    const W    = canvas.clientWidth
-    const nCh  = channels.length
-    // Footer band holds the legend strip (top half) and the time-axis labels
-    // (bottom half) with vertical breathing room so they don't overlap.
-    const H    = nCh * CH_H + 50
-
-    if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
-      canvas.width        = W * dpr
-      canvas.height       = H * dpr
-      canvas.style.height = `${H}px`
-    }
-
-    const ctx      = canvas.getContext('2d')
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, W, H)
-
-    const plotW    = W - LABEL_W
-    const duration = timeAxis[timeAxis.length - 1] ?? 10
-
-    // ── Background ────────────────────────────────────────────────────────
-    ctx.fillStyle = BG_COL
-    ctx.fillRect(LABEL_W, 0, plotW, H - 50)
-
-    // ── Discharge epoch shading ───────────────────────────────────────────
-    DISCHARGE_TIMES.forEach(t => {
-      const x   = LABEL_W + (t / duration) * plotW
-      const dur = (0.5 / duration) * plotW
-      ctx.fillStyle = 'rgba(255,100,50,0.06)'
-      ctx.fillRect(x, 0, dur, H - 50)
-      // Discharge marker line
-      ctx.strokeStyle = 'rgba(255,100,50,0.25)'
-      ctx.lineWidth   = 0.8
-      ctx.setLineDash([3, 3])
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H - 50); ctx.stroke()
-      ctx.setLineDash([])
-      // Top label
-      ctx.fillStyle    = 'rgba(255,150,80,0.7)'
-      ctx.font         = '7px "DM Mono", monospace'
-      ctx.textAlign    = 'left'
-      ctx.textBaseline = 'top'
-      ctx.fillText('↓', x + 2, 2)
-    })
-
-    // ── Grid ──────────────────────────────────────────────────────────────
-    for (let t = 0; t <= duration; t++) {
-      const x = LABEL_W + (t / duration) * plotW
-      ctx.strokeStyle = AXIS_COL
-      ctx.lineWidth   = 1
-      ctx.setLineDash([])
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H - 50); ctx.stroke()
-      if (t < duration) {
-        ctx.fillStyle    = '#5A6A82'
-        ctx.font         = '9px "DM Mono", monospace'
-        ctx.textAlign    = 'left'
-        ctx.textBaseline = 'alphabetic'
-        ctx.fillText(`${t}s`, x + 2, H - 10)
-      }
-    }
-
-    // ── Global max for consistent amplitude scale ─────────────────────────
-    const globalMax = channels.reduce((m, ch) =>
-      Math.max(m, ch.data ? Math.max(...Array.from(ch.data).map(Math.abs)) : 0), 1
-    )
-
-    // ── Channels ──────────────────────────────────────────────────────────
-    channels.forEach(({ label, data }, idx) => {
-      const cy      = idx * CH_H + CH_H / 2
-      const info    = infoMap[label]
-      const isPR    = isBipolar && prLabels.has(label)
-      const hasSrc  = info?.containsSrc
-      const isHover = idx === hoverIdx
-      const polarity = info?.polarity ?? 0
-
-      // Highlight row for phase-reversal channels
-      if (isPR) {
-        ctx.fillStyle = 'rgba(255,213,102,0.05)'
-        ctx.fillRect(LABEL_W, cy - CH_H / 2, plotW, CH_H)
-      }
-      // Brighter highlight for the row currently under the mouse
-      if (isHover) {
-        ctx.fillStyle = 'rgba(0,212,255,0.06)'
-        ctx.fillRect(LABEL_W, cy - CH_H / 2, plotW, CH_H)
-      }
-
-      // Separator
-      ctx.strokeStyle = hasSrc ? 'rgba(255,100,50,0.25)' : 'rgba(0,212,255,0.07)'
-      ctx.lineWidth   = hasSrc ? 1 : 0.5
-      ctx.beginPath()
-      ctx.moveTo(LABEL_W, cy + CH_H / 2)
-      ctx.lineTo(W, cy + CH_H / 2)
-      ctx.stroke()
-
-      // Baseline
-      ctx.strokeStyle = 'rgba(0,212,255,0.06)'
-      ctx.lineWidth   = 0.5
-      ctx.beginPath(); ctx.moveTo(LABEL_W, cy); ctx.lineTo(W, cy); ctx.stroke()
-
-      if (!data || data.length === 0) return
-
-      // Pick trace colour based on source involvement
-      let traceCol = '#00FFB0'
-      if (hasSrc)        traceCol = polarity > 0 ? '#FF6B35' : '#00D4FF'
-      if (isPR)          traceCol = '#FFD166'
-      if (!hasSrc && info?.netAmplitude > 0.4) traceCol = '#88DDBB'
-
-      const nPts   = data.length
-      const halfH  = CH_H / 2 - 3
-
-      ctx.strokeStyle = traceCol
-      ctx.lineWidth   = hasSrc ? 1.6 : 1.1
-      ctx.shadowColor = traceCol
-      ctx.shadowBlur  = hasSrc ? 7 : isPR ? 5 : 3
-      ctx.beginPath()
-
-      const step = Math.max(1, Math.floor(nPts / (plotW * 2)))
-      for (let i = 0; i < nPts; i += step) {
-        const x = LABEL_W + (i / nPts) * plotW
-        const y = cy - (data[i] / globalMax) * halfH
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
-      }
-      ctx.stroke()
-      ctx.shadowBlur = 0
-
-      // Phase-reversal bracket at first discharge
-      if (isPR && polarity !== 0 && isBipolar) {
-        const prX  = LABEL_W + (DISCHARGE_TIMES[0] / duration) * plotW
-        ctx.strokeStyle = '#FFD16688'
-        ctx.lineWidth   = 1.5
-        ctx.beginPath()
-        ctx.moveTo(prX - 10, polarity > 0 ? cy - halfH * 0.5 : cy + halfH * 0.5)
-        ctx.lineTo(prX - 4, cy)
-        ctx.stroke()
-      }
-    })
-
-    // ── Label column ──────────────────────────────────────────────────────
-    ctx.fillStyle = '#0A0E1A'
-    ctx.fillRect(0, 0, LABEL_W, H)
-    ctx.strokeStyle = AXIS_COL; ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(LABEL_W, 0); ctx.lineTo(LABEL_W, H - 50); ctx.stroke()
-
-    channels.forEach(({ label }, idx) => {
-      const cy      = idx * CH_H + CH_H / 2
-      const info    = infoMap[label]
-      const isPR    = isBipolar && prLabels.has(label)
-      const hasSrc  = info?.containsSrc
-      const polarity = info?.polarity ?? 0
-
-      // Colour the label
-      let labelCol = '#5A6A82'
-      if (hasSrc) labelCol = polarity > 0 ? '#FF6B35' : '#00D4FF'
-      if (isPR)   labelCol = '#FFD166'
-
-      ctx.fillStyle    = labelCol
-      ctx.font         = `${hasSrc || isPR ? 'bold ' : ''}9px "DM Mono", monospace`
-      ctx.textAlign    = 'right'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(label, LABEL_W - 18, cy)
-
-      // Polarity indicator arrow
-      if (hasSrc) {
-        ctx.fillStyle    = polarity > 0 ? '#FF6B35' : '#00D4FF'
-        ctx.font         = 'bold 9px sans-serif'
-        ctx.textAlign    = 'right'
-        ctx.textBaseline = 'middle'
-        ctx.fillText(polarity > 0 ? '↓' : '↑', LABEL_W - 5, cy)
-      }
-
-      // Phase-reversal badge
-      if (isPR && isBipolar) {
-        ctx.fillStyle    = '#FFD16666'
-        ctx.font         = 'bold 8px sans-serif'
-        ctx.textAlign    = 'right'
-        ctx.textBaseline = 'middle'
-        ctx.fillText('⇄', LABEL_W - 5, cy)
-      }
-    })
-
-    // ── Legend strip ──────────────────────────────────────────────────────
-    // Sits in the upper half of the 50-px footer band; the time-axis labels
-    // live in the lower half (baseline at H-10) so the two never overlap.
-    const swatchTop  = H - 40        // 8-px swatch top edge
-    const swatchSize = 8
-    const textY      = swatchTop + swatchSize / 2   // 'middle' baseline aligns with swatch centre
-    const items = isBipolar
-      ? [['Source leads', '#FF6B35', '↓↑'], ['Phase reversal ⇄', '#FFD166', ''], ['Other channels', '#5A6A82', '']]
-      : [['Max amplitude', '#FF6B35', ''], ['Near channels', '#00FFB0', ''], ['Distant channels', '#5A6A82', '']]
-
-    let lx = LABEL_W + 8
-    items.forEach(([txt, col]) => {
-      ctx.fillStyle    = col
-      ctx.font         = '8px "DM Mono", monospace'
-      ctx.textAlign    = 'left'
-      ctx.textBaseline = 'middle'
-      ctx.fillRect(lx, swatchTop, swatchSize, swatchSize)
-      ctx.fillStyle = '#5A6A82'
-      ctx.fillText(txt, lx + swatchSize + 4, textY)
-      lx += ctx.measureText(txt).width + 30
-    })
-
-  }, [channels, timeAxis, channelInfo, phaseReversals, isBipolar, infoMap, prLabels, hoverIdx])
-
-  useEffect(() => { draw() }, [draw])
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="w-full block"
-      style={{ imageRendering: 'crisp-edges' }}
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
-    />
   )
 }
 
@@ -891,120 +666,6 @@ function SpreadSlider({ sigma, setSigma }) {
   )
 }
 
-// =============================================================================
-// CHANNEL MINI-MAP — synced with the EEG canvas hover state
-// =============================================================================
 
-// A compact head diagram that lights up the electrode pair contributing to the
-// EEG channel currently under the user's cursor. Lives in the right gutter of
-// the EEG card so the user can correlate trace ↔ scalp anatomy without having
-// to glance back up at the source picker.
-function ChannelMiniMap({ hoveredElectrodes, hoveredChannelLabel, sourceElec, isBipolar }) {
-  const SIZE = 168
-  const R    = 64
-  const CX   = SIZE / 2
-  const CY   = SIZE / 2 + 4
-  const toSv = (nx, ny) => ({ x: CX + nx * R, y: CY - ny * R })
 
-  const { pos, neg, polarity } = hoveredElectrodes
 
-  // Polarity-aware colours mirror the EEG canvas's trace colours so the
-  // user sees the same visual language across both elements.
-  const posColor = isBipolar
-    ? (polarity > 0 ? '#FF6B35' : polarity < 0 ? '#00D4FF' : '#FFD166')
-    : '#FF6B35'
-  const negColor = isBipolar
-    ? (polarity > 0 ? '#00D4FF' : polarity < 0 ? '#FF6B35' : '#FFD166')
-    : '#5A6A82'
-
-  return (
-    <svg viewBox={`0 0 ${SIZE} ${SIZE + 4}`} width={SIZE} height={SIZE + 4}
-         style={{ display: 'block' }}>
-      {/* Head outline */}
-      <circle cx={CX} cy={CY} r={R} fill="#0D1424" stroke="#1E2A40" strokeWidth="1.2" />
-      {/* Nose */}
-      <path
-        d={`M${CX - 6} ${CY - R + 4} Q${CX} ${CY - R - 9} ${CX + 6} ${CY - R + 4}`}
-        fill="none" stroke="#2A3A54" strokeWidth="1.2"
-      />
-      {/* Ears */}
-      <ellipse cx={CX - R - 4} cy={CY + 2} rx="3.5" ry="6" fill="none" stroke="#2A3A54" strokeWidth="1" />
-      <ellipse cx={CX + R + 4} cy={CY + 2} rx="3.5" ry="6" fill="none" stroke="#2A3A54" strokeWidth="1" />
-      {/* Crosshairs */}
-      <line x1={CX} y1={CY - R} x2={CX} y2={CY + R} stroke="#1E2A4055" strokeWidth="0.5" strokeDasharray="2,3" />
-      <line x1={CX - R} y1={CY} x2={CX + R} y2={CY} stroke="#1E2A4055" strokeWidth="0.5" strokeDasharray="2,3" />
-
-      {/* Connector line between the two highlighted electrodes (only useful for bipolar) */}
-      {pos && neg && isBipolar && (() => {
-        const a = toSv(ELECTRODE_POSITIONS_2D[pos].x, ELECTRODE_POSITIONS_2D[pos].y)
-        const b = toSv(ELECTRODE_POSITIONS_2D[neg].x, ELECTRODE_POSITIONS_2D[neg].y)
-        return (
-          <line
-            x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-            stroke="#FFD16699" strokeWidth="1.5" strokeDasharray="3,3"
-          />
-        )
-      })()}
-
-      {/* All electrodes — dim by default, prominent if highlighted or source */}
-      {SELECTABLE_ELECTRODES.map((elec) => {
-        const p   = ELECTRODE_POSITIONS_2D[elec]
-        const sv  = toSv(p.x, p.y)
-        const isPos    = elec === pos
-        const isNeg    = elec === neg
-        const isSource = elec === sourceElec
-        let r       = 2.4
-        let fill    = '#0D1424'
-        let stroke  = '#2A3A5488'
-        let sw      = 0.7
-        let label   = false
-
-        if (isSource && !isPos && !isNeg) {
-          fill   = '#FF333344'
-          stroke = '#FF3333'
-          r      = 3.2
-          sw     = 1.2
-        }
-        if (isPos) {
-          fill   = posColor + 'AA'
-          stroke = posColor
-          r      = 4.5
-          sw     = 1.6
-          label  = true
-        }
-        if (isNeg) {
-          fill   = negColor + 'AA'
-          stroke = negColor
-          r      = 4.5
-          sw     = 1.6
-          label  = true
-        }
-        return (
-          <g key={elec}>
-            <circle cx={sv.x} cy={sv.y} r={r}
-              fill={fill} stroke={stroke} strokeWidth={sw} />
-            {label && (
-              <text
-                x={sv.x + (p.x < -0.6 ? -7 : p.x > 0.6 ? 7 : 0)}
-                y={sv.y + (p.y > 0.6 ? -8 : p.y < -0.6 ? 12 : 4)}
-                textAnchor={p.x < -0.6 ? 'end' : p.x > 0.6 ? 'start' : 'middle'}
-                fontSize="7"
-                fontFamily="DM Mono, monospace"
-                fontWeight="bold"
-                fill={isPos ? posColor : negColor}
-              >
-                {elec}
-              </text>
-            )}
-          </g>
-        )
-      })}
-
-      {/* Channel label / placeholder */}
-      <text x={CX} y={SIZE} textAnchor="middle" fontSize="8.5"
-        fontFamily="DM Mono, monospace" fill="#5A6A82" fontWeight="bold">
-        {hoveredChannelLabel ?? '—'}
-      </text>
-    </svg>
-  )
-}

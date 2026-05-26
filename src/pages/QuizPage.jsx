@@ -1,19 +1,15 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react'
-import { useTranslation } from 'react-i18next'
+import { useState } from 'react'
 import {
   getQuizQuestions,
   QUIZ_MODULES,
   DIFFICULTY_LABELS,
-  shuffle,
 } from '@/engine/quiz'
-import { generateDemoTrace } from '@/engine/waveforms'
-import { makeTimeAxis, SAMPLE_RATE } from '@/engine/signalGenerator'
+import DemoTraceViewer from '@/components/eeg/DemoTraceViewer'
 
 // ─── States ───────────────────────────────────────────────────────────────────
 const PHASE = { SELECT: 'select', QUIZ: 'quiz', RESULTS: 'results' }
 
 export default function QuizPage() {
-  const { t } = useTranslation()
   const [phase,      setPhase]      = useState(PHASE.SELECT)
   const [moduleId,   setModuleId]   = useState('all')
   const [questions,  setQuestions]  = useState([])
@@ -105,7 +101,13 @@ export default function QuizPage() {
                 )}
               </div>
               <div className="eeg-paper p-3">
-                <QuestionTrace patternId={q.patternId} revealed={revealed} />
+                <DemoTraceViewer
+                  patternId={q.patternId}
+                  color="#00FFB0"
+                  height={94}
+                  label="Quiz trace"
+                  className={revealed ? '' : 'opacity-95'}
+                />
               </div>
             </div>
           )}
@@ -273,7 +275,7 @@ function QuizResults({ questions, answers, onRestart }) {
         {/* Per-question review */}
         <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-4">Review</p>
         <div className="space-y-2 mb-8">
-          {questions.map((q, i) => {
+          {questions.map(q => {
             const chosen     = answers[q.id]
             const isCorrect  = q.options.find(o => o.id === chosen)?.correct
             const correctOpt = q.options.find(o => o.correct)
@@ -300,53 +302,6 @@ function QuizResults({ questions, answers, onRestart }) {
       </div>
     </div>
   )
-}
-
-// ─── Question Trace ───────────────────────────────────────────────────────────
-
-function QuestionTrace({ patternId, revealed }) {
-  const canvasRef  = useRef(null)
-  const sampleRate = SAMPLE_RATE
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const data  = generateDemoTrace(patternId, sampleRate)
-    const dpr   = window.devicePixelRatio || 1
-    const W     = canvas.clientWidth
-    const H     = 90
-    canvas.width  = W * dpr
-    canvas.height = H * dpr
-    canvas.style.height = `${H}px`
-    const ctx = canvas.getContext('2d')
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, W, H)
-    const maxV = Math.max(...Array.from(data).map(Math.abs)) || 1
-    // Grid
-    ctx.strokeStyle = 'rgba(0,212,255,0.08)'
-    ctx.lineWidth   = 0.5
-    for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke() }
-    for (let y = 0; y <= H; y += 20) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y);  ctx.stroke() }
-    // Baseline
-    ctx.strokeStyle = 'rgba(0,212,255,0.15)'
-    ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke()
-    // Signal (blurred if not revealed for identify questions — keep same color regardless)
-    const color = '#00FFB0'
-    ctx.strokeStyle = color
-    ctx.lineWidth   = 1.5
-    ctx.shadowColor = color
-    ctx.shadowBlur  = revealed ? 6 : 8
-    ctx.beginPath()
-    data.forEach((v, i) => {
-      const x = (i / data.length) * W
-      const y = H/2 - (v / maxV) * (H/2 - 6)
-      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y)
-    })
-    ctx.stroke()
-    ctx.shadowBlur = 0
-  }, [patternId, revealed])
-
-  return <canvas ref={canvasRef} className="w-full block" />
 }
 
 // ─── Difficulty Badge ─────────────────────────────────────────────────────────

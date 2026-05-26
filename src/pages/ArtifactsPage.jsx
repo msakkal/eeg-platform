@@ -1,21 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ARTIFACT_CATALOGUE, DEMO_CHANNELS } from '@/engine/artifacts'
+import { ARTIFACT_CATALOGUE } from '@/engine/artifacts'
 import { makeTimeAxis, SAMPLE_RATE } from '@/engine/signalGenerator'
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const CHANNEL_H    = 38
-const LABEL_W      = 88
-const HEADER_H     = 24        // event-tick band at top of plot
-const FOOTER_H     = 22        // time-axis band at bottom of plot
-const SIGNAL_COLOR = '#00FFB0'
-const MAJOR_GRID   = 'rgba(0,212,255,0.18)'
-const MINOR_GRID   = 'rgba(0,212,255,0.05)'
-const BASELINE_COL = 'rgba(0,212,255,0.07)'
-const AXIS_COLOR   = 'rgba(0,212,255,0.30)'
-const LABEL_COLOR  = '#5A6A82'
-const BG_PAPER     = '#0C1220'
+import { ChannelHoverPanel } from '@/components/eeg/ChannelHoverMap'
+import EEGViewer from '@/components/eeg/EEGViewer'
 
 // Tabs within the detail panel — labels resolved via i18n (`artifacts.detail_tabs.<id>`)
 const DETAIL_TABS = [
@@ -36,6 +24,7 @@ export default function ArtifactsPage() {
   const [generating, setGenerating] = useState(false)
   const [filter,     setFilter]     = useState('all')
   const [normalise,  setNormalise]  = useState('global')   // 'global' | 'per-channel'
+  const [hoveredChannel, setHoveredChannel] = useState(null)
 
   const artifact = useMemo(
     () => ARTIFACT_CATALOGUE.find(a => a.id === selectedId),
@@ -66,7 +55,10 @@ export default function ArtifactsPage() {
     return () => clearTimeout(tid)
   }, [artifact])
 
-  useEffect(() => { setDetailTab('overview') }, [selectedId])
+  useEffect(() => {
+    setDetailTab('overview')
+    setHoveredChannel(null)
+  }, [selectedId])
 
   const timeAxis = useMemo(() => makeTimeAxis(8 * SAMPLE_RATE, SAMPLE_RATE), [])
 
@@ -96,6 +88,14 @@ export default function ArtifactsPage() {
     : ARTIFACT_CATALOGUE.filter(a => filterMap[a.id] === filter)
 
   const { channels, events, hot } = viewState
+  const eventAnnotations = useMemo(() => (
+    events.map(ev => ({
+      id: `${selectedId}-${ev.t}-${ev.text ?? 'event'}`,
+      timeS: ev.t,
+      label: ev.text ?? 'Event',
+      color: artifact?.color ?? '#00FFB0',
+    }))
+  ), [artifact?.color, events, selectedId])
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -198,7 +198,8 @@ export default function ArtifactsPage() {
           </div>
 
           {/* Canvas */}
-          <div className="overflow-y-auto overflow-x-hidden" style={{ height: 'calc(100% - 48px)' }}>
+          <div className="flex flex-col lg:flex-row min-h-0" style={{ height: 'calc(100% - 48px)' }}>
+            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden">
             {generating || channels.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="flex items-center gap-2 text-eeg-muted font-mono text-sm animate-pulse">
@@ -206,15 +207,27 @@ export default function ArtifactsPage() {
                 </div>
               </div>
             ) : (
-              <ArtifactMultiChannelViewer
+              <EEGViewer
                 channels={channels}
-                events={events}
-                hotChannels={hot}
                 timeAxis={timeAxis}
-                artifactColor={artifact?.color}
-                normalise={normalise}
+                isPlaying={false}
+                annotations={eventAnnotations}
+                scaleMode={normalise === 'per-channel' ? 'per-channel-fit' : 'global-fit'}
+                channelHeight={38}
+                leftLabelWidth={88}
+                footerHeight={24}
+                signalColor="#00FFB0"
+                highlightedChannels={hot}
+                highlightColor={artifact?.color}
+                showChannelAmplitudes
+                onHoverChannel={setHoveredChannel}
               />
             )}
+            </div>
+            <ChannelHoverPanel
+              channelLabel={hoveredChannel}
+              className="lg:w-52 lg:flex-shrink-0 border-t lg:border-t-0 lg:border-l border-eeg-border"
+            />
           </div>
         </div>
 
@@ -245,278 +258,6 @@ export default function ArtifactsPage() {
         </div>
       </div>
     </div>
-  )
-}
-
-// ─── Multi-Channel Canvas Viewer ──────────────────────────────────────────────
-
-function ArtifactMultiChannelViewer({ channels, events, hotChannels, timeAxis, artifactColor, normalise }) {
-  const canvasRef = useRef(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !channels.length) return
-
-    const dpr  = window.devicePixelRatio || 1
-    const W    = canvas.clientWidth
-    const nCh  = channels.length
-    const plotInner = nCh * CHANNEL_H
-    const H    = HEADER_H + plotInner + FOOTER_H
-
-    canvas.width        = W * dpr
-    canvas.height       = H * dpr
-    canvas.style.height = `${H}px`
-
-    const ctx = canvas.getContext('2d')
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, W, H)
-
-    const plotW    = W - LABEL_W
-    const plotX0   = LABEL_W
-    const plotY0   = HEADER_H
-    const plotY1   = HEADER_H + plotInner
-    const duration = timeAxis[timeAxis.length - 1] ?? 8
-
-    // ── Plot area background (paper) ──────────────────────────────────────
-    ctx.fillStyle = BG_PAPER
-    ctx.fillRect(plotX0, 0, plotW, H)
-
-    // ── Hot-channel highlight bands (drawn first, behind grid) ────────────
-    if (hotChannels && hotChannels.length) {
-      const hotSet = new Set(hotChannels)
-      channels.forEach(({ label }, idx) => {
-        if (!hotSet.has(label)) return
-        const top = plotY0 + idx * CHANNEL_H
-        ctx.fillStyle = (artifactColor ?? '#00FFB0') + '12'    // ~7% opacity
-        ctx.fillRect(plotX0, top, plotW, CHANNEL_H)
-      })
-    }
-
-    // ── Minor vertical grid: every 200 ms ─────────────────────────────────
-    ctx.strokeStyle = MINOR_GRID
-    ctx.lineWidth   = 1
-    const minorStep = 0.2
-    for (let t = 0; t <= duration + 1e-6; t += minorStep) {
-      const x = plotX0 + (t / duration) * plotW
-      ctx.beginPath()
-      ctx.moveTo(x, plotY0)
-      ctx.lineTo(x, plotY1)
-      ctx.stroke()
-    }
-
-    // ── Major vertical grid: every 1 s ────────────────────────────────────
-    ctx.strokeStyle = MAJOR_GRID
-    ctx.lineWidth   = 1
-    for (let t = 0; t <= duration + 1e-6; t += 1) {
-      const x = plotX0 + (t / duration) * plotW
-      ctx.beginPath()
-      ctx.moveTo(x, plotY0)
-      ctx.lineTo(x, plotY1)
-      ctx.stroke()
-    }
-
-    // ── Per-channel baseline and separator lines ─────────────────────────
-    channels.forEach(({ label }, idx) => {
-      const cy  = plotY0 + idx * CHANNEL_H + CHANNEL_H / 2
-      const sep = plotY0 + (idx + 1) * CHANNEL_H
-
-      // Faint baseline
-      ctx.strokeStyle = BASELINE_COL
-      ctx.lineWidth   = 0.5
-      ctx.beginPath()
-      ctx.moveTo(plotX0, cy); ctx.lineTo(W, cy)
-      ctx.stroke()
-
-      // Channel separator
-      ctx.strokeStyle = 'rgba(0,212,255,0.07)'
-      ctx.lineWidth   = 0.5
-      ctx.beginPath()
-      ctx.moveTo(plotX0, sep); ctx.lineTo(W, sep)
-      ctx.stroke()
-    })
-
-    // ── Compute normalisation ─────────────────────────────────────────────
-    const channelMax = channels.map(ch => {
-      if (!ch.data || !ch.data.length) return 1
-      let m = 0
-      for (let i = 0; i < ch.data.length; i++) {
-        const v = Math.abs(ch.data[i])
-        if (v > m) m = v
-      }
-      return m || 1
-    })
-    const globalMax = channelMax.reduce((a, b) => Math.max(a, b), 1)
-
-    // ── Draw each channel's trace ────────────────────────────────────────
-    channels.forEach(({ label, data }, idx) => {
-      if (!data || data.length === 0) return
-      const cy     = plotY0 + idx * CHANNEL_H + CHANNEL_H / 2
-      const halfH  = CHANNEL_H / 2 - 3
-      const chMax  = channelMax[idx]
-      const scaleMax = normalise === 'per-channel' ? chMax : globalMax
-      const isHot  = hotChannels?.includes(label) ||
-                     (chMax / globalMax) > 0.55
-      const baseCol = artifactColor ?? SIGNAL_COLOR
-
-      ctx.strokeStyle = isHot ? baseCol : SIGNAL_COLOR
-      ctx.lineWidth   = isHot ? 1.35 : 0.9
-      ctx.shadowColor = ctx.strokeStyle
-      ctx.shadowBlur  = isHot ? 5 : 2
-      ctx.lineJoin    = 'round'
-      ctx.lineCap     = 'round'
-
-      const nPts = data.length
-      const step = Math.max(1, Math.floor(nPts / (plotW * 2)))
-      ctx.beginPath()
-      for (let i = 0; i < nPts; i += step) {
-        const x = plotX0 + (i / nPts) * plotW
-        const y = cy - (data[i] / scaleMax) * halfH
-        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
-      }
-      ctx.stroke()
-      ctx.shadowBlur = 0
-    })
-
-    // ── Event band (top) ──────────────────────────────────────────────────
-    ctx.fillStyle = '#0A0E1A'
-    ctx.fillRect(plotX0, 0, plotW, HEADER_H)
-    ctx.strokeStyle = 'rgba(0,212,255,0.12)'
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(plotX0, HEADER_H); ctx.lineTo(W, HEADER_H); ctx.stroke()
-
-    if (events && events.length) {
-      events.forEach(ev => {
-        if (ev.t < 0 || ev.t > duration) return
-        const x = plotX0 + (ev.t / duration) * plotW
-        const col = artifactColor ?? '#00FFB0'
-
-        // Vertical guide line through all channels (faint)
-        ctx.strokeStyle = col + '33'
-        ctx.lineWidth   = 0.8
-        ctx.setLineDash([3, 3])
-        ctx.beginPath()
-        ctx.moveTo(x, HEADER_H); ctx.lineTo(x, plotY1)
-        ctx.stroke()
-        ctx.setLineDash([])
-
-        // Tick mark at top
-        ctx.fillStyle = col
-        ctx.beginPath()
-        ctx.moveTo(x - 4, 4)
-        ctx.lineTo(x + 4, 4)
-        ctx.lineTo(x, 12)
-        ctx.closePath()
-        ctx.fill()
-
-        // Label
-        if (ev.text) {
-          ctx.fillStyle    = col
-          ctx.font         = `9px "DM Mono", monospace`
-          ctx.textAlign    = 'center'
-          ctx.textBaseline = 'top'
-          ctx.fillText(ev.text, x, 13)
-        }
-      })
-    }
-
-    // ── Time-axis footer ─────────────────────────────────────────────────
-    ctx.fillStyle = '#0A0E1A'
-    ctx.fillRect(plotX0, plotY1, plotW, FOOTER_H)
-    ctx.strokeStyle = 'rgba(0,212,255,0.12)'
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(plotX0, plotY1); ctx.lineTo(W, plotY1); ctx.stroke()
-
-    for (let t = 0; t <= duration; t++) {
-      const x = plotX0 + (t / duration) * plotW
-      ctx.strokeStyle = AXIS_COLOR
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(x, plotY1); ctx.lineTo(x, plotY1 + 4)
-      ctx.stroke()
-      ctx.fillStyle    = LABEL_COLOR
-      ctx.font         = `9px "DM Mono", monospace`
-      ctx.textAlign    = 'left'
-      ctx.textBaseline = 'top'
-      ctx.fillText(`${t}s`, x + 3, plotY1 + 6)
-    }
-
-    // ── Scale bar (bottom-right corner) ───────────────────────────────────
-    const amplitudeBarUv = 100
-    const pxPerUv = (CHANNEL_H / 2 - 3) / globalMax
-    const ampPx   = pxPerUv * amplitudeBarUv
-    const timePx  = (1 / duration) * plotW      // 1 second
-    const barX    = W - 22
-    const barY    = plotY1 - 8
-
-    if (isFinite(ampPx) && ampPx > 3 && ampPx < CHANNEL_H * 3) {
-      ctx.strokeStyle = '#00FFB0'
-      ctx.lineWidth   = 1.5
-      // Vertical (amplitude) bar
-      ctx.beginPath()
-      ctx.moveTo(barX, barY - ampPx); ctx.lineTo(barX, barY)
-      ctx.stroke()
-      // Horizontal (time) bar
-      ctx.beginPath()
-      ctx.moveTo(barX, barY); ctx.lineTo(barX - timePx, barY)
-      ctx.stroke()
-
-      ctx.fillStyle    = '#00FFB0'
-      ctx.font         = `9px "DM Mono", monospace`
-      ctx.textAlign    = 'right'
-      ctx.textBaseline = 'bottom'
-      ctx.fillText(`${amplitudeBarUv} µV`, barX - 3, barY - ampPx + 9)
-      ctx.textAlign    = 'right'
-      ctx.textBaseline = 'top'
-      ctx.fillText('1 s', barX - 3, barY + 2)
-    }
-
-    // ── Label column ──────────────────────────────────────────────────────
-    ctx.fillStyle = '#070B14'
-    ctx.fillRect(0, 0, LABEL_W, H)
-    ctx.strokeStyle = AXIS_COLOR
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(LABEL_W, 0); ctx.lineTo(LABEL_W, H); ctx.stroke()
-
-    channels.forEach(({ label }, idx) => {
-      const cy    = plotY0 + idx * CHANNEL_H + CHANNEL_H / 2
-      const chMax = channelMax[idx]
-      const relAmp = chMax / globalMax
-      const isHot = hotChannels?.includes(label) || relAmp > 0.55
-
-      // Peak amplitude readout
-      ctx.fillStyle    = LABEL_COLOR
-      ctx.font         = `8px "DM Mono", monospace`
-      ctx.textAlign    = 'right'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(`${Math.round(chMax)}µV`, LABEL_W - 6, cy + 9)
-
-      // Channel label
-      ctx.fillStyle    = isHot ? (artifactColor ?? '#00FFB0') : '#8894AA'
-      ctx.font         = `${isHot ? 'bold ' : ''}10px "DM Mono", monospace`
-      ctx.textAlign    = 'right'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(label, LABEL_W - 6, cy - 3)
-
-      // Hot-channel indicator dot
-      if (isHot) {
-        ctx.fillStyle = artifactColor ?? '#00FFB0'
-        ctx.beginPath()
-        ctx.arc(6, cy, 2.5, 0, Math.PI * 2)
-        ctx.fill()
-      }
-    })
-
-  }, [channels, events, hotChannels, timeAxis, artifactColor, normalise])
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="w-full block"
-      style={{ imageRendering: 'crisp-edges' }}
-    />
   )
 }
 

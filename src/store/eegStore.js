@@ -8,10 +8,11 @@ function resolveValue(valueOrUpdater, currentValue) {
     : valueOrUpdater
 }
 
-export const useEEGStore = create((set, get) => ({
+export const useEEGStore = create((set, _get) => ({
   // ── EEG State ─────────────────────────────────────────────────────────────
   montageId:      DEFAULT_MONTAGE,
   pattern:        'normal_awake',
+  amplitude:      50,
   sensitivity:    DEFAULT_SENSITIVITY,   // µV/mm — clinical display sensitivity
   noiseLevel:     0.25,
   sweepSpeed:     25,     // mm/s equivalent (affects how much data is shown)
@@ -27,6 +28,7 @@ export const useEEGStore = create((set, get) => ({
   // ── Actions ───────────────────────────────────────────────────────────────
   setMontage:      (id)      => set({ montageId: id }),
   setPattern:      (p)       => set({ pattern: p }),
+  setAmplitude:    (v)       => set(s => ({ amplitude: resolveValue(v, s.amplitude) })),
   setSensitivity:  (v)       => set(s => ({ sensitivity: resolveValue(v, s.sensitivity) })),
   setNoiseLevel:   (v)       => set(s => ({ noiseLevel: resolveValue(v, s.noiseLevel) })),
   setSweepSpeed:   (v)       => set(s => ({ sweepSpeed: resolveValue(v, s.sweepSpeed) })),

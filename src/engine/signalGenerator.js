@@ -1,4 +1,4 @@
-/**
+﻿/**
  * EEG Signal Generation Engine
  *
  * Generates physiologically plausible EEG using:
@@ -36,6 +36,24 @@ export const WINDOW_SIZE = SAMPLE_RATE * 10  // 10-second window
 
 export { ELECTRODES_1020 }
 
+const nativeRandom = Math.random
+let activeRandom = nativeRandom
+
+function random() {
+  return activeRandom()
+}
+
+function makeRng(seed) {
+  let a = seed | 0
+  return function rng() {
+    a = (a + 0x6D2B79F5) | 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 // ─── Rhythm Definitions ──────────────────────────────────────────────────────
 
 export const RHYTHMS = {
@@ -50,8 +68,8 @@ export const RHYTHMS = {
 
 /** Box-Muller gaussian random number */
 function gaussianRandom(mean = 0, std = 1) {
-  const u = 1 - Math.random()
-  const v = Math.random()
+  const u = 1 - random()
+  const v = random()
   return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
 }
 
@@ -79,15 +97,19 @@ function pinkNoise(length) {
  * Generate a background EEG rhythm as a sum of sine components.
  * @param {number} length   - number of samples
  * @param {number} fs       - sample rate (Hz)
- * @param {object} options  - { freqBands, amplitude, noiseLevel }
+ * @param {object} options  - { freqBands, amplitude, noiseLevel, seed }
  */
 export function generateBackground(length, fs = SAMPLE_RATE, options = {}) {
   const {
     freqBands  = ['alpha'],
     amplitude  = 50,        // µV
     noiseLevel = 0.3,
+    seed       = null,
   } = options
+  const previousRandom = activeRandom
+  if (seed != null) activeRandom = makeRng(seed)
 
+  try {
   const signal = new Float32Array(length)
   const noise  = pinkNoise(length)
 
@@ -95,9 +117,9 @@ export function generateBackground(length, fs = SAMPLE_RATE, options = {}) {
     const { min, max } = RHYTHMS[band] ?? RHYTHMS.alpha
     const nComponents = 4
     for (let c = 0; c < nComponents; c++) {
-      const freq  = min + Math.random() * (max - min)
-      const phase = Math.random() * 2 * Math.PI
-      const amp   = amplitude * (0.5 + Math.random() * 0.5) / nComponents
+      const freq  = min + random() * (max - min)
+      const phase = random() * 2 * Math.PI
+      const amp   = amplitude * (0.5 + random() * 0.5) / nComponents
       for (let i = 0; i < length; i++) {
         signal[i] += amp * Math.sin(2 * Math.PI * freq * (i / fs) + phase)
       }
@@ -109,6 +131,9 @@ export function generateBackground(length, fs = SAMPLE_RATE, options = {}) {
   }
 
   return signal
+  } finally {
+    if (seed != null) activeRandom = previousRandom
+  }
 }
 
 // ─── Modulated Rhythm Generator ──────────────────────────────────────────────
@@ -132,8 +157,8 @@ function addModulatedBand(signal, fs, {
   phase0,
 }) {
   const length = signal.length
-  const envFreq = envFreqMin + Math.random() * (envFreqMax - envFreqMin)
-  const envPhase = Math.random() * 2 * Math.PI
+  const envFreq = envFreqMin + random() * (envFreqMax - envFreqMin)
+  const envPhase = random() * 2 * Math.PI
 
   // Build a smooth amplitude envelope (0..1)
   const env = new Float32Array(length)
@@ -144,9 +169,9 @@ function addModulatedBand(signal, fs, {
   }
 
   for (let c = 0; c < nComponents; c++) {
-    const freq  = centerFreq + (Math.random() - 0.5) * bandwidthHz
-    const phase = phase0 != null ? phase0 + c * 0.4 : Math.random() * 2 * Math.PI
-    const amp   = amplitude * (0.6 + Math.random() * 0.4) / nComponents
+    const freq  = centerFreq + (random() - 0.5) * bandwidthHz
+    const phase = phase0 != null ? phase0 + c * 0.4 : random() * 2 * Math.PI
+    const amp   = amplitude * (0.6 + random() * 0.4) / nComponents
     for (let i = 0; i < length; i++) {
       signal[i] += amp * env[i] * Math.sin(2 * Math.PI * freq * (i / fs) + phase)
     }
@@ -193,7 +218,7 @@ function buildSourceRhythm(nSamples, fs, opts) {
 function mixSource(target, source, gain, phaseJitterSamples = 0, _fs = SAMPLE_RATE) {
   if (!gain) return
   const offset = phaseJitterSamples > 0
-    ? Math.floor((Math.random() * 2 - 1) * phaseJitterSamples)
+    ? Math.floor((random() * 2 - 1) * phaseJitterSamples)
     : 0
   const N = target.length
   for (let i = 0; i < N; i++) {
@@ -217,10 +242,10 @@ function addBaselineDrift(signal, fs, label, amplitude) {
                        r === 'parietal'    || r === 'occipital'
   const driftAmp = amplitude * (isPostOrTemp ? 0.15 : 0.07)
   if (driftAmp < 0.5) return
-  const f1  = 0.05 + Math.random() * 0.10
-  const f2  = 0.15 + Math.random() * 0.15
-  const ph1 = Math.random() * 2 * Math.PI
-  const ph2 = Math.random() * 2 * Math.PI
+  const f1  = 0.05 + random() * 0.10
+  const f2  = 0.15 + random() * 0.15
+  const ph1 = random() * 2 * Math.PI
+  const ph2 = random() * 2 * Math.PI
   for (let i = 0; i < signal.length; i++) {
     const t = i / fs
     signal[i] += driftAmp * (
@@ -239,10 +264,10 @@ function addBaselineDrift(signal, fs, label, amplitude) {
 function buildCardiacSchedule(durationSec, hr = 65) {
   const ibiMean = 60 / hr
   const beats = []
-  let t = 0.2 + Math.random() * 0.5
+  let t = 0.2 + random() * 0.5
   while (t < durationSec - 0.1) {
     beats.push(t)
-    t += ibiMean * (0.92 + Math.random() * 0.16)            // ~10% HRV
+    t += ibiMean * (0.92 + random() * 0.16)            // ~10% HRV
   }
   return beats
 }
@@ -497,10 +522,10 @@ export function generateSaccadeTimes(durationSec, ratePerMin = 25) {
   if (ratePerMin <= 0) return []
   const meanIbi = 60 / ratePerMin
   const events = []
-  let t = 0.5 + Math.random() * meanIbi
+  let t = 0.5 + random() * meanIbi
   while (t < durationSec - 0.5) {
-    events.push({ t, direction: Math.random() > 0.5 ? +1 : -1 })
-    const u   = Math.max(1e-6, Math.random())
+    events.push({ t, direction: random() > 0.5 ? +1 : -1 })
+    const u   = Math.max(1e-6, random())
     const ibi = -meanIbi * Math.log(u)            // exponential
     t += Math.max(0.4, ibi)
   }
@@ -519,12 +544,12 @@ export function generateBlinkTimes(durationSec, ratePerMin = 18) {
   if (ratePerMin <= 0) return []
   const meanIbi = 60 / ratePerMin           // seconds
   const times = []
-  let t = 0.3 + Math.random() * meanIbi     // first blink offset
+  let t = 0.3 + random() * meanIbi     // first blink offset
   while (t < durationSec - 0.2) {
     times.push(t)
     // Gamma(k=2, theta=meanIbi/2) approximation = sum of two exponentials
-    const u1 = Math.max(1e-6, Math.random())
-    const u2 = Math.max(1e-6, Math.random())
+    const u1 = Math.max(1e-6, random())
+    const u2 = Math.max(1e-6, random())
     const ibi = -(meanIbi / 2) * (Math.log(u1) + Math.log(u2))
     t += Math.max(0.25, ibi)                // minimum plausible inter-blink
   }
@@ -581,9 +606,8 @@ function alphaComaFieldGradient(label) {
  * Returns an object: { channels: { [label]: Float32Array }, sampleRate, duration }
  *
  * @param {object} options
- *   - duration, sampleRate, amplitude, noiseLevel
- *   - pattern: 'normal_awake' | 'normal_drowsy' | 'normal_sleep' |
- *              'absence' | 'focal_slowing' | 'burst_suppression'
+ *   - duration, sampleRate, amplitude, noiseLevel, seed
+ *   - pattern: one of the sandbox pattern ids in patterns.js
  *   - eyesClosed: boolean (applies to 'normal_awake')
  *   - blinksEnabled: boolean (default true when eyes open)
  *   - blinkRate: blinks per minute (default 18)
@@ -598,8 +622,12 @@ export function generateMultiChannelEEG(options = {}) {
     eyesClosed    = true,
     blinksEnabled = true,
     blinkRate     = 18,
+    seed          = null,
   } = options
+  const previousRandom = activeRandom
+  activeRandom = seed == null ? nativeRandom : makeRng(seed)
 
+  try {
   const nSamples = Math.round(duration * sampleRate)
   const channels = {}
 
@@ -749,7 +777,7 @@ export function generateMultiChannelEEG(options = {}) {
   {
     const n = Math.max(1, Math.round(duration / 5))
     for (let k = 0; k < n; k++) {
-      vertexTimes.push(0.8 + Math.random() * (duration - 1.6))
+      vertexTimes.push(0.8 + random() * (duration - 1.6))
     }
   }
   // Pre-scheduled K-complexes (1 per ~8 s) — sharp neg + large positive slow,
@@ -758,7 +786,7 @@ export function generateMultiChannelEEG(options = {}) {
   {
     const n = Math.max(1, Math.round(duration / 8))
     for (let k = 0; k < n; k++) {
-      kComplexTimes.push(1.5 + Math.random() * (duration - 3))
+      kComplexTimes.push(1.5 + random() * (duration - 3))
     }
   }
   // Pre-scheduled spindles — synchronous across centroparietal cortex
@@ -767,10 +795,10 @@ export function generateMultiChannelEEG(options = {}) {
     const n = Math.round(duration / 4)
     for (let k = 0; k < n; k++) {
       spindleSchedule.push({
-        t:    1 + Math.random() * (duration - 2),
-        dur:  0.6 + Math.random() * 0.8,
-        freq: 12.5 + Math.random() * 1.5,
-        ph:   Math.random() * 2 * Math.PI,
+        t:    1 + random() * (duration - 2),
+        dur:  0.6 + random() * 0.8,
+        freq: 12.5 + random() * 1.5,
+        ph:   random() * 2 * Math.PI,
       })
     }
   }
@@ -900,7 +928,7 @@ export function generateMultiChannelEEG(options = {}) {
   {
     let t = 0.2
     while (t < duration - 0.5) {
-      const burstDur = 0.5 + Math.random() * 1.2
+      const burstDur = 0.5 + random() * 1.2
       // Build the burst waveform once; channels project it with mild
       // regional variation (small amplitude jitter) so they aren't perfectly
       // identical, but timing and morphology stay locked.
@@ -927,14 +955,14 @@ export function generateMultiChannelEEG(options = {}) {
         len,
         burst,
       })
-      t += burstDur + 2 + Math.random() * 2
+      t += burstDur + 2 + random() * 2
     }
   }
 
   function burstSuppressionChannel(label) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude * 0.15, noiseLevel)     // suppression floor
-    const ampJitter = 0.92 + Math.random() * 0.16        // ±8% per channel
+    const ampJitter = 0.92 + random() * 0.16        // ±8% per channel
     burstSchedule.forEach(({ start, len, burst }) => {
       for (let i = 0; i < len; i++) {
         const idx = start + i
@@ -1034,7 +1062,7 @@ export function generateMultiChannelEEG(options = {}) {
     return sig
   }
 
-  // Electrocerebral silence — near-flat, residual technical noise only.
+  // Electrocerebral inactivity — near-flat, residual technical noise only.
   function ecsChannel(label) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude * 0.04, noiseLevel * 0.3)
@@ -1079,7 +1107,7 @@ export function generateMultiChannelEEG(options = {}) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude * 2.0, noiseLevel * 1.3)
     addModulatedBand(sig, sampleRate, {
-      centerFreq:  1.5 + Math.random() * 1.5,
+      centerFreq:  1.5 + random() * 1.5,
       bandwidthHz: 2.5,
       amplitude:   amplitude * 3.8,
       nComponents: 4,
@@ -1088,7 +1116,7 @@ export function generateMultiChannelEEG(options = {}) {
       envFloor:    0.5,
     })
     addModulatedBand(sig, sampleRate, {
-      centerFreq:  3 + Math.random() * 2,
+      centerFreq:  3 + random() * 2,
       bandwidthHz: 3,
       amplitude:   amplitude * 2.2,
       nComponents: 3,
@@ -1097,12 +1125,12 @@ export function generateMultiChannelEEG(options = {}) {
     // Random asynchronous multifocal sharp waves
     const nSpikes = Math.round(duration * 2.2)
     for (let k = 0; k < nSpikes; k++) {
-      const pos = Math.round(Math.random() * nSamples)
-      const amp = 180 + Math.random() * 260
+      const pos = Math.round(random() * nSamples)
+      const amp = 180 + random() * 260
       injectSharpWave(sig, pos, {
         amplitude: amp,
-        duration:  0.08 + Math.random() * 0.1,
-        polarity:  Math.random() > 0.5 ? -1 : +1,
+        duration:  0.08 + random() * 0.1,
+        polarity:  random() > 0.5 ? -1 : +1,
       })
     }
     return sig
@@ -1117,7 +1145,7 @@ export function generateMultiChannelEEG(options = {}) {
 
   // ── Shared cardiac schedule for the whole recording ────────────────────
   // The heart only beats once: every channel must show QRS at the same time.
-  const recordingHr   = 60 + Math.round(Math.random() * 12)   // 60–72 bpm
+  const recordingHr   = 60 + Math.round(random() * 12)   // 60–72 bpm
   const cardiacBeats  = buildCardiacSchedule(duration, recordingHr)
 
   // ── Build each channel ──────────────────────────────────────────────────
@@ -1158,7 +1186,7 @@ export function generateMultiChannelEEG(options = {}) {
     // ── Ambient artifacts always present in real recordings ─────────────
     // Slow baseline drift (0.05–0.3 Hz): skin/sweat, cable strain.
     // Cardiac pulse: visible at temporal/posterior leads and ear refs.
-    // ECS leaves these out (the whole point is near-flat signal).
+    // ECI leaves these out (the whole point is near-flat signal).
     if (pattern !== 'electrocerebral_silence') {
       addBaselineDrift(sig, sampleRate, label, amplitude)
       addCardiacPulse(sig, sampleRate, label, cardiacBeats)
@@ -1182,9 +1210,9 @@ export function generateMultiChannelEEG(options = {}) {
     const blinkTimes = generateBlinkTimes(duration, blinkRate)
     blinkTimes.forEach(t => {
       const s0 = Math.round(t * sampleRate)
-      const peakAmp = 180 + Math.random() * 80      // 180–260 µV at Fp
-      const riseMs  = 55 + Math.random() * 30
-      const fallMs  = 180 + Math.random() * 90
+      const peakAmp = 180 + random() * 80      // 180–260 µV at Fp
+      const riseMs  = 55 + random() * 30
+      const fallMs  = 180 + random() * 90
       ELECTRODES_1020.forEach(label => {
         const f = blinkField(label)
         if (f < 0.02) return
@@ -1206,8 +1234,8 @@ export function generateMultiChannelEEG(options = {}) {
     const saccadeEvents = generateSaccadeTimes(duration, 22)
     saccadeEvents.forEach(({ t, direction }) => {
       const s0     = Math.round(t * sampleRate)
-      const peak   = 60 + Math.random() * 40       // 60–100 µV at F7/F8
-      const durMs  = 280 + Math.random() * 140
+      const peak   = 60 + random() * 40       // 60–100 µV at F7/F8
+      const durMs  = 280 + random() * 140
       ELECTRODES_1020.forEach(label => {
         const f = lateralEogField(label, direction)
         if (Math.abs(f) < 0.05) return
@@ -1251,7 +1279,7 @@ export function generateMultiChannelEEG(options = {}) {
                    : x > 0.80 ? (1 - x) / 0.20
                    : 1
       // ±6% timing jitter on each complex
-      const period = (1 / freq) * (0.94 + Math.random() * 0.12)
+      const period = (1 / freq) * (0.94 + random() * 0.12)
 
       const scratch = new Float32Array(cmplxLen)
       injectSpikeAndWave(scratch, spikeOffset, { frequency: 3 })
@@ -1278,7 +1306,7 @@ export function generateMultiChannelEEG(options = {}) {
     const cmplxLen = Math.round(sampleRate * 0.42)
     let t = 0.6
     while (t < duration - 0.5) {
-      const ampJ = 0.85 + Math.random() * 0.30           // ±15% per complex
+      const ampJ = 0.85 + random() * 0.30           // ±15% per complex
       const scratch = new Float32Array(cmplxLen)
       injectSharpWave(scratch, 12,
         { amplitude: 130 * ampJ, duration: 0.11, polarity: -1 })
@@ -1299,7 +1327,7 @@ export function generateMultiChannelEEG(options = {}) {
           channels[label][idx] += scratch[i] * scale
         }
       })
-      t += ibiMean * (0.88 + Math.random() * 0.24)       // ±12% IBI jitter
+      t += ibiMean * (0.88 + random() * 0.24)       // ±12% IBI jitter
     }
   }
 
@@ -1309,7 +1337,7 @@ export function generateMultiChannelEEG(options = {}) {
     const cmplxLen = Math.round(sampleRate * 0.38)
     let t = 0.7
     while (t < duration - 0.5) {
-      const ampJ = 0.85 + Math.random() * 0.30
+      const ampJ = 0.85 + random() * 0.30
       const scratch = new Float32Array(cmplxLen)
       injectSharpWave(scratch, 12,
         { amplitude: 120 * ampJ, duration: 0.09, polarity: -1 })
@@ -1330,7 +1358,7 @@ export function generateMultiChannelEEG(options = {}) {
           channels[label][idx] += scratch[i] * scale
         }
       })
-      t += ibiMean * (0.88 + Math.random() * 0.24)
+      t += ibiMean * (0.88 + random() * 0.24)
     }
   }
 
@@ -1352,7 +1380,7 @@ export function generateMultiChannelEEG(options = {}) {
     }
     let t = 0.5
     while (t < duration - 0.6) {
-      const ampJ = 0.85 + Math.random() * 0.30
+      const ampJ = 0.85 + random() * 0.30
       const scratch = new Float32Array(cmplxLen)
       injectTriphasicWave(scratch, 0,
         { amplitude: 140 * ampJ, duration: 0.35 })
@@ -1367,7 +1395,7 @@ export function generateMultiChannelEEG(options = {}) {
           channels[label][idx] += scratch[i] * scale
         }
       })
-      t += ibiMean * (0.88 + Math.random() * 0.24)
+      t += ibiMean * (0.88 + random() * 0.24)
     }
   }
 
@@ -1412,7 +1440,7 @@ export function generateMultiChannelEEG(options = {}) {
     const cmplxLen = Math.round(sampleRate * 0.52)
     let t = 0.6
     while (t < duration - 0.6) {
-      const ampJ = 0.82 + Math.random() * 0.36
+      const ampJ = 0.82 + random() * 0.36
       const scratch = new Float32Array(cmplxLen)
       injectSpike(scratch, 14,
         { amplitude: 180 * ampJ, duration: 0.08, polarity: -1 })
@@ -1426,7 +1454,7 @@ export function generateMultiChannelEEG(options = {}) {
       const s0 = Math.round(t * sampleRate)
       ELECTRODES_1020.forEach(label => {
         // per-channel asymmetry — LGS discharges often imperfectly synchronous
-        const scale = frontocentralGradient(label) * (0.85 + Math.random() * 0.25)
+        const scale = frontocentralGradient(label) * (0.85 + random() * 0.25)
         if (scale <= 0.05) return
         for (let i = 0; i < cmplxLen; i++) {
           const idx = s0 + i
@@ -1434,7 +1462,7 @@ export function generateMultiChannelEEG(options = {}) {
           channels[label][idx] += scratch[i] * scale
         }
       })
-      t += ibiMean * (0.85 + Math.random() * 0.30)         // ±15% IBI jitter
+      t += ibiMean * (0.85 + random() * 0.30)         // ±15% IBI jitter
     }
   }
 
@@ -1443,7 +1471,7 @@ export function generateMultiChannelEEG(options = {}) {
     const burstTimes = [1.5, 4.4, 7.2]
     burstTimes.forEach(tStart => {
       if (tStart >= duration - 0.8) return
-      const burstDur  = 0.8 + Math.random() * 0.6
+      const burstDur  = 0.8 + random() * 0.6
       const burstEnd  = tStart + burstDur
       const complexPeriod = 1 / 5                          // 5 Hz
       for (let t = tStart; t < burstEnd; t += complexPeriod) {
@@ -1471,7 +1499,7 @@ export function generateMultiChannelEEG(options = {}) {
     })
   }
 
-  // ── Centrotemporal spikes (BECTS): bilateral independent with dipole ──
+  // ── Centrotemporal spikes (SeLECTS/BECTS): bilateral independent dipole ──
   if (pattern === 'centrotemporal_spikes') {
     // Rolandic dipole: negative max centrotemporal, positive frontal.
     const leftField = (label) => {
@@ -1604,6 +1632,9 @@ export function generateMultiChannelEEG(options = {}) {
   }
 
   return { channels, sampleRate, duration, nSamples, pattern }
+  } finally {
+    activeRandom = previousRandom
+  }
 }
 
 // ─── Time Axis ────────────────────────────────────────────────────────────────
@@ -1612,3 +1643,4 @@ export function generateMultiChannelEEG(options = {}) {
 export function makeTimeAxis(nSamples, sampleRate = SAMPLE_RATE) {
   return Array.from({ length: nSamples }, (_, i) => i / sampleRate)
 }
+

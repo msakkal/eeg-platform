@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useTranslation }       from 'react-i18next'
 import { useNavigate }          from 'react-router-dom'
 import { useEEGStore }          from '@/store/eegStore'
-import { generateDemoTrace }    from '@/engine/waveforms'
-import { SAMPLE_RATE }          from '@/engine/signalGenerator'
+import DemoTraceViewer          from '@/components/eeg/DemoTraceViewer'
 
 // ─── Category metadata ───────────────────────────────────────────────────────
 
@@ -200,7 +199,7 @@ const FINDINGS = [
     ],
     etiology: ['Normal sensorimotor rhythm; seen in up to 20% of healthy adults'],
     differential: [
-      'Central sharp waves or centrotemporal spikes (BECTS) — true epileptiform activity',
+      'Central sharp waves or centrotemporal spikes (SeLECTS/BECTS) — true epileptiform activity',
       'Alpha rhythm — mu is reactive to movement, alpha to eye opening',
     ],
     pitfalls: [
@@ -339,13 +338,13 @@ const FINDINGS = [
   {
     id: 'centrotemporal_spikes',
     category: 'epileptiform',
-    title: 'Centrotemporal Spikes (BECTS)',
+    title: 'Centrotemporal Spikes (SeLECTS / BECTS)',
     sandboxPattern: 'centrotemporal_spikes',
     waveformId: 'sharp_wave',
-    tags: ['BECTS', 'Rolandic', 'Childhood benign'],
+    tags: ['SeLECTS', 'BECTS', 'Rolandic'],
     color: '#FF6B35',
     description:
-      'Benign Epilepsy with Centrotemporal Spikes (BECTS / "Rolandic epilepsy") is the most common focal epilepsy of childhood. Characterised by high-amplitude diphasic sharp waves at the centrotemporal region (C3/C4, T3/T4), markedly activated by drowsiness and sleep. Seizures are typically nocturnal, hemifacial, and resolve by mid-adolescence.',
+      'Self-limited epilepsy with centrotemporal spikes (SeLECTS; formerly BECTS / "Rolandic epilepsy") is the most common self-limited focal epilepsy of childhood. It is characterised by high-amplitude diphasic sharp waves at the centrotemporal region (C3/C4, T3/T4), markedly activated by drowsiness and sleep. Seizures are typically nocturnal, hemifacial, and resolve by mid-adolescence.',
     keyFeatures: [
       'Diphasic (sharp-then-slow) discharges at C3/T3 or C4/T4',
       'Horizontal tangential dipole (positive frontal, negative centrotemporal)',
@@ -353,7 +352,7 @@ const FINDINGS = [
       'Normal background and neurological examination',
       'Often bilateral independent',
     ],
-    etiology: ['Age-dependent benign focal epilepsy; peak onset 5–9 years'],
+    etiology: ['Age-dependent self-limited focal epilepsy; peak onset 5–9 years'],
     differential: [
       'Symptomatic focal epilepsy of the central/temporal region — background would be abnormal',
       'Sharply contoured mu rhythm — reactive to movement, not a true epileptiform discharge',
@@ -436,7 +435,7 @@ const FINDINGS = [
     ],
     etiology: [
       'Idiopathic generalised epilepsies (JME highest), photosensitive epilepsies',
-      '2–14% of JME patients show a strong PPR',
+      'PPR is common in JME, but prevalence varies with cohort, age, medication status, and IPS protocol',
     ],
     differential: [
       'Photic driving response (benign): symmetric occipital following at flash frequency, does NOT outlast the flash',
@@ -717,17 +716,17 @@ const FINDINGS = [
   {
     id: 'electrocerebral_silence',
     category: 'coma',
-    title: 'Electrocerebral Silence (Brain Death)',
+    title: 'Electrocerebral Inactivity (ECI)',
     sandboxPattern: 'electrocerebral_silence',
     waveformId: 'beta',
-    tags: ['Isoelectric', 'Brain death', 'Ancillary test'],
+    tags: ['ECI', 'Brain death evaluation', 'Ancillary test'],
     color: '#6B7BA0',
     description:
-      'Absence of any electrocerebral activity ≥ 2 µV with maximal sensitivity (2 µV/mm) over a minimum 30-minute recording meeting strict technical criteria. An ancillary confirmatory test for brain death when clinical examination is limited. Pre-requisites: core temperature > 36 °C, no CNS depressants, normal metabolic state.',
+      'Electrocerebral inactivity (ECI) means no cerebral activity over 2 µV when recorded at high sensitivity (2 µV/mm) for at least 30 minutes under strict technical standards. It supports brain-death evaluation only when clinical, legal, and physiologic prerequisites are satisfied.',
     keyFeatures: [
       'No cerebral activity > 2 µV at 2 µV/mm sensitivity for ≥ 30 min',
-      'Inter-electrode distances ≥ 10 cm; impedances 100–10 000 Ω',
-      'Noise/artefact/reactivity testing per ACNS guideline',
+      'Inter-electrode distances ≥ 10 cm; impedances 100–10,000 Ω',
+      'Noise, artifact, and reactivity testing per ACNS technical standards',
       'ECG, EMG, and room noise artefacts must be distinguishable and excluded',
     ],
     etiology: ['Cerebral circulatory arrest (brain death)'],
@@ -738,57 +737,12 @@ const FINDINGS = [
     ],
     pitfalls: [
       'ECG artefact is ubiquitous — do NOT misinterpret it as cerebral activity',
-      'Must follow the ACNS technical protocol precisely',
+      'EEG alone does not diagnose brain death; it must follow the applicable clinical/legal protocol',
     ],
   },
 ]
 
 // ─── Mini trace demo ─────────────────────────────────────────────────────────
-
-function MiniTrace({ waveformId, color }) {
-  const canvasRef = useRef(null)
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas || !waveformId) return
-
-    const data = generateDemoTrace(waveformId, SAMPLE_RATE)
-    const dpr  = window.devicePixelRatio || 1
-    const W    = canvas.clientWidth
-    const H    = 80
-    canvas.width  = W * dpr
-    canvas.height = H * dpr
-    canvas.style.height = `${H}px`
-    const ctx = canvas.getContext('2d')
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    ctx.clearRect(0, 0, W, H)
-
-    // Grid
-    ctx.strokeStyle = 'rgba(0,212,255,0.06)'
-    ctx.lineWidth = 0.5
-    for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke() }
-    for (let y = 0; y <= H; y += 20) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke() }
-
-    // Baseline
-    ctx.strokeStyle = 'rgba(0,212,255,0.12)'
-    ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke()
-
-    const maxV = Math.max(...Array.from(data).map(Math.abs)) || 1
-    ctx.strokeStyle = color
-    ctx.lineWidth   = 1.5
-    ctx.shadowColor = color
-    ctx.shadowBlur  = 5
-    ctx.beginPath()
-    data.forEach((v, i) => {
-      const x = (i / data.length) * W
-      const y = H / 2 - (v / maxV) * (H / 2 - 6)
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
-    })
-    ctx.stroke()
-  }, [waveformId, color])
-
-  if (!waveformId) return null
-  return <canvas ref={canvasRef} className="w-full block" />
-}
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
@@ -928,7 +882,12 @@ export default function FindingsPage() {
                   <span className="text-[10px] font-mono text-eeg-muted">3 s @ 256 Hz</span>
                 </div>
                 <div className="eeg-paper p-2">
-                  <MiniTrace waveformId={finding.waveformId} color={finding.color} />
+                  <DemoTraceViewer
+                    patternId={finding.waveformId}
+                    color={finding.color}
+                    height={84}
+                    label={finding.title}
+                  />
                 </div>
               </div>
             )}
