@@ -15,7 +15,7 @@ export const useEEGStore = create((set, _get) => ({
   amplitude:      50,
   sensitivity:    DEFAULT_SENSITIVITY,   // µV/mm — clinical display sensitivity
   noiseLevel:     0.25,
-  sweepSpeed:     25,     // mm/s equivalent (affects how much data is shown)
+  sweepSpeed:     30,     // mm/s — standard EEG paper speed = real-time
   isPlaying:      true,
   pendingSpike:   false,
   pendingArtifact:false,

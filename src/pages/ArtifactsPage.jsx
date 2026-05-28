@@ -2,8 +2,13 @@ import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ARTIFACT_CATALOGUE } from '@/engine/artifacts'
 import { makeTimeAxis, SAMPLE_RATE } from '@/engine/signalGenerator'
-import { ChannelHoverPanel } from '@/components/eeg/ChannelHoverMap'
 import EEGViewer from '@/components/eeg/EEGViewer'
+import EEGViewerControls, {
+  buildViewerThemeOverrides,
+  DEFAULT_VIEWER_STYLE,
+} from '@/components/eeg/EEGViewerControls'
+import CollapsibleChannelPanel from '@/components/eeg/CollapsibleChannelPanel'
+import { getViewerTheme } from '@/engine/viewerThemes'
 
 // Tabs within the detail panel — labels resolved via i18n (`artifacts.detail_tabs.<id>`)
 const DETAIL_TABS = [
@@ -23,8 +28,11 @@ export default function ArtifactsPage() {
   const [viewState,  setViewState]  = useState({ channels: [], events: [], hot: [] })
   const [generating, setGenerating] = useState(false)
   const [filter,     setFilter]     = useState('all')
-  const [normalise,  setNormalise]  = useState('global')   // 'global' | 'per-channel'
   const [hoveredChannel, setHoveredChannel] = useState(null)
+  const [sensitivity, setSensitivity] = useState(7)
+  const [filterConfig, setFilterConfig] = useState({ hp: null, lp: null, notch: null })
+  const [viewerTheme, setViewerTheme] = useState('midnight')
+  const [viewerStyle, setViewerStyle] = useState(DEFAULT_VIEWER_STYLE)
 
   const artifact = useMemo(
     () => ARTIFACT_CATALOGUE.find(a => a.id === selectedId),
@@ -61,6 +69,9 @@ export default function ArtifactsPage() {
   }, [selectedId])
 
   const timeAxis = useMemo(() => makeTimeAxis(8 * SAMPLE_RATE, SAMPLE_RATE), [])
+  const baseTheme = getViewerTheme(viewerTheme)
+  const themeOverrides = useMemo(() => buildViewerThemeOverrides(viewerStyle), [viewerStyle])
+  const effectiveTheme = useMemo(() => ({ ...baseTheme, ...themeOverrides }), [baseTheme, themeOverrides])
 
   const filterGroups = [
     { id: 'all',           label: 'All'      },
@@ -180,26 +191,24 @@ export default function ArtifactsPage() {
               <div className="text-xs font-mono text-eeg-muted hidden md:block">
                 Longitudinal bipolar · {channels.length} ch · 8 s
               </div>
-              <div className="flex items-center gap-1 border border-eeg-border rounded-md overflow-hidden">
-                {['global', 'per-channel'].map(mode => (
-                  <button key={mode}
-                    onClick={() => setNormalise(mode)}
-                    className={`text-[10px] font-mono px-2 py-1 transition-all
-                      ${normalise === mode
-                        ? 'bg-eeg-accent bg-opacity-15 text-eeg-accent'
-                        : 'text-eeg-muted hover:text-eeg-text'}`}
-                    title={mode === 'global' ? 'Uniform scale across all channels' : 'Scale each channel to its own peak'}
-                  >
-                    {mode === 'global' ? 'Global' : 'Per-ch'}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 
+          <EEGViewerControls
+            sensitivity={sensitivity}
+            onSensitivityChange={setSensitivity}
+            filterConfig={filterConfig}
+            onFilterChange={setFilterConfig}
+            viewerTheme={viewerTheme}
+            onViewerThemeChange={setViewerTheme}
+            baseTheme={baseTheme}
+            viewerStyle={viewerStyle}
+            onViewerStyleChange={setViewerStyle}
+          />
+
           {/* Canvas */}
-          <div className="flex flex-col lg:flex-row min-h-0" style={{ height: 'calc(100% - 48px)' }}>
-            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden">
+          <div className="flex flex-col lg:flex-row min-h-0" style={{ height: 'calc(100% - 97px)' }}>
+            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden" style={{ background: effectiveTheme.pageBg }}>
             {generating || channels.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="flex items-center gap-2 text-eeg-muted font-mono text-sm animate-pulse">
@@ -212,11 +221,16 @@ export default function ArtifactsPage() {
                 timeAxis={timeAxis}
                 isPlaying={false}
                 annotations={eventAnnotations}
-                scaleMode={normalise === 'per-channel' ? 'per-channel-fit' : 'global-fit'}
+                sensitivity={sensitivity}
+                filterConfig={filterConfig}
+                theme={viewerTheme}
+                themeOverrides={themeOverrides}
+                curveWidth={viewerStyle.curveWidth}
+                polarity={viewerStyle.polarity}
                 channelHeight={38}
                 leftLabelWidth={88}
                 footerHeight={24}
-                signalColor="#00FFB0"
+                signalColor={viewerStyle.signalColor || baseTheme.signal}
                 highlightedChannels={hot}
                 highlightColor={artifact?.color}
                 showChannelAmplitudes
@@ -224,9 +238,9 @@ export default function ArtifactsPage() {
               />
             )}
             </div>
-            <ChannelHoverPanel
+            <CollapsibleChannelPanel
               channelLabel={hoveredChannel}
-              className="lg:w-52 lg:flex-shrink-0 border-t lg:border-t-0 lg:border-l border-eeg-border"
+              className="border-t lg:border-t-0"
             />
           </div>
         </div>
@@ -407,7 +421,7 @@ function getDifferentiationRule(id) {
     glossokinetic:  'Glossokinetic: stops IMMEDIATELY when tongue is held still. FIRDA: persists regardless of tongue position, correlates with encephalopathy, not oral movement.',
     respiration:    'Respiration: phase-locked to breathing, reduced/absent in bipolar montage. Cerebral slow activity: present in all montages, not phase-locked to respiratory cycle.',
     ventilator:     'Ventilator: PERFECTLY REGULAR, stereotyped every cycle, generalized. GPDs: inter-discharge interval variability, evolving morphology, may correlate with clinical state changes.',
-    photomyogenic:  'Photomyogenic: FRONTOPOLAR only, EMG morphology, starts early (10–40 ms). PPR (photoparoxysmal): OCCIPITAL then GENERALISED spike-wave, cerebral morphology, may outlast stimulation.',
+    photomyogenic:  'Photomyogenic: FRONTOPOLAR only, EMG morphology, starts early after the flash (~40-70 ms). PPR (photoparoxysmal): OCCIPITAL then GENERALISED spike-wave, cerebral morphology, may outlast stimulation.',
   }
   return rules[id] ?? 'Apply standard artifact identification criteria: distribution, morphology, reactivity.'
 }

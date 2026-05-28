@@ -17,6 +17,7 @@ const PADDING    = { top: 10, right: 12, bottom: 28, left: 42 }
  */
 export default function SpectrumViewer({
   signal,
+  revision = 0,
   color   = '#00FFB0',
   maxFreq = 40,
   className = '',
@@ -34,10 +35,13 @@ export default function SpectrumViewer({
         linearPsd: new Float64Array(),
       }
     }
-    const db = computePSD(signal, SAMPLE_RATE, { dbScale: true })
     const linear = computePSD(signal, SAMPLE_RATE, { dbScale: false })
-    return { freqs: db.freqs, psd: db.psd, linearPsd: linear.psd }
-  }, [signal])
+    const psdDb = new Float64Array(linear.psd.length)
+    for (let i = 0; i < linear.psd.length; i++) {
+      psdDb[i] = 10 * Math.log10(linear.psd[i] + 1e-12)
+    }
+    return { freqs: linear.freqs, psd: psdDb, linearPsd: linear.psd }
+  }, [signal, revision])
 
   // Compute band powers
   const bands = useMemo(() => {

@@ -11,6 +11,7 @@ export default function DemoTraceViewer({
   height = 84,
   sampleRate = SAMPLE_RATE,
   className = '',
+  polarity = 'positive-up',
 }) {
   const signal = useMemo(() => {
     if (data) return data
@@ -38,6 +39,7 @@ export default function DemoTraceViewer({
       showCalibration={false}
       showTimeLabels
       theme="midnight"
+      polarity={polarity}
       className={className}
     />
   )

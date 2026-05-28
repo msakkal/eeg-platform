@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useTranslation }        from 'react-i18next'
 import { MONTAGES, MONTAGE_LIST, applyMontage } from '@/engine/montages'
 import { generateMultiChannelEEG, makeTimeAxis }  from '@/engine/signalGenerator'
 import EEGViewer                 from '@/components/eeg/EEGViewer'
-import { ChannelHoverPanel }     from '@/components/eeg/ChannelHoverMap'
+import EEGViewerControls, {
+  buildViewerThemeOverrides,
+  DEFAULT_VIEWER_STYLE,
+} from '@/components/eeg/EEGViewerControls'
+import CollapsibleChannelPanel from '@/components/eeg/CollapsibleChannelPanel'
+import { getViewerTheme } from '@/engine/viewerThemes'
 
 export default function MontagesPage() {
   const { t } = useTranslation()
@@ -12,6 +17,13 @@ export default function MontagesPage() {
   const [timeAxis,   setTimeAxis]     = useState([])
   const [rawEEG,     setRawEEG]       = useState(null)
   const [hoveredChannel, setHoveredChannel] = useState(null)
+  const [sensitivity, setSensitivity] = useState(5)
+  const [filterConfig, setFilterConfig] = useState({ hp: 0.5, lp: 70, notch: 50 })
+  const [viewerTheme, setViewerTheme] = useState('midnight')
+  const [viewerStyle, setViewerStyle] = useState(DEFAULT_VIEWER_STYLE)
+  const baseTheme = getViewerTheme(viewerTheme)
+  const themeOverrides = useMemo(() => buildViewerThemeOverrides(viewerStyle), [viewerStyle])
+  const effectiveTheme = useMemo(() => ({ ...baseTheme, ...themeOverrides }), [baseTheme, themeOverrides])
 
   // Generate raw data once
   useEffect(() => {
@@ -90,13 +102,31 @@ export default function MontagesPage() {
 
         {/* EEG preview */}
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
-          <div className="flex-1 min-w-0 overflow-y-auto eeg-paper">
+          <div className="flex-1 min-w-0 overflow-y-auto" style={{ background: effectiveTheme.pageBg }}>
+            <EEGViewerControls
+              montageId={selectedId}
+              onMontageChange={setSelectedId}
+              sensitivity={sensitivity}
+              onSensitivityChange={setSensitivity}
+              filterConfig={filterConfig}
+              onFilterChange={setFilterConfig}
+              viewerTheme={viewerTheme}
+              onViewerThemeChange={setViewerTheme}
+              baseTheme={baseTheme}
+              viewerStyle={viewerStyle}
+              onViewerStyleChange={setViewerStyle}
+            />
             {channels.length > 0 ? (
               <EEGViewer
                 channels={channels}
                 timeAxis={timeAxis}
-                sensitivity={5}
+                sensitivity={sensitivity}
                 isPlaying={false}
+                filterConfig={filterConfig}
+                theme={viewerTheme}
+                themeOverrides={themeOverrides}
+                curveWidth={viewerStyle.curveWidth}
+                polarity={viewerStyle.polarity}
                 onHoverChannel={setHoveredChannel}
               />
             ) : (
@@ -105,9 +135,8 @@ export default function MontagesPage() {
               </div>
             )}
           </div>
-          <ChannelHoverPanel
+          <CollapsibleChannelPanel
             channelLabel={hoveredChannel}
-            className="lg:w-52 lg:flex-shrink-0 lg:border-l border-eeg-border"
           />
         </div>
 

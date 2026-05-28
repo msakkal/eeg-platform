@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { memo, useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useTranslation }         from 'react-i18next'
 import { useEEGStore }            from '@/store/eegStore'
 import { useAnnotationStore, ANNOTATION_LABELS } from '@/store/annotationStore'
@@ -10,12 +10,125 @@ import SandboxControls            from '@/components/eeg/SandboxControls'
 import SpectrumViewer             from '@/components/eeg/SpectrumViewer'
 import SpectrogramViewer          from '@/components/eeg/SpectrogramViewer'
 import ScalpTopoMap               from '@/components/eeg/ScalpTopoMap'
-import FilterControls             from '@/components/eeg/FilterControls'
 import KeyboardHelpOverlay        from '@/components/ui/KeyboardHelpOverlay'
-import { getViewerTheme, SENSITIVITY_STEPS, DEFAULT_SENSITIVITY } from '@/engine/viewerThemes'
+import { getViewerTheme, SENSITIVITY_STEPS, DEFAULT_SENSITIVITY, VIEWER_THEME_LIST } from '@/engine/viewerThemes'
+import { MONTAGE_LIST }           from '@/engine/montages'
+import { FILTER_PRESETS }         from '@/engine/filters'
+import { getPatternMeta }         from '@/engine/patterns'
 
-const PANELS  = ['traces', 'spectrum', 'spectrogram', 'topo']
+const PANELS  = ['traces', 'analysis', 'topo']
 const PATTERNS = ['normal_awake','normal_drowsy','normal_sleep','absence','focal_slowing','burst_suppression']
+const STANDARD_SWEEP_SPEED = 30
+const STANDARD_WINDOW_SECONDS = 10
+const MIN_SWEEP_SPEED = 5
+const MAX_SWEEP_SPEED = 90
+const MAX_SWEEP_WINDOW_SECONDS = STANDARD_WINDOW_SECONDS * STANDARD_SWEEP_SPEED / MIN_SWEEP_SPEED
+
+function hexToRgba(hex, alpha) {
+  const clean = hex.replace('#', '')
+  const value = Number.parseInt(clean.length === 3
+    ? clean.split('').map(ch => ch + ch).join('')
+    : clean, 16)
+  const r = (value >> 16) & 255
+  const g = (value >> 8) & 255
+  const b = value & 255
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+function rgbaToHex(color) {
+  const match = color?.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+  if (!match) return color?.startsWith('#') ? color : null
+  return `#${match.slice(1, 4).map(value =>
+    Number(value).toString(16).padStart(2, '0')
+  ).join('')}`
+}
+
+const PATTERN_ANALYSIS = {
+  normal_awake: {
+    spectrum: 'Posterior channels should show a dominant alpha peak around 8-13 Hz, especially with eyes closed, with lower-amplitude beta and little delta.',
+    spectrogram: 'Alpha power should appear as a fairly stable horizontal band near 10 Hz, strongest in occipital/parietal channels.',
+  },
+  normal_drowsy: {
+    spectrum: 'Alpha attenuates and fragments while theta power increases, usually around 4-7 Hz.',
+    spectrogram: 'Expect intermittent theta runs and a less stable posterior alpha band than in relaxed wakefulness.',
+  },
+  normal_sleep: {
+    spectrum: 'N2 should show mixed theta/delta background plus brief sigma power at 12-14 Hz during sleep spindles.',
+    spectrogram: 'Look for short waxing-waning sigma bursts from spindles and broad low-frequency deflections from K-complexes.',
+  },
+  slow_wave_sleep: {
+    spectrum: 'Delta power below 4 Hz should dominate, often overwhelming faster background frequencies.',
+    spectrogram: 'High-amplitude slow activity should appear as sustained low-frequency power, most prominent below 2 Hz.',
+  },
+  absence: {
+    spectrum: 'A strong rhythmic component near 3 Hz should emerge during the generalized spike-wave run.',
+    spectrogram: 'The absence discharge should appear as a time-limited, high-power band around 3 Hz with broadband spike transients.',
+  },
+  slow_spike_wave: {
+    spectrum: 'Power should concentrate around 1.5-2.5 Hz, reflecting slow spike-and-wave complexes.',
+    spectrogram: 'Expect repeated slow periodic bursts with intermittent broadband sharp components.',
+  },
+  polyspike_jme: {
+    spectrum: 'Polyspike-wave runs add broadband fast transients plus slower after-going wave power.',
+    spectrogram: 'Runs should appear as brief high-energy vertical/broadband bursts, often frontocentral.',
+  },
+  centrotemporal_spikes: {
+    spectrum: 'Interictal spikes add brief broadband power but may not dominate the average spectrum unless frequent.',
+    spectrogram: 'Look for isolated sharp broadband events, most visible when viewing centrotemporal channels.',
+  },
+  temporal_sharps: {
+    spectrum: 'Temporal sharp waves create intermittent broadband power over a slower drowsy background.',
+    spectrogram: 'Events should appear as isolated broadband transients, best seen in left temporal channels.',
+  },
+  hypsarrhythmia: {
+    spectrum: 'Expect broad, disorganized power across slow and faster frequencies from chaotic high-amplitude activity.',
+    spectrogram: 'The spectrogram should look irregular and high-energy, with multifocal spikes appearing as broadband transients.',
+  },
+  photoparoxysmal: {
+    spectrum: 'Photoparoxysmal activity adds rhythmic spike-wave/polyspike-wave power during the response window.',
+    spectrogram: 'Expect time-limited bursts with posterior driving plus generalized spike-wave activity.',
+  },
+  gpds: {
+    spectrum: 'Periodic discharges should produce a low-frequency peak near their repetition rate, often around 1 Hz.',
+    spectrogram: 'Expect regularly spaced broadband transients on a diffusely slowed background.',
+  },
+  lpds: {
+    spectrum: 'LPDs should add a periodic low-frequency component plus sharp broadband energy, strongest over the involved hemisphere.',
+    spectrogram: 'Regular unilateral discharges should appear as repeated broadband events, most visible in left hemisphere channels.',
+  },
+  triphasic_waves: {
+    spectrum: 'Triphasic waves add rhythmic slow power, usually around 1-2 Hz, on an encephalopathic background.',
+    spectrogram: 'Expect repeated slow complexes with a broad low-frequency signature and less fast spike energy than epileptiform GPDs.',
+  },
+  focal_slowing: {
+    spectrum: 'The affected region should show excess delta/theta compared with other channels.',
+    spectrogram: 'Slow activity should persist or wax and wane focally, most apparent in left temporal channels.',
+  },
+  firda: {
+    spectrum: 'Frontal intermittent rhythmic delta should emphasize low-frequency delta, often around 2-3 Hz during bursts.',
+    spectrogram: 'Expect intermittent frontal delta bursts rather than continuous generalized slowing.',
+  },
+  diffuse_slowing: {
+    spectrum: 'Theta and delta power should dominate diffusely, with reduced normal alpha organization.',
+    spectrogram: 'Low-frequency power should be broadly sustained across time rather than appearing only as isolated events.',
+  },
+  breach_rhythm: {
+    spectrum: 'Breach rhythm accentuates sharply contoured alpha/beta activity over the skull defect region.',
+    spectrogram: 'Expect persistent focal enhancement of faster activity, especially over the left central/temporal region.',
+  },
+  burst_suppression: {
+    spectrum: 'Average power depends on burst density: bursts add broad mixed-frequency power, while suppressions lower total power.',
+    spectrogram: 'Alternating high-energy bursts and low-power suppressions should be obvious over time.',
+  },
+  alpha_coma: {
+    spectrum: 'Alpha-range power should dominate but be anteriorly weighted and poorly reactive compared with normal posterior alpha.',
+    spectrogram: 'The alpha band should appear relatively monotonous and sustained rather than physiologically waxing and reactive.',
+  },
+  electrocerebral_silence: {
+    spectrum: 'Power should be near the noise floor, without organized physiologic rhythms or cardiac contamination.',
+    spectrogram: 'The display should remain low-energy across frequencies, aside from minimal residual noise.',
+  },
+}
 
 export default function SandboxPage() {
   const { t } = useTranslation()
@@ -42,21 +155,60 @@ export default function SandboxPage() {
   // ── UI state ────────────────────────────────────────────────────────────
   const [activePanel,    setActivePanel]    = useState('traces')
   const [specChannel,    setSpecChannel]    = useState('O2')
-  const [filterConfig,   setFilterConfig]   = useState({ hp: 0.5, lp: 70, notch: 50 })
+  const [filterConfig,   setFilterConfig]   = useState({ hp: null, lp: null, notch: null })
   const [annotateMode,   setAnnotateMode]   = useState(false)
   const [activeAnnLabel, setActiveAnnLabel] = useState(ANNOTATION_LABELS[0])
   const [showHelp,       setShowHelp]       = useState(false)
   const [hoveredTraceChannel, setHoveredTraceChannel] = useState(null)
+  const [analysisRateHz, setAnalysisRateHz] = useState(12)
+  const [viewerStyle, setViewerStyle] = useState({
+    signalColor: '',
+    plotBg: '',
+    pageBg: '',
+    gridColor: '',
+    curveWidth: 1.1,
+    polarity: 'negative-up',
+  })
+
+  const viewerThemeOverrides = useMemo(() => {
+    const overrides = {}
+    if (viewerStyle.signalColor) {
+      overrides.signal = viewerStyle.signalColor
+      overrides.signalHover = viewerStyle.signalColor
+      overrides.glow = viewerStyle.signalColor
+      overrides.glowHover = viewerStyle.signalColor
+    }
+    if (viewerStyle.plotBg) overrides.plotBg = viewerStyle.plotBg
+    if (viewerStyle.pageBg) {
+      overrides.pageBg = viewerStyle.pageBg
+      overrides.labelBg = viewerStyle.pageBg
+    }
+    if (viewerStyle.gridColor) {
+      overrides.gridMajor = hexToRgba(viewerStyle.gridColor, 0.32)
+      overrides.gridMinor = hexToRgba(viewerStyle.gridColor, 0.11)
+      overrides.baseline = hexToRgba(viewerStyle.gridColor, 0.12)
+      overrides.midline = hexToRgba(viewerStyle.gridColor, 0.09)
+      overrides.divider = hexToRgba(viewerStyle.gridColor, 0.24)
+    }
+    return overrides
+  }, [viewerStyle])
+  const effectiveTheme = useMemo(
+    () => ({ ...theme, ...viewerThemeOverrides }),
+    [theme, viewerThemeOverrides]
+  )
+  const sweepWindowSecs = STANDARD_WINDOW_SECONDS * STANDARD_SWEEP_SPEED / sweepSpeed
 
   // ── Annotations ─────────────────────────────────────────────────────────
   const { annotations, addAnnotation, removeAnnotation, clearAnnotations } = useAnnotationStore()
 
   // ── Signal ──────────────────────────────────────────────────────────────
-  const { channels, timeAxis, isReady, windowStart } = useEEGSignal({
-    montageId, pattern, noiseLevel, sweepSpeed,
+  const { channels, timeAxis, isReady, events, windowStart } = useEEGSignal({
+    montageId, pattern, noiseLevel,
     isPlaying, pendingSpike, pendingArtifact,
     onClearPending: clearPending,
     eyesClosed, blinksEnabled, blinkRate,
+    windowSecs: sweepWindowSecs,
+    maxWindowSecs: MAX_SWEEP_WINDOW_SECONDS,
   })
 
   const specSignal = useMemo(() => {
@@ -64,6 +216,7 @@ export default function SandboxPage() {
       ?? channels[Math.floor(channels.length / 2)]
     return ch?.data ?? null
   }, [channels, specChannel])
+  const analysisRevision = Math.floor(windowStart * analysisRateHz)
 
   // ── Annotation handler ───────────────────────────────────────────────────
   // Translate the preset id to a display string at creation time (the canvas
@@ -98,8 +251,8 @@ export default function SandboxPage() {
     '+':           () => stepSensitivity(-1),
     '=':           () => stepSensitivity(-1),
     '-':           () => stepSensitivity(1),
-    'arrowright':  () => setSweepSpeed(v => Math.min(60, v + 5)),
-    'arrowleft':   () => setSweepSpeed(v => Math.max(5,  v - 5)),
+    'arrowright':  () => setSweepSpeed(v => Math.min(MAX_SWEEP_SPEED, v + 5)),
+    'arrowleft':   () => setSweepSpeed(v => Math.max(MIN_SWEEP_SPEED,  v - 5)),
     '1':           () => setPattern(PATTERNS[0]),
     '2':           () => setPattern(PATTERNS[1]),
     '3':           () => setPattern(PATTERNS[2]),
@@ -208,65 +361,62 @@ export default function SandboxPage() {
           ) : (
             <>
               {activePanel === 'traces' && (
-                <div className="flex flex-col lg:flex-row min-h-full" style={{ background: theme.pageBg }}>
-                  <div className="relative flex-1 min-w-0 overflow-hidden">
-                    <EEGViewer
-                      channels={channels}
-                      timeAxis={timeAxis}
-                      sensitivity={sensitivity}
-                      isPlaying={isPlaying}
-                      filterConfig={filterConfig}
-                      annotations={annotations}
-                      windowStart={windowStart}
-                      onAnnotate={annotateMode ? handleAnnotate : null}
-                      onHoverChannel={setHoveredTraceChannel}
-                      theme={viewerTheme}
-                      className="w-full"
-                    />
-                    {isPlaying && !annotateMode && (
-                      <div
-                        className="scan-line"
-                        style={{
-                          background: `linear-gradient(to bottom, transparent, ${theme.scan}88, transparent)`,
-                        }}
-                      />
-                    )}
-                  </div>
-                  <ChannelHoverPanel
-                    channelLabel={hoveredTraceChannel}
-                    className="lg:w-52 lg:flex-shrink-0 lg:border-l border-eeg-border"
-                  />
-                </div>
+                <TracePanel
+                  channels={channels}
+                  timeAxis={timeAxis}
+                  sensitivity={sensitivity}
+                  filterConfig={filterConfig}
+                  annotations={annotations}
+                  events={events}
+                  windowStart={windowStart}
+                  annotateMode={annotateMode}
+                  onAnnotate={handleAnnotate}
+                  hoveredTraceChannel={hoveredTraceChannel}
+                  onHoverChannel={setHoveredTraceChannel}
+                  montageId={montageId}
+                  onMontageChange={setMontage}
+                  noiseLevel={noiseLevel}
+                  onNoiseLevelChange={setNoiseLevel}
+                  sweepSpeed={sweepSpeed}
+                  onSweepSpeedChange={setSweepSpeed}
+                  eyesClosed={eyesClosed}
+                  onEyesClosedChange={value => {
+                    if (value !== eyesClosed) toggleEyes()
+                  }}
+                  blinksEnabled={blinksEnabled}
+                  onBlinksEnabledChange={value => {
+                    if (value !== blinksEnabled) toggleBlinks()
+                  }}
+                  blinkRate={blinkRate}
+                  onBlinkRateChange={setBlinkRate}
+                  onSensitivityChange={setSensitivity}
+                  onFilterChange={setFilterConfig}
+                  viewerTheme={viewerTheme}
+                  onViewerThemeChange={setViewerTheme}
+                  theme={theme}
+                  effectiveTheme={effectiveTheme}
+                  viewerThemeOverrides={viewerThemeOverrides}
+                  viewerStyle={viewerStyle}
+                  onViewerStyleChange={setViewerStyle}
+                />
               )}
 
-              {activePanel === 'spectrum' && specSignal && (
+              {activePanel === 'analysis' && specSignal && (
                 <div className="p-6 flex flex-col gap-6">
-                  <ChannelPicker
+                  <AnalysisPanelControls
                     channels={['O2','O1','C3','C4','F3','F4','T3','T4']}
-                    active={specChannel}
-                    onSelect={setSpecChannel}
+                    activeChannel={specChannel}
+                    onChannelChange={setSpecChannel}
+                    updateRateHz={analysisRateHz}
+                    onUpdateRateChange={setAnalysisRateHz}
                   />
-                  <SpectrumViewer signal={specSignal} color="#00FFB0" maxFreq={40} />
-                  <div className="card p-4 text-xs font-body text-eeg-muted leading-relaxed">
+                  <SpectrogramViewer signal={specSignal} revision={analysisRevision} maxFreq={40} label={specChannel} />
+                  <SpectrumViewer signal={specSignal} revision={analysisRevision} color="#00FFB0" maxFreq={40} />
+                  <PatternAnalysisSummary pattern={pattern} channel={specChannel} />
+                  {/*
                     <span className="font-mono text-eeg-accent">Tip: </span>
                     A normal awake occipital channel shows a dominant alpha peak at 8–13 Hz. Switch to Absence pattern to see how the 3 Hz spike-wave discharge shifts spectral power to the delta/theta range.
-                  </div>
-                </div>
-              )}
-
-              {activePanel === 'spectrogram' && specSignal && (
-                <div className="p-6 flex flex-col gap-6">
-                  <ChannelPicker
-                    channels={['O2','O1','C3','C4','F3','T3']}
-                    active={specChannel}
-                    onSelect={setSpecChannel}
-                  />
-                  <SpectrogramViewer signal={specSignal} maxFreq={40} label={specChannel} />
-                  <SpectrumViewer signal={specSignal} color="#7B5EA7" maxFreq={40} />
-                  <div className="card p-4 text-xs font-body text-eeg-muted leading-relaxed">
-                    <span className="font-mono text-eeg-accent">Tip: </span>
-                    The spectrogram shows time on the x-axis and frequency on the y-axis. Warm colours indicate high power. Press <kbd className="bg-eeg-card border border-eeg-border rounded px-1">S</kbd> to inject a spike and watch the broadband transient appear.
-                  </div>
+                  */}
                 </div>
               )}
 
@@ -316,26 +466,658 @@ export default function SandboxPage() {
       {/* ── Right controls panel ────────────────────────────────────────── */}
       <div className="w-56 flex-shrink-0 border-l border-eeg-border bg-eeg-surface overflow-y-auto p-4 flex flex-col gap-4">
         <SandboxControls
-          montageId={montageId}       onMontageChange={setMontage}
           pattern={pattern}           onPatternChange={setPattern}
-          sensitivity={sensitivity}   onSensitivityChange={setSensitivity}
-          noiseLevel={noiseLevel}     onNoiseLevelChange={setNoiseLevel}
-          sweepSpeed={sweepSpeed}     onSweepSpeedChange={setSweepSpeed}
           isPlaying={isPlaying}       onTogglePlay={togglePlay}
           onInjectSpike={triggerSpike}
           onInjectArtifact={triggerArtifact}
-          eyesClosed={eyesClosed}     onToggleEyes={toggleEyes}
-          blinksEnabled={blinksEnabled} onToggleBlinks={toggleBlinks}
-          blinkRate={blinkRate}       onBlinkRateChange={setBlinkRate}
-          viewerTheme={viewerTheme}   onViewerThemeChange={setViewerTheme}
         />
-        <div className="border-t border-eeg-border pt-4">
-          <FilterControls config={filterConfig} onChange={setFilterConfig} />
-        </div>
       </div>
 
       {/* Keyboard help overlay */}
       {showHelp && <KeyboardHelpOverlay onClose={() => setShowHelp(false)} />}
+    </div>
+  )
+}
+
+const TracePanel = memo(function TracePanel({
+  channels,
+  timeAxis,
+  sensitivity,
+  filterConfig,
+  annotations,
+  events,
+  windowStart,
+  annotateMode,
+  onAnnotate,
+  hoveredTraceChannel,
+  onHoverChannel,
+  montageId,
+  onMontageChange,
+  noiseLevel,
+  onNoiseLevelChange,
+  sweepSpeed,
+  onSweepSpeedChange,
+  eyesClosed,
+  onEyesClosedChange,
+  blinksEnabled,
+  onBlinksEnabledChange,
+  blinkRate,
+  onBlinkRateChange,
+  onSensitivityChange,
+  onFilterChange,
+  viewerTheme,
+  onViewerThemeChange,
+  theme,
+  effectiveTheme,
+  viewerThemeOverrides,
+  viewerStyle,
+  onViewerStyleChange,
+}) {
+  const [hoverPanelOpen, setHoverPanelOpen] = useState(true)
+
+  return (
+    <div className="flex flex-col lg:flex-row min-h-full" style={{ background: effectiveTheme.pageBg }}>
+      <div className="relative flex-1 min-w-0 overflow-hidden">
+        <ViewerTopBar
+          montageId={montageId}
+          onMontageChange={onMontageChange}
+          sensitivity={sensitivity}
+          onSensitivityChange={onSensitivityChange}
+          noiseLevel={noiseLevel}
+          onNoiseLevelChange={onNoiseLevelChange}
+          sweepSpeed={sweepSpeed}
+          onSweepSpeedChange={onSweepSpeedChange}
+          eyesClosed={eyesClosed}
+          onEyesClosedChange={onEyesClosedChange}
+          blinksEnabled={blinksEnabled}
+          onBlinksEnabledChange={onBlinksEnabledChange}
+          blinkRate={blinkRate}
+          onBlinkRateChange={onBlinkRateChange}
+          filterConfig={filterConfig}
+          onFilterChange={onFilterChange}
+          viewerTheme={viewerTheme}
+          onViewerThemeChange={onViewerThemeChange}
+          baseTheme={theme}
+          viewerStyle={viewerStyle}
+          onViewerStyleChange={onViewerStyleChange}
+        />
+        <EEGViewer
+          channels={channels}
+          timeAxis={timeAxis}
+          sensitivity={sensitivity}
+          filterConfig={filterConfig}
+          annotations={annotations}
+          windowStart={windowStart}
+          onAnnotate={annotateMode ? onAnnotate : null}
+          onHoverChannel={onHoverChannel}
+          theme={viewerTheme}
+          themeOverrides={viewerThemeOverrides}
+          curveWidth={viewerStyle.curveWidth}
+          polarity={viewerStyle.polarity}
+          className="w-full"
+        />
+      </div>
+      <div className={`lg:flex-shrink-0 border-eeg-border bg-eeg-surface flex flex-col min-h-0 ${hoverPanelOpen ? 'lg:w-52 lg:border-l' : 'lg:w-12 lg:border-l'}`}>
+        <button
+          type="button"
+          onClick={() => setHoverPanelOpen(v => !v)}
+          className={`w-full h-9 flex items-center justify-center border-b border-eeg-border text-eeg-muted hover:text-eeg-text transition-colors
+            ${hoverPanelOpen ? '' : 'bg-eeg-card bg-opacity-60'}`}
+          title={hoverPanelOpen ? 'Collapse channel view' : 'Expand channel view'}
+          aria-label={hoverPanelOpen ? 'Collapse channel view' : 'Expand channel view'}
+        >
+          <span className="w-6 h-6 rounded border border-eeg-border flex items-center justify-center font-mono text-xs">
+            {hoverPanelOpen ? '>' : '<'}
+          </span>
+        </button>
+        {hoverPanelOpen && (
+          <>
+          <ChannelHoverPanel
+            channelLabel={hoveredTraceChannel}
+            className="flex-shrink-0"
+          />
+          <SandboxEventList
+            events={events}
+            windowStart={windowStart}
+            duration={timeAxis[timeAxis.length - 1] || 10}
+          />
+          </>
+        )}
+        {!hoverPanelOpen && (
+          <div className="h-[calc(100%-2.25rem)] flex items-center justify-center">
+            <div className="rotate-90 whitespace-nowrap text-[10px] font-mono uppercase tracking-widest text-eeg-muted">
+              Channel
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}, (prev, next) => (
+  prev.channels === next.channels &&
+  prev.timeAxis === next.timeAxis &&
+  prev.sensitivity === next.sensitivity &&
+  prev.filterConfig === next.filterConfig &&
+  prev.annotations === next.annotations &&
+  prev.events === next.events &&
+  prev.windowStart === next.windowStart &&
+  prev.annotateMode === next.annotateMode &&
+  prev.hoveredTraceChannel === next.hoveredTraceChannel &&
+  prev.montageId === next.montageId &&
+  prev.noiseLevel === next.noiseLevel &&
+  prev.sweepSpeed === next.sweepSpeed &&
+  prev.eyesClosed === next.eyesClosed &&
+  prev.blinksEnabled === next.blinksEnabled &&
+  prev.blinkRate === next.blinkRate &&
+  prev.viewerTheme === next.viewerTheme &&
+  prev.theme === next.theme &&
+  prev.effectiveTheme === next.effectiveTheme &&
+  prev.viewerThemeOverrides === next.viewerThemeOverrides &&
+  prev.viewerStyle === next.viewerStyle
+))
+
+function SandboxEventList({ events = [], windowStart = 0, duration = 10 }) {
+  const [flashEventIds, setFlashEventIds] = useState(() => new Set())
+  const knownEventIdsRef = useRef(new Set())
+  const initialisedRef = useRef(false)
+  const flashTimeoutsRef = useRef(new Map())
+  const windowEnd = windowStart + duration
+  const visibleEvents = useMemo(() => (
+    events
+      .filter(event => event.t >= windowStart && event.t <= windowEnd)
+      .slice()
+      .sort((a, b) => b.t - a.t)
+      .slice(0, 12)
+  ), [events, windowStart, windowEnd])
+
+  useEffect(() => {
+    const currentIds = new Set(events.map(event => event.id))
+    if (!initialisedRef.current) {
+      knownEventIdsRef.current = currentIds
+      initialisedRef.current = true
+      return
+    }
+
+    const newIds = events
+      .map(event => event.id)
+      .filter(id => !knownEventIdsRef.current.has(id))
+
+    knownEventIdsRef.current = currentIds
+    if (newIds.length === 0) return
+
+    setFlashEventIds(current => {
+      const next = new Set(current)
+      newIds.forEach(id => next.add(id))
+      return next
+    })
+
+    newIds.forEach(id => {
+      const existing = flashTimeoutsRef.current.get(id)
+      if (existing) clearTimeout(existing)
+      const timeout = setTimeout(() => {
+        flashTimeoutsRef.current.delete(id)
+        setFlashEventIds(current => {
+          const next = new Set(current)
+          next.delete(id)
+          return next
+        })
+      }, 950)
+      flashTimeoutsRef.current.set(id, timeout)
+    })
+  }, [events])
+
+  useEffect(() => () => {
+    flashTimeoutsRef.current.forEach(timeout => clearTimeout(timeout))
+    flashTimeoutsRef.current.clear()
+  }, [])
+
+  const colorFor = (type) => {
+    if (type === 'blink') return '#66AAFF'
+    if (type === 'saccade') return '#88CCFF'
+    if (type === 'manual_spike') return '#FF6B6B'
+    if (type === 'manual_artifact') return '#FFAA44'
+    if (type === 'sharp_wave' || type === 'centrotemporal_spike') return '#FF6B6B'
+    if (type === 'multifocal_spike' || type === 'polyspike') return '#FF4FA3'
+    if (type === 'spike_wave' || type === 'slow_spike_wave') return '#D66BFF'
+    if (type === 'triphasic_wave') return '#FFB347'
+    if (type === 'gpd' || type === 'lpd') return '#FFD166'
+    if (type === 'photoparoxysmal') return '#7DE3FF'
+    if (type === 'burst') return '#F97316'
+    return '#00FFB0'
+  }
+
+  return (
+    <div className="border-t border-eeg-border px-3 py-3 flex-1 min-h-0 overflow-hidden">
+      <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">
+        Event list
+      </p>
+      {visibleEvents.length === 0 ? (
+        <div className="h-full min-h-[96px] flex items-center justify-center text-center">
+          <p className="text-[10px] font-mono text-eeg-muted leading-relaxed">
+            No visible events in this sweep window.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-1.5 overflow-y-auto pr-1 max-h-full">
+          {visibleEvents.map(event => {
+            const color = colorFor(event.type)
+            const isFlashing = flashEventIds.has(event.id)
+            return (
+              <div
+                key={event.id}
+                className={`rounded border border-eeg-border bg-eeg-card bg-opacity-60 px-2 py-1.5 ${isFlashing ? 'sandbox-event-row-flash' : ''}`}
+                style={{ '--event-color': color }}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ background: color }}
+                  />
+                  <span className="font-mono text-[10px] text-eeg-muted flex-shrink-0">
+                    {event.t.toFixed(2)}s
+                  </span>
+                  <span className="font-body text-xs text-eeg-text truncate">
+                    {event.label}
+                  </span>
+                </div>
+                {event.detail && (
+                  <p className="font-mono text-[9px] text-eeg-muted truncate mt-0.5 pl-4">
+                    {event.detail}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ViewerTopBar({
+  montageId,
+  onMontageChange,
+  sensitivity,
+  onSensitivityChange,
+  noiseLevel,
+  onNoiseLevelChange,
+  sweepSpeed,
+  onSweepSpeedChange,
+  eyesClosed,
+  onEyesClosedChange,
+  blinksEnabled,
+  onBlinksEnabledChange,
+  blinkRate,
+  onBlinkRateChange,
+  filterConfig,
+  onFilterChange,
+  viewerTheme,
+  onViewerThemeChange,
+  baseTheme,
+  viewerStyle,
+  onViewerStyleChange,
+}) {
+  const [styleOpen, setStyleOpen] = useState(false)
+  const activeFilter = Object.entries(FILTER_PRESETS).find(([, preset]) =>
+    preset.hp === filterConfig.hp &&
+    preset.lp === filterConfig.lp &&
+    preset.notch === filterConfig.notch
+  )?.[0] ?? 'custom'
+
+  const setStyle = (key, value) => {
+    onViewerStyleChange(current => ({ ...current, [key]: value }))
+  }
+
+  const resetStyle = () => {
+    onViewerStyleChange({
+      signalColor: '',
+      plotBg: '',
+      pageBg: '',
+      gridColor: '',
+      curveWidth: 1.1,
+      polarity: 'negative-up',
+    })
+  }
+
+  return (
+    <div className="relative z-10 border-b border-eeg-border bg-eeg-surface">
+      <div className="px-3 py-2 flex flex-wrap items-end gap-2">
+        <ToolbarSelect
+          label="Montage"
+          value={montageId}
+          onChange={onMontageChange}
+          className="w-36"
+        >
+          {MONTAGE_LIST.map(m => (
+            <option key={m.id} value={m.id}>{m.shortLabel}</option>
+          ))}
+        </ToolbarSelect>
+
+        <ToolbarSelect
+          label="Sensitivity"
+          value={sensitivity}
+          onChange={value => onSensitivityChange(Number(value))}
+          className="w-28"
+        >
+          {SENSITIVITY_STEPS.map(step => (
+            <option key={step} value={step}>{step} uV/mm</option>
+          ))}
+        </ToolbarSelect>
+
+        <ToolbarRange
+          label="Noise"
+          value={Math.round(noiseLevel * 100)}
+          min={0}
+          max={100}
+          step={5}
+          unit="%"
+          onChange={value => onNoiseLevelChange(value / 100)}
+        />
+
+        <ToolbarRange
+          label="Sweep"
+          value={sweepSpeed}
+          min={MIN_SWEEP_SPEED}
+          max={MAX_SWEEP_SPEED}
+          step={5}
+          unit=" mm/s"
+          onChange={onSweepSpeedChange}
+        />
+
+        <ToolbarToggle
+          label="Eyes"
+          value={eyesClosed}
+          offLabel="Open"
+          onLabel="Closed"
+          onChange={onEyesClosedChange}
+        />
+
+        <ToolbarToggle
+          label="Blinks"
+          value={blinksEnabled}
+          offLabel="Off"
+          onLabel="On"
+          onChange={onBlinksEnabledChange}
+        />
+
+        <ToolbarRange
+          label="Blink rate"
+          value={blinkRate}
+          min={0}
+          max={40}
+          step={1}
+          unit="/min"
+          onChange={onBlinkRateChange}
+          disabled={!blinksEnabled}
+        />
+
+        <ToolbarSelect
+          label="Filter"
+          value={activeFilter}
+          onChange={id => {
+            if (id === 'custom') return
+            const preset = FILTER_PRESETS[id]
+            onFilterChange({ hp: preset.hp, lp: preset.lp, notch: preset.notch })
+          }}
+          className="w-44"
+        >
+          {Object.entries(FILTER_PRESETS).map(([id, preset]) => (
+            <option key={id} value={id}>{preset.label}</option>
+          ))}
+          <option value="custom">Custom</option>
+        </ToolbarSelect>
+
+        <div className="grid grid-cols-3 gap-1">
+          <ToolbarNumber label="HP" value={filterConfig.hp} onChange={value => onFilterChange({ ...filterConfig, hp: value })} />
+          <ToolbarNumber label="LP" value={filterConfig.lp} onChange={value => onFilterChange({ ...filterConfig, lp: value })} />
+          <ToolbarNumber label="Notch" value={filterConfig.notch} onChange={value => onFilterChange({ ...filterConfig, notch: value })} />
+        </div>
+
+        <ToolbarSelect
+          label="Theme"
+          value={viewerTheme}
+          onChange={onViewerThemeChange}
+          className="w-32"
+        >
+          {VIEWER_THEME_LIST.map(th => (
+            <option key={th.id} value={th.id}>{th.label}</option>
+          ))}
+        </ToolbarSelect>
+
+        <ToolbarToggle
+          label="Polarity"
+          value={(viewerStyle.polarity ?? 'negative-up') === 'negative-up'}
+          offLabel="+Up"
+          onLabel="-Up"
+          onChange={value => setStyle('polarity', value ? 'negative-up' : 'positive-up')}
+        />
+
+        <button
+          type="button"
+          onClick={() => setStyleOpen(v => !v)}
+          className={`h-8 px-3 rounded border text-xs font-mono transition-colors
+            ${styleOpen
+              ? 'border-eeg-accent text-eeg-accent bg-eeg-accent bg-opacity-10'
+              : 'border-eeg-border text-eeg-muted hover:text-eeg-text'
+            }`}
+        >
+          Style
+        </button>
+      </div>
+
+      {styleOpen && (
+        <div className="px-3 pb-3 flex flex-wrap items-end gap-3 border-t border-eeg-border bg-eeg-bg bg-opacity-35">
+          <ToolbarColor
+            label="Curve"
+            value={viewerStyle.signalColor || baseTheme.signal}
+            onChange={value => setStyle('signalColor', value)}
+          />
+          <ToolbarColor
+            label="Plot"
+            value={viewerStyle.plotBg || baseTheme.plotBg}
+            onChange={value => setStyle('plotBg', value)}
+          />
+          <ToolbarColor
+            label="Frame"
+            value={viewerStyle.pageBg || baseTheme.pageBg}
+            onChange={value => setStyle('pageBg', value)}
+          />
+          <ToolbarColor
+            label="Grid"
+            value={viewerStyle.gridColor || rgbaToHex(baseTheme.gridMajor) || baseTheme.signal}
+            onChange={value => setStyle('gridColor', value)}
+          />
+          <ToolbarRange
+            label="Curve width"
+            value={viewerStyle.curveWidth}
+            min={0.7}
+            max={2.4}
+            step={0.05}
+            unit=" px"
+            onChange={value => setStyle('curveWidth', value)}
+            wide
+          />
+          <button
+            type="button"
+            onClick={resetStyle}
+            className="h-8 px-3 rounded border border-eeg-border text-xs font-mono text-eeg-muted hover:text-eeg-text transition-colors"
+          >
+            Reset
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ToolbarSelect({ label, value, onChange, children, className = '' }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{label}</span>
+      <select
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        className={`h-8 bg-eeg-card border border-eeg-border rounded px-2 text-xs font-mono text-eeg-text focus:outline-none focus:border-eeg-accent ${className}`}
+      >
+        {children}
+      </select>
+    </label>
+  )
+}
+
+function ToolbarRange({ label, value, min, max, step, unit, onChange, wide = false, disabled = false }) {
+  return (
+    <label className={`flex flex-col gap-1 ${wide ? 'w-40' : 'w-28'} ${disabled ? 'opacity-50' : ''}`}>
+      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">
+        {label} <span className="text-eeg-accent">{Number(value).toFixed(step < 1 ? 2 : 0)}{unit}</span>
+      </span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={event => onChange(Number(event.target.value))}
+        disabled={disabled}
+        className="h-8 w-full accent-eeg-accent disabled:cursor-not-allowed"
+      />
+    </label>
+  )
+}
+
+function ToolbarToggle({ label, value, offLabel, onLabel, onChange }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{label}</span>
+      <div className="h-8 grid grid-cols-2 rounded border border-eeg-border bg-eeg-card overflow-hidden text-xs font-mono">
+        <button
+          type="button"
+          onClick={() => onChange(false)}
+          className={`px-2 transition-colors ${!value ? 'bg-eeg-accent text-eeg-bg' : 'text-eeg-muted hover:text-eeg-text'}`}
+        >
+          {offLabel}
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange(true)}
+          className={`px-2 transition-colors ${value ? 'bg-eeg-accent text-eeg-bg' : 'text-eeg-muted hover:text-eeg-text'}`}
+        >
+          {onLabel}
+        </button>
+      </div>
+    </label>
+  )
+}
+
+function ToolbarNumber({ label, value, onChange }) {
+  return (
+    <label className="flex flex-col gap-1 w-16">
+      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{label}</span>
+      <input
+        type="number"
+        value={value ?? ''}
+        onChange={event => onChange(event.target.value === '' ? null : Number(event.target.value))}
+        className="h-8 bg-eeg-card border border-eeg-border rounded px-2 text-xs font-mono text-eeg-text focus:outline-none focus:border-eeg-accent"
+      />
+    </label>
+  )
+}
+
+function ToolbarColor({ label, value, onChange }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{label}</span>
+      <input
+        type="color"
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        className="h-8 w-12 rounded border border-eeg-border bg-eeg-card cursor-pointer"
+      />
+    </label>
+  )
+}
+
+function PatternAnalysisSummary({ pattern, channel }) {
+  const meta = getPatternMeta(pattern)
+  const analysis = PATTERN_ANALYSIS[pattern] ?? {
+    spectrum: 'Compare the dominant frequency bands with the expected background rhythm and any generated events for this pattern.',
+    spectrogram: 'Look for whether power is sustained, intermittent, focal, or event-locked over time.',
+  }
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted mb-1">
+            Current pattern analysis
+          </p>
+          <h2 className="font-display text-sm font-semibold text-eeg-text truncate">
+            {meta?.label ?? pattern}
+          </h2>
+        </div>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          {meta?.groupLabel && (
+            <span
+              className="text-[10px] font-mono px-2 py-0.5 rounded border"
+              style={{
+                color: meta.color,
+                borderColor: `${meta.color}66`,
+                background: `${meta.color}18`,
+              }}
+            >
+              {meta.groupLabel}
+            </span>
+          )}
+          <span className="text-[10px] font-mono text-eeg-muted">
+            {channel}
+          </span>
+        </div>
+      </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-widest text-eeg-accent mb-1">
+            Spectrum
+          </p>
+          <p className="text-xs font-body text-eeg-muted leading-relaxed">
+            {analysis.spectrum}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-widest text-eeg-accent mb-1">
+            Spectrogram
+          </p>
+          <p className="text-xs font-body text-eeg-muted leading-relaxed">
+            {analysis.spectrogram}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AnalysisPanelControls({
+  channels,
+  activeChannel,
+  onChannelChange,
+  updateRateHz,
+  onUpdateRateChange,
+}) {
+  return (
+    <div className="flex items-end justify-between gap-4 flex-wrap">
+      <ChannelPicker
+        channels={channels}
+        active={activeChannel}
+        onSelect={onChannelChange}
+      />
+      <ToolbarRange
+        label="Update"
+        value={updateRateHz}
+        min={1}
+        max={24}
+        step={1}
+        unit="/s"
+        onChange={onUpdateRateChange}
+      />
     </div>
   )
 }

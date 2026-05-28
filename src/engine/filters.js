@@ -20,20 +20,29 @@
  * @returns {Float32Array}       - filtered signal (new array)
  */
 export function applyBiquadSOS(signal, sos) {
-  let x = new Float32Array(signal)
+  const len = signal.length
+  if (!sos.length) return signal
+  // Double-buffer: use two pre-allocated arrays swapped between sections
+  // to avoid one Float32Array allocation per biquad stage.
+  const bufA = new Float32Array(len)
+  const bufB = new Float32Array(len)
+  let src = signal
+  let dst = bufA
   for (const [b0, b1, b2, a1, a2] of sos) {
-    const y = new Float32Array(x.length)
     let z1 = 0, z2 = 0
-    for (let n = 0; n < x.length; n++) {
-      const xn = x[n]
+    for (let n = 0; n < len; n++) {
+      const xn = src[n]
       const yn = b0 * xn + z1
       z1 = b1 * xn - a1 * yn + z2
       z2 = b2 * xn - a2 * yn
-      y[n] = yn
+      dst[n] = yn
     }
-    x = y
+    // Swap buffers for next section
+    src = dst
+    dst = src === bufA ? bufB : bufA
   }
-  return x
+  // Return the buffer that holds the final output
+  return src === signal ? bufA : src
 }
 
 // ─── Coefficient Design ───────────────────────────────────────────────────────
@@ -118,13 +127,13 @@ export const FILTER_PRESETS = {
  */
 export function applyFilterChain(signal, fs = 256, cfg = {}) {
   const { hp = null, lp = null, notch = null } = cfg
-  let out = new Float32Array(signal)
+  const sos = []
 
-  if (hp   !== null && hp   > 0)     out = applyBiquadSOS(out, butterHighpass(hp,   fs))
-  if (lp   !== null && lp   > 0)     out = applyBiquadSOS(out, butterLowpass (lp,   fs))
-  if (notch !== null && notch > 0)   out = applyBiquadSOS(out, notchFilter   (notch, fs))
+  if (hp   !== null && hp   > 0)     sos.push(...getCachedFilterSOS('hp',    hp,    fs))
+  if (lp   !== null && lp   > 0)     sos.push(...getCachedFilterSOS('lp',    lp,    fs))
+  if (notch !== null && notch > 0)   sos.push(...getCachedFilterSOS('notch', notch, fs))
 
-  return out
+  return sos.length > 0 ? applyBiquadSOS(signal, sos) : signal
 }
 
 // ─── Coefficient Cache ────────────────────────────────────────────────────────

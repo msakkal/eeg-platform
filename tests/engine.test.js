@@ -134,7 +134,7 @@ describe('createEngineForPattern', () => {
   const expected = {
     normal_awake: { mode: 'normal_awake', overlays: [] },
     normal_drowsy: { mode: 'normal_drowsy', overlays: [] },
-    normal_sleep: { mode: 'normal_sleep', overlays: [] },
+    normal_sleep: { mode: 'normal_sleep', overlays: ['N2SleepGraphoelementsOverlay'] },
     slow_wave_sleep: { mode: 'slow_wave_sleep', overlays: [] },
     absence: { mode: 'normal_awake', overlays: ['AbsenceOverlay'] },
     slow_spike_wave: { mode: 'diffuse_slowing', overlays: ['SlowSpikeWaveOverlay'] },

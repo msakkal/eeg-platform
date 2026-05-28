@@ -112,28 +112,47 @@ export const DEFAULT_MONTAGE = 'longitudinal_bipolar'
 
 // ─── Montage Transform ───────────────────────────────────────────────────────
 
+function ringBuf(buf, writeIdx, i) {
+  return buf[(writeIdx + i) % buf.length]
+}
+
 /**
  * Apply a montage to a raw channel dataset.
  *
  * @param {object} rawChannels   - { [electrodeLabel]: Float32Array }
  * @param {string} montageId     - key from MONTAGES
+ * @param {number} [writeIdx]    - ring-buffer write position; if set, channels
+ *                                  are read as circular buffers starting at
+ *                                  writeIdx instead of linear arrays
  * @returns {Array<{ label, data: Float32Array }>}
  */
-export function applyMontage(rawChannels, montageId = DEFAULT_MONTAGE) {
+export function applyMontage(rawChannels, montageId = DEFAULT_MONTAGE, writeIdx) {
   const montage = MONTAGES[montageId]
   if (!montage) throw new Error(`Unknown montage: ${montageId}`)
+  const isRing = writeIdx !== undefined && writeIdx !== null
+
+  const firstLabel = Object.keys(rawChannels).filter(l => !['A1','A2'].includes(l))[0]
+  const bufLen = rawChannels[firstLabel].length
 
   // Pre-compute average reference if needed
   let avgRef = null
   if (montage.channels.some(ch => ch.neg === 'average')) {
     const labels = Object.keys(rawChannels).filter(l => !['A1','A2'].includes(l))
     const n      = labels.length
-    const len    = rawChannels[labels[0]].length
-    avgRef       = new Float32Array(len)
-    labels.forEach(l => {
-      const ch = rawChannels[l]
-      for (let i = 0; i < len; i++) avgRef[i] += ch[i] / n
-    })
+    avgRef       = new Float32Array(bufLen)
+    if (isRing) {
+      for (let i = 0; i < bufLen; i++) {
+        let sum = 0
+        for (let j = 0; j < n; j++) sum += ringBuf(rawChannels[labels[j]], writeIdx, i)
+        avgRef[i] = sum / n
+      }
+    } else {
+      for (let i = 0; i < bufLen; i++) {
+        let sum = 0
+        for (let j = 0; j < n; j++) sum += rawChannels[labels[j]][i]
+        avgRef[i] = sum / n
+      }
+    }
   }
 
   // Pre-compute linked-ears reference
@@ -141,9 +160,35 @@ export function applyMontage(rawChannels, montageId = DEFAULT_MONTAGE) {
   if (montage.channels.some(ch => ch.neg === 'ears')) {
     const a1  = rawChannels['A1']
     const a2  = rawChannels['A2']
-    const len = a1.length
-    earRef    = new Float32Array(len)
-    for (let i = 0; i < len; i++) earRef[i] = (a1[i] + a2[i]) / 2
+    earRef    = new Float32Array(bufLen)
+    if (isRing) {
+      for (let i = 0; i < bufLen; i++) earRef[i] = (ringBuf(a1, writeIdx, i) + ringBuf(a2, writeIdx, i)) / 2
+    } else {
+      for (let i = 0; i < bufLen; i++) earRef[i] = (a1[i] + a2[i]) / 2
+    }
+  }
+
+  if (isRing) {
+    return montage.channels.map(({ label, pos, neg }) => {
+      const posBuf = rawChannels[pos]
+      if (!posBuf) return { label, data: new Float32Array(0) }
+
+      let negBuf
+      if (neg === 'average') negBuf = avgRef
+      else if (neg === 'ears') negBuf = earRef
+      else negBuf = rawChannels[neg]
+
+      if (negBuf) {
+        const derived = new Float32Array(bufLen)
+        for (let i = 0; i < bufLen; i++) {
+          derived[i] = ringBuf(posBuf, writeIdx, i) - ringBuf(negBuf, writeIdx, i)
+        }
+        return { label, data: derived }
+      }
+      const derived = new Float32Array(bufLen)
+      for (let i = 0; i < bufLen; i++) derived[i] = ringBuf(posBuf, writeIdx, i)
+      return { label, data: derived }
+    })
   }
 
   return montage.channels.map(({ label, pos, neg }) => {
@@ -153,10 +198,10 @@ export function applyMontage(rawChannels, montageId = DEFAULT_MONTAGE) {
     let negData
     if (neg === 'average') negData = avgRef
     else if (neg === 'ears') negData = earRef
-    else negData = rawChannels[neg] ?? new Float32Array(posData.length)
+    else negData = rawChannels[neg] ?? new Float32Array(bufLen)
 
-    const derived = new Float32Array(posData.length)
-    for (let i = 0; i < posData.length; i++) {
+    const derived = new Float32Array(bufLen)
+    for (let i = 0; i < bufLen; i++) {
       derived[i] = posData[i] - negData[i]
     }
     return { label, data: derived }

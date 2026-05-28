@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useMemo } from 'react'
-import { computeSpectrogram, EEG_BANDS } from '@/engine/fft'
-import { SAMPLE_RATE } from '@/engine/signalGenerator'
+import React, { useRef, useEffect } from 'react'
+import { EEG_BANDS } from '@/engine/fft'
+import { useSpectrogramWorker } from '@/hooks/useSpectrogramWorker'
 
 const HEIGHT     = 120
 const LABEL_W    = 36
@@ -40,6 +40,7 @@ function colourmap(t) {
  */
 export default function SpectrogramViewer({
   signal,
+  revision = 0,
   maxFreq   = 40,
   label     = 'Ch',
   className = '',
@@ -47,14 +48,7 @@ export default function SpectrogramViewer({
   const canvasRef = useRef(null)
   const dpr       = window.devicePixelRatio || 1
 
-  const spectroData = useMemo(() => {
-    if (!signal || signal.length < 256) return null
-    return computeSpectrogram(signal, SAMPLE_RATE, {
-      frameSize: 256,
-      hopSize:   64,
-      maxFreq,
-    })
-  }, [signal, maxFreq])
+  const spectroData = useSpectrogramWorker(signal, maxFreq, revision)
 
   useEffect(() => {
     const canvas = canvasRef.current

@@ -7,6 +7,9 @@ const EMPTY_ARRAY = []
 const DEFAULT_CHANNEL_HEIGHT = 48
 const DEFAULT_LEFT_LABEL_WIDTH = 72
 const DEFAULT_FOOTER_HEIGHT = 24
+const MAX_CANVAS_DPR = 2
+const TRACE_VERTICAL_DETAIL_THRESHOLD = 4
+const NEGATIVE_UP = -1
 
 // Vertical scale of the canvas, in pixels per millimetre.
 const PX_PER_MM = 2
@@ -25,45 +28,100 @@ function cancelDrawFrame(id) {
   }
 }
 
-function drawSignalPath(ctx, data, labelW, plotW, cy, pxPerUv) {
-  const nPts = data.length
+function setDenseColumnPoint(out, data, nPts, col, columns, samplesPerColumn, labelW, plotW, cy, pxPerUv) {
+  const i0 = Math.floor(col * samplesPerColumn)
+  const i1 = Math.min(nPts, Math.max(i0 + 1, Math.floor((col + 1) * samplesPerColumn)))
+  let min = Infinity
+  let max = -Infinity
+  for (let i = i0; i < i1; i++) {
+    const v = data[i]
+    if (v < min) min = v
+    if (v > max) max = v
+  }
 
-  if (nPts <= plotW * 2) {
-    for (let i = 0; i < nPts; i++) {
-      const x = labelW + (i / nPts) * plotW
-      const y = cy - data[i] * pxPerUv
-      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+  out.x = labelW + (col / Math.max(1, columns - 1)) * plotW
+  out.yMin = cy - max * pxPerUv
+  out.yMax = cy - min * pxPerUv
+  out.y = (out.yMin + out.yMax) / 2
+  return out
+}
+
+function drawSignalPathFast(ctx, data, labelW, plotW, cy, pxPerUv, fillColor) {
+  const nPts = data.length
+  const lastIdx = nPts - 1
+
+  ctx.beginPath()
+  ctx.lineJoin = 'round'
+  ctx.lineCap  = 'round'
+
+  if (nPts <= plotW * 1.25) {
+    if (nPts === 1) {
+      ctx.moveTo(labelW, cy - data[0] * pxPerUv)
+      return
     }
+
+    ctx.moveTo(labelW, cy - data[0] * pxPerUv)
+    for (let i = 1; i < lastIdx; i++) {
+      const x = labelW + (i / lastIdx) * plotW
+      const y = cy - data[i] * pxPerUv
+      const nextX = labelW + ((i + 1) / lastIdx) * plotW
+      const nextY = cy - data[i + 1] * pxPerUv
+      ctx.quadraticCurveTo(x, y, (x + nextX) / 2, (y + nextY) / 2)
+    }
+    ctx.lineTo(labelW + plotW, cy - data[lastIdx] * pxPerUv)
     return
   }
 
-  // Min/max envelope keeps narrow spikes visible while avoiding thousands of
-  // line segments that collapse onto the same screen pixels.
-  const columns = Math.max(1, Math.floor(plotW))
-  let started = false
-  for (let col = 0; col < columns; col++) {
-    const start = Math.floor((col / columns) * nPts)
-    const end = Math.min(nPts, Math.max(start + 1, Math.floor(((col + 1) / columns) * nPts)))
-    let min = Infinity
-    let max = -Infinity
+  // Dense signal: one column per CSS pixel, preserving narrow spikes with
+  // min/max segments while avoiding per-frame envelope allocations.
+  const columns = Math.max(1, Math.ceil(plotW))
+  const samplesPerColumn = nPts / columns
+  const point = { x: 0, y: 0, yMin: 0, yMax: 0 }
+  const next = { x: 0, y: 0, yMin: 0, yMax: 0 }
+  setDenseColumnPoint(point, data, nPts, 0, columns, samplesPerColumn, labelW, plotW, cy, pxPerUv)
+  ctx.moveTo(point.x, point.y)
 
-    for (let i = start; i < end; i++) {
-      const v = data[i]
-      if (v < min) min = v
-      if (v > max) max = v
+  for (let col = 1; col < columns; col++) {
+    setDenseColumnPoint(next, data, nPts, col, columns, samplesPerColumn, labelW, plotW, cy, pxPerUv)
+    const mx = (point.x + next.x) / 2
+    const my = (point.y + next.y) / 2
+    ctx.quadraticCurveTo(point.x, point.y, mx, my)
+
+    if (fillColor && Math.abs(point.yMax - point.yMin) > TRACE_VERTICAL_DETAIL_THRESHOLD) {
+      ctx.moveTo(point.x, point.yMin)
+      ctx.lineTo(point.x, point.yMax)
+      ctx.moveTo(mx, my)
     }
 
-    const x = labelW + col + 0.5
-    const yMin = cy - min * pxPerUv
-    const yMax = cy - max * pxPerUv
-    if (!started) {
-      ctx.moveTo(x, yMin)
-      started = true
-    } else {
-      ctx.lineTo(x, yMin)
-    }
-    ctx.lineTo(x, yMax)
+    point.x = next.x
+    point.y = next.y
+    point.yMin = next.yMin
+    point.yMax = next.yMax
   }
+
+  ctx.lineTo(point.x, point.y)
+  if (fillColor && Math.abs(point.yMax - point.yMin) > TRACE_VERTICAL_DETAIL_THRESHOLD) {
+    ctx.moveTo(point.x, point.yMin)
+    ctx.lineTo(point.x, point.yMax)
+  }
+}
+
+function hasActiveFilter(filterConfig) {
+  return Boolean(filterConfig?.hp || filterConfig?.lp || filterConfig?.notch)
+}
+
+function visibleData(ch) {
+  const data = ch.data
+  const start = ch.visibleStartIndex ?? 0
+  return start > 0 ? data?.subarray(start) : data
+}
+
+function filteredVisibleData(ch, filterConfig) {
+  if (!ch.data?.length) return ch.data
+
+  const filtered = applyFilterChain(ch.data, SAMPLE_RATE, filterConfig)
+  const start = ch.visibleStartIndex ?? 0
+  return start > 0 ? filtered.subarray(start) : filtered
 }
 
 /**
@@ -97,6 +155,8 @@ export default function EEGViewer({
   footerHeight = DEFAULT_FOOTER_HEIGHT,
   scaleMode = 'sensitivity',
   signalColor = null,
+  curveWidth = 1.1,
+  themeOverrides = null,
   highlightedChannels = EMPTY_ARRAY,
   highlightColor = null,
   channelColor = null,
@@ -104,24 +164,29 @@ export default function EEGViewer({
   showChannelLabels = true,
   showChannelAmplitudes = false,
   showTimeLabels = true,
+  polarity = 'negative-up',
 }) {
   const canvasRef = useRef(null)
-  const dprRef = useRef(window.devicePixelRatio || 1)
+  const dprRef = useRef(Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DPR))
   const hoverRef = useRef({ x: null, ch: null })
   const rafRef = useRef(null)
   const lastReportedHoverRef = useRef(null)
 
-  const th = useMemo(() => getViewerTheme(theme), [theme])
+  const th = useMemo(
+    () => ({ ...getViewerTheme(theme), ...(themeOverrides ?? {}) }),
+    [theme, themeOverrides]
+  )
 
   const filteredChannels = useMemo(() => {
-    if (!filterConfig || (!filterConfig.hp && !filterConfig.lp && !filterConfig.notch)) {
-      return channels
+    if (!hasActiveFilter(filterConfig)) {
+      return channels.map(ch => ({
+        ...ch,
+        data: visibleData(ch),
+      }))
     }
     return channels.map(ch => ({
       ...ch,
-      data: ch.data?.length
-        ? applyFilterChain(ch.data, SAMPLE_RATE, filterConfig)
-        : ch.data,
+      data: filteredVisibleData(ch, filterConfig),
     }))
   }, [channels, filterConfig])
 
@@ -159,7 +224,8 @@ export default function EEGViewer({
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const dpr = dprRef.current
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DPR)
+    dprRef.current = dpr
     const W = canvas.clientWidth
     const chs = filteredChannels
     const nCh = chs.length
@@ -167,14 +233,18 @@ export default function EEGViewer({
     const labelW = showChannelLabels || showChannelAmplitudes ? leftLabelWidth : 0
     const H = Math.max(footerHeight, nCh * rowH + footerHeight)
 
-    if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
-      canvas.width = W * dpr
-      canvas.height = H * dpr
+    const bitmapW = Math.max(1, Math.round(W * dpr))
+    const bitmapH = Math.max(1, Math.round(H * dpr))
+    if (canvas.width !== bitmapW || canvas.height !== bitmapH) {
+      canvas.width = bitmapW
+      canvas.height = bitmapH
       canvas.style.height = `${H}px`
     }
 
     const ctx = canvas.getContext('2d')
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'low'
     ctx.clearRect(0, 0, W, H)
 
     const plotW = W - labelW
@@ -184,6 +254,7 @@ export default function EEGViewer({
     const duration = timeAxis[timeAxis.length - 1] || 10
     const { channelMax, globalMax } = channelStats
     const fitHalfH = Math.max(1, rowH / 2 - 4)
+    const displayPolarity = polarity === 'positive-up' ? 1 : NEGATIVE_UP
     const pxPerUvFor = (idx) => {
       if (scaleMode === 'global-fit') return fitHalfH / globalMax
       if (scaleMode === 'per-channel-fit') return fitHalfH / channelMax[idx]
@@ -198,20 +269,21 @@ export default function EEGViewer({
     ctx.fillStyle = th.plotBg
     ctx.fillRect(labelW, 0, plotW, plotH)
 
-    const mmGrid = 5 * PX_PER_MM
     const pxPerSec = plotW / duration
-    const scrollPx = windowStart * pxPerSec
+    const minorTimeStep = 0.2
 
     {
-      const kStart = Math.ceil(scrollPx / mmGrid)
-      const kEnd = Math.floor((scrollPx + plotW) / mmGrid)
+      const minorStart = Math.ceil(windowStart / minorTimeStep)
+      const minorEnd = Math.floor((windowStart + duration) / minorTimeStep)
       for (const major of [false, true]) {
         ctx.strokeStyle = major ? th.gridMajor : th.gridMinor
         ctx.lineWidth = 1
         ctx.beginPath()
-        for (let k = kStart; k <= kEnd; k++) {
-          if ((k % 5 === 0) !== major) continue
-          const x = labelW + k * mmGrid - scrollPx
+        for (let k = minorStart; k <= minorEnd; k++) {
+          const isMajor = k % 5 === 0
+          if (isMajor !== major) continue
+          const t = k * minorTimeStep
+          const x = labelW + (t - windowStart) * pxPerSec
           ctx.moveTo(x, 0)
           ctx.lineTo(x, plotH)
         }
@@ -219,13 +291,15 @@ export default function EEGViewer({
       }
     }
 
+    const majorGridPx = pxPerSec
+    const minorGridPx = majorGridPx / 5
     for (const major of [false, true]) {
       ctx.strokeStyle = major ? th.gridMajor : th.gridMinor
       ctx.lineWidth = 1
       ctx.beginPath()
-      for (let j = 0; j * mmGrid <= plotH; j++) {
+      for (let j = 0; j * minorGridPx <= plotH; j++) {
         if ((j % 5 === 0) !== major) continue
-        const y = j * mmGrid
+        const y = j * minorGridPx
         ctx.moveTo(labelW, y)
         ctx.lineTo(W, y)
       }
@@ -249,6 +323,7 @@ export default function EEGViewer({
       if (relTime < 0 || relTime > duration) return
       const x = labelW + (relTime / duration) * plotW
       const annColor = ann.color ?? rowHighlightColor
+      const label = String(ann.label ?? '').slice(0, 18)
       ctx.strokeStyle = annColor + '99'
       ctx.lineWidth = 1.5
       ctx.setLineDash([4, 3])
@@ -258,20 +333,28 @@ export default function EEGViewer({
       ctx.stroke()
       ctx.setLineDash([])
 
+      ctx.font = '10px "DM Mono", monospace'
+      const padX = 5
+      const textW = Math.ceil(ctx.measureText(label).width)
+      const tagW = Math.max(36, textW + padX * 2)
+      const tagH = 20
+      const pointerW = 7
+      const tagX = Math.min(Math.max(x, labelW + 2), W - tagW - pointerW - 2)
+      const tagY = 4
+
       ctx.fillStyle = annColor
       ctx.beginPath()
-      ctx.moveTo(x, 4)
-      ctx.lineTo(x + 34, 4)
-      ctx.lineTo(x + 40, 11)
-      ctx.lineTo(x + 34, 18)
-      ctx.lineTo(x, 18)
+      ctx.moveTo(tagX, tagY)
+      ctx.lineTo(tagX + tagW, tagY)
+      ctx.lineTo(tagX + tagW + pointerW, tagY + tagH / 2)
+      ctx.lineTo(tagX + tagW, tagY + tagH)
+      ctx.lineTo(tagX, tagY + tagH)
       ctx.closePath()
       ctx.fill()
       ctx.fillStyle = th.annotationText
-      ctx.font = '7px "DM Mono", monospace'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
-      ctx.fillText(ann.label?.slice(0, 10), x + 3, 11)
+      ctx.fillText(label, tagX + padX, tagY + tagH / 2)
     })
 
     if (hoverX !== null) {
@@ -326,20 +409,23 @@ export default function EEGViewer({
       const customColor = channelColor?.(label, idx)
       const traceColor = customColor ?? (isHighlighted ? rowHighlightColor : baseSignalColor)
       ctx.strokeStyle = isHovered ? th.signalHover : traceColor
-      ctx.lineWidth = isHovered ? 1.6 : isHighlighted ? 1.35 : 1.2
-      if (th.glow) {
+      ctx.lineWidth = isHovered
+        ? curveWidth + 0.45
+        : isHighlighted
+          ? curveWidth + 0.15
+          : curveWidth
+      if (th.glow && (isHovered || isHighlighted)) {
         ctx.shadowColor = isHovered ? th.glowHover : traceColor
-        ctx.shadowBlur = isHovered ? th.glowBlur * 2 : isHighlighted ? th.glowBlur * 1.6 : th.glowBlur
+        ctx.shadowBlur = isHovered ? th.glowBlur * 1.4 : isHighlighted ? th.glowBlur : th.glowBlur * 0.7
       }
-      ctx.beginPath()
-      drawSignalPath(ctx, data, labelW, plotW, cy, pxPerUvFor(idx))
+      drawSignalPathFast(ctx, data, labelW, plotW, cy, pxPerUvFor(idx) * displayPolarity, traceColor)
       ctx.stroke()
       ctx.shadowBlur = 0
     })
 
     if (showCalibration) {
       const calUv = 50
-      const calScale = scaleMode === 'per-channel-fit' ? fitHalfH / globalMax : pxPerUvFor(0)
+      const calScale = Math.abs(scaleMode === 'per-channel-fit' ? fitHalfH / globalMax : pxPerUvFor(0))
       const calH = calUv * calScale
       const calX = labelW + 14
       const calY = plotH - 12
@@ -396,11 +482,13 @@ export default function EEGViewer({
     channelColor,
     channelHeight,
     channelStats,
+    curveWidth,
     filteredChannels,
     footerHeight,
     highlightedSet,
     highlightColor,
     leftLabelWidth,
+    polarity,
     scaleMode,
     sensitivity,
     showCalibration,
@@ -494,7 +582,7 @@ export default function EEGViewer({
       <canvas
         ref={canvasRef}
         className="w-full block"
-        style={{ imageRendering: 'crisp-edges', cursor: onAnnotate ? 'crosshair' : 'default' }}
+        style={{ imageRendering: 'auto', cursor: onAnnotate ? 'crosshair' : 'default' }}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         onClick={handleClick}

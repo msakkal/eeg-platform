@@ -303,6 +303,7 @@ export default function PropagationSection() {
               highlightColor="#FFD166"
               channelColor={propagationChannelColor}
               showChannelAmplitudes
+              polarity="positive-up"
               onHoverChannel={setHoveredChannel}
             />
           </div>

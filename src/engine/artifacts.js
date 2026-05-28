@@ -259,8 +259,47 @@ const CHANNEL_REGIONS = {
   'T6–O2':  ['temporal','occipital','right'],
 }
 
+const CHANNEL_PAIRS = Object.fromEntries(
+  DEMO_CHANNELS.map(label => {
+    const [pos, neg] = label.split('–')
+    return [label, { pos, neg }]
+  })
+)
+
+const DEMO_ELECTRODES = Array.from(new Set(
+  DEMO_CHANNELS.flatMap(label => label.split('–'))
+))
+
 function hasRegion(ch, ...regions) {
   return regions.some(r => (CHANNEL_REGIONS[ch] ?? []).includes(r))
+}
+
+function createElectrodeArtifacts() {
+  return Object.fromEntries(DEMO_ELECTRODES.map(label => [label, zeros(N)]))
+}
+
+function addElectrodeFieldToChannel(data, channelLabel, electrodeArtifacts) {
+  const pair = CHANNEL_PAIRS[channelLabel]
+  if (!pair) return
+  const pos = electrodeArtifacts[pair.pos]
+  const neg = electrodeArtifacts[pair.neg]
+  for (let i = 0; i < data.length; i++) {
+    data[i] += (pos?.[i] ?? 0) - (neg?.[i] ?? 0)
+  }
+}
+
+function injectPulseWave(buf, rPeak, amp) {
+  const delay = Math.round(0.23 * SAMPLE_RATE)
+  const dur = Math.round(0.32 * SAMPLE_RATE)
+  const start = rPeak + delay
+  for (let i = 0; i < dur; i++) {
+    const idx = start + i
+    if (idx < 0 || idx >= buf.length) continue
+    const x = i / dur
+    const rounded = Math.sin(Math.PI * x)
+    const shoulder = x < 0.35 ? x / 0.35 : Math.exp(-2.2 * (x - 0.35))
+    buf[idx] += amp * (0.65 * rounded + 0.35 * shoulder)
+  }
 }
 
 // ─── Duration constants ───────────────────────────────────────────────────────
@@ -283,30 +322,43 @@ function buildResult(channels, events = [], hot = []) {
 export function generateEyeBlinkArtifact() {
   const blinkTimes = [1.25, 3.05, 5.15, 6.85]
   const hot = []
+  const electrodeArtifacts = createElectrodeArtifacts()
+
+  const field = {
+    Fp1: 1.00, Fp2: 1.00,
+    F7:  0.38, F8:  0.38,
+    F3:  0.34, F4:  0.34, Fz: 0.28,
+    T3:  0.08, T4:  0.08,
+    C3:  0.06, C4:  0.06, Cz: 0.05,
+    P3:  0.02, P4:  0.02, Pz: 0.02,
+    T5:  0.02, T6:  0.02,
+    O1:  0.00, O2:  0.00,
+  }
+
+  blinkTimes.forEach(t => {
+    const s0     = Math.round(t * SAMPLE_RATE)
+    const riseMs = 55 + Math.random() * 25
+    const fallMs = 200 + Math.random() * 60
+    const peak   = 230 + Math.random() * 80
+
+    for (const electrode of DEMO_ELECTRODES) {
+      const scale = field[electrode] ?? 0
+      if (scale <= 0) continue
+      injectEyeBlink(electrodeArtifacts[electrode], s0, {
+        amplitude: peak * scale,
+        riseMs,
+        fallMs,
+        polarity: +1,
+      })
+    }
+  })
 
   const channels = DEMO_CHANNELS.map(label => {
     const data = bgChannel(N, ['alpha'], 38)
 
     const isFrontopolar = hasRegion(label, 'frontopolar')
-    const isFrontal     = hasRegion(label, 'frontal') && !isFrontopolar
-    const isCentral     = hasRegion(label, 'central')
-    const ampMod = isFrontopolar ? 1.0
-                 : isFrontal     ? 0.50
-                 : isCentral     ? 0.10
-                 :                 0.03
-
-    if (ampMod > 0.05 && isFrontopolar) hot.push(label)
-
-    if (ampMod > 0.02) {
-      blinkTimes.forEach((t, k) => {
-        const s0      = Math.round(t * SAMPLE_RATE)
-        const riseMs  = 55 + Math.random() * 25
-        const fallMs  = 200 + Math.random() * 60
-        // Tiny amplitude jitter between blinks (210–290 µV peak)
-        const peak    = (210 + Math.random() * 80) * ampMod
-        injectEyeBlink(data, s0, { amplitude: peak, riseMs, fallMs, polarity: +1 })
-      })
-    }
+    if (isFrontopolar) hot.push(label)
+    addElectrodeFieldToChannel(data, label, electrodeArtifacts)
     return { label, data }
   })
 
@@ -325,39 +377,42 @@ export function generateLateralEyeMovementArtifact() {
     { t: 4.9, dir: -1 }, { t: 6.2, dir: +1 }, { t: 7.3, dir: -1 },
   ]
   const hot = []
+  const electrodeArtifacts = createElectrodeArtifacts()
+
+  // Horizontal corneoretinal dipole. For right gaze (dir=+1), the
+  // positive cornea is closer to right frontotemporal electrodes and the
+  // contralateral side sees the retinal-negative field. Left gaze reverses.
+  const lateralField = {
+    Fp1: -0.55, F7: -1.00, F3: -0.35, T3: -0.22, C3: -0.08,
+    Fp2: +0.55, F8: +1.00, F4: +0.35, T4: +0.22, C4: +0.08,
+    Fz: 0.00, Cz: 0.00, Pz: 0.00,
+    T5: -0.04, P3: -0.03, O1: -0.02,
+    T6: +0.04, P4: +0.03, O2: +0.02,
+  }
+
+  moves.forEach(({ t, dir }) => {
+    const s0 = Math.round(t * SAMPLE_RATE)
+    const peak = 230 + Math.random() * 60
+
+    for (const electrode of DEMO_ELECTRODES) {
+      const field = lateralField[electrode] ?? 0
+      if (Math.abs(field) < 0.01) continue
+      injectSaccade(electrodeArtifacts[electrode], s0, {
+        amp: peak * Math.abs(field),
+        polarity: Math.sign(field) * dir,
+        stepMs:  20 + Math.random() * 15,
+        holdMs:  150 + Math.random() * 80,
+        decayMs: 220 + Math.random() * 120,
+      })
+    }
+  })
 
   const channels = DEMO_CHANNELS.map(label => {
     const data = bgChannel(N, ['alpha'], 38)
-    const isFpLeftPair  = label === 'Fp1–F7' || label === 'Fp1–F3'
-    const isFpRightPair = label === 'Fp2–F8' || label === 'Fp2–F4'
-    const isF7Pair      = label === 'F7–T3'
-    const isF8Pair      = label === 'F8–T4'
-    const isMidFrontL   = label === 'F3–C3'
-    const isMidFrontR   = label === 'F4–C4'
-
-    let ampMod = 0, polarity = 1
-    if (isFpLeftPair)  { ampMod = 1.00; polarity = +1 }
-    if (isFpRightPair) { ampMod = 1.00; polarity = -1 }
-    if (isF7Pair)      { ampMod = 0.55; polarity = +1 }
-    if (isF8Pair)      { ampMod = 0.55; polarity = -1 }
-    if (isMidFrontL)   { ampMod = 0.25; polarity = +1 }
-    if (isMidFrontR)   { ampMod = 0.25; polarity = -1 }
-
-    if (ampMod > 0.4) hot.push(label)
-
-    if (ampMod > 0) {
-      moves.forEach(({ t, dir }) => {
-        const s0   = Math.round(t * SAMPLE_RATE)
-        const peak = (180 + Math.random() * 60) * ampMod
-        injectSaccade(data, s0, {
-          amp:     peak,
-          polarity: polarity * dir,
-          stepMs:  20 + Math.random() * 15,
-          holdMs:  150 + Math.random() * 80,
-          decayMs: 220 + Math.random() * 120,
-        })
-      })
+    if (['Fp1–F7','F7–T3','Fp1–F3','Fp2–F8','F8–T4','Fp2–F4'].includes(label)) {
+      hot.push(label)
     }
+    addElectrodeFieldToChannel(data, label, electrodeArtifacts)
     return { label, data }
   })
 
@@ -457,12 +512,12 @@ export function generateChewingArtifact() {
 }
 
 /**
- * 5. 50 Hz POWERLINE ARTIFACT
+ * 5. 50/60 Hz POWERLINE ARTIFACT
  * Monomorphic sinusoidal contamination at mains frequency,
  * with a harmonic and gentle AM from lighting ballast.
  */
 export function generatePowerlineArtifact() {
-  const lineFreq = 50
+  const lineFreq = Math.random() < 0.5 ? 50 : 60
   const hot = []
 
   const channels = DEMO_CHANNELS.map(label => {
@@ -498,21 +553,22 @@ export function generatePowerlineArtifact() {
 export function generateElectrodePopArtifact() {
   const popTimes = [1.3, 2.8, 4.25, 5.7, 7.1]
   const hot = ['T3–T5', 'F7–T3']
+  const electrodeArtifacts = createElectrodeArtifacts()
+
+  popTimes.forEach(t => {
+    const s0 = Math.round(t * SAMPLE_RATE)
+    injectPop(electrodeArtifacts.T3, s0, {
+      amp:       320 + Math.random() * 160,
+      polarity:  Math.random() > 0.5 ? +1 : -1,
+      flatMs:    30 + Math.random() * 40,
+      recoverMs: 700 + Math.random() * 500,
+    })
+  })
 
   const channels = DEMO_CHANNELS.map(label => {
     const data = bgChannel(N, ['alpha'], 38)
 
-    if (hot.includes(label)) {
-      popTimes.forEach((t, k) => {
-        const s0 = Math.round(t * SAMPLE_RATE)
-        injectPop(data, s0, {
-          amp:       320 + Math.random() * 160,
-          polarity:  Math.random() > 0.5 ? +1 : -1,
-          flatMs:    30 + Math.random() * 40,
-          recoverMs: 700 + Math.random() * 500,
-        })
-      })
-    }
+    addElectrodeFieldToChannel(data, label, electrodeArtifacts)
     return { label, data }
   })
 
@@ -531,31 +587,35 @@ export function generateECGArtifact() {
   const hot = []
   const rPeaks = []
 
-  const channels = DEMO_CHANNELS.map((label, chIdx) => {
+  let r = Math.round(0.35 * SAMPLE_RATE)
+  while (r < N) {
+    rPeaks.push(r)
+    const rr = rrSamples + Math.round(gaussian(0, rrSamples * 0.018))
+    r += rr
+  }
+
+  const channels = DEMO_CHANNELS.map(label => {
     const data = bgChannel(N, ['alpha'], 36)
 
     const isTemp   = hasRegion(label, 'temporal')
     const isFp     = hasRegion(label, 'frontopolar')
     const isMidline= hasRegion(label, 'midline')
+    const isLeft   = hasRegion(label, 'left')
     const ampMod   = isTemp ? 1.0 : isFp ? 0.55 : isMidline ? 0.35 : 0.32
+    const polarity = isLeft ? 1 : 0.85
 
     if (ampMod > 0.8) hot.push(label)
 
-    // Add very small natural RR variability
-    const phaseJit = (Math.random() - 0.5) * 0.02 * SAMPLE_RATE
-    let   r        = Math.round(0.35 * SAMPLE_RATE + phaseJit)
-    while (r < N) {
-      injectCardiacBeat(data, r, 75 * ampMod)
-      if (chIdx === 0) rPeaks.push(r / SAMPLE_RATE)
-      const rr = rrSamples + Math.round(gaussian(0, rrSamples * 0.018))
-      r += rr
-    }
+    rPeaks.forEach(rPeak => {
+      injectCardiacBeat(data, rPeak, 60 * ampMod * polarity)
+      injectPulseWave(data, rPeak, 28 * ampMod * polarity)
+    })
     return { label, data }
   })
 
   // Mark a few beats as events (avoid cluttering the top bar with ~10 ticks)
   const events = rPeaks.filter((_, i) => i % 2 === 0)
-                       .map(t => ({ t, text: 'QRS' }))
+                       .map(rPeak => ({ t: rPeak / SAMPLE_RATE, text: 'QRS' }))
   return buildResult(channels, events, hot)
 }
 
@@ -704,7 +764,7 @@ export function generateVentilatorArtifact() {
 /**
  * 12. PHOTOMYOGENIC RESPONSE
  * Brief frontopolar EMG burst time-locked to each strobe flash with
- * ~20 ms latency.
+ * ~50 ms latency.
  */
 export function generatePhotomyogenicArtifact() {
   const flashRate   = 10
@@ -723,9 +783,9 @@ export function generatePhotomyogenicArtifact() {
 
     if (ampMod > 0.05) {
       for (let t = stimStart; t < stimEnd; t += flashPeriod) {
-        // EMG latency ~20 ms after each flash
-        const s0    = Math.round((t + 0.02) * SAMPLE_RATE)
-        const burstN = Math.round(0.030 * SAMPLE_RATE)
+        // Eyelid/facial EMG latency is typically around 50 ms after flash.
+        const s0    = Math.round((t + 0.052 + Math.random() * 0.010) * SAMPLE_RATE)
+        const burstN = Math.round(0.035 * SAMPLE_RATE)
         emgBurst(data, s0, burstN, 80 * ampMod, {
           bandMin:     50,
           bandMax:     140,
@@ -941,13 +1001,13 @@ export const ARTIFACT_CATALOGUE = [
     color:      '#FF4466',
     frequency:  '0.8–1.5 Hz (heart rate); perfectly regular',
     amplitude:  '10–100 µV depending on channel proximity to neck vessels',
-    morphology: 'P-QRS-T: low rounded P, narrow biphasic QRS with S dip, broad positive T wave',
+    morphology: 'Phase-locked P-QRS-T complex plus a delayed rounded pulse wave; every channel shares the same cardiac timing',
     distribution: 'Maximal at temporal chains and ear references. Often generalised at lower amplitude. Can be asymmetric if one neck vessel is closer to an electrode.',
     generator:  generateECGArtifact,
     mechanism:  'Two mechanisms: (1) The cardiac electrical field, though small at the scalp, is detectable — particularly the R wave of the QRS complex. (2) Pulse waves: mechanical pulsation of scalp vessels physically moves the electrode with each heartbeat, creating a motion artifact at cardiac rate. Both produce regular, heart rate-dependent activity.',
     identification: [
       'Perfectly regular rate matching the heart rate (typically 60–100 bpm = 1–1.67 Hz)',
-      'Biphasic morphology: low P → narrow QRS spike → broad T wave',
+      'Biphasic morphology: low P -> narrow QRS spike -> broad T/pulse wave',
       'Rate increases with physical activity or anxiety; slows with vagal manoeuvres',
       'Compare to simultaneous ECG channel (most amplifiers include one)',
       'Temporal and ear-reference channels often most affected',
@@ -1086,10 +1146,10 @@ export const ARTIFACT_CATALOGUE = [
     color:      '#FFEE88',
     frequency:  'Time-locked to photic stimulation rate',
     amplitude:  '30–150 µV at frontopolar channels',
-    morphology: 'Brief high-frequency EMG bursts time-locked to each strobe flash (~20 ms latency)',
+    morphology: 'Brief high-frequency EMG bursts time-locked to each strobe flash (~50 ms latency)',
     distribution: 'Frontopolar (Fp1, Fp2) and frontal. No occipital component (unlike photoparoxysmal response).',
     generator:  generatePhotomyogenicArtifact,
-    mechanism:  'The blink reflex and eyelid/facial muscle contraction triggered by bright light flashes creates EMG artifact that is time-locked to photic stimulation. This is a peripheral reflex response, not a cortical one. It appears shortly after the flash (10–40 ms latency) and is confined to periorbital and frontal muscles.',
+    mechanism:  'The blink reflex and eyelid/facial muscle contraction triggered by bright light flashes creates EMG artifact that is time-locked to photic stimulation. This is a peripheral reflex response, not a cortical one. It appears shortly after the flash (roughly 40-70 ms latency) and is confined to periorbital and frontal muscles.',
     identification: [
       'Activity is strictly time-locked to photic stimulation flashes',
       'Confined to frontopolar and frontal chains — no posterior component',

@@ -110,70 +110,70 @@ class SlowEnvelope {
 // in per-pattern channel functions, then tightened so amplitudes match
 // clinical norms (PDR ~50-70 µV pp at occiput).
 
-function modeAmps(mode, region, posterior, eyesOpen) {
+function normMode(mode) {
+  if (mode === 'awake') return 'normal_awake'
+  if (mode === 'drowsy') return 'normal_drowsy'
+  if (mode === 'n2') return 'normal_sleep'
+  if (mode === 'sws') return 'slow_wave_sleep'
+  return mode
+}
+
+const _ampsCache = new Map()
+
+function _computeAmps(mode, region, posterior, eyesOpen) {
+  const isFrontal = region === 'frontal' || region === 'frontopolar'
+  const isCentral = region === 'central'
+  const isPosterior = posterior
+  const isTemp = region === 'midtemporal' || region === 'posttemporal'
+
   switch (mode) {
     case 'normal_awake':
-    case 'awake':
-      // Alpha amplitudes are PEAK µV. Posterior-dominant alpha is normally
-      // ~20-60 µV pp (peak ~10-30); the slow envelope can lift waxing bursts
-      // a little higher. Occipital peak 30 → ~60 µV pp average PDR.
       return {
-        A: region === 'occipital' ? (eyesOpen ? 4  : 30)
-         : region === 'parietal'  ? (eyesOpen ? 3  : 16)
+        A: region === 'occipital' ? (eyesOpen ? 4 : 30)
+         : region === 'parietal'  ? (eyesOpen ? 3 : 16)
          : region === 'central'   ? 6
-         : region === 'frontal'   ? 4
-         : 5,
+         : region === 'frontal'   ? 4 : 5,
         B: region === 'frontal' ? 10 : region === 'central' ? 8 : region === 'temporal' ? 7 : 5,
-        T: region === 'midtemporal' || region === 'posttemporal' ? 4.5 : posterior ? 3.5 : 3.0,
-        D: posterior ? 2.4 : 2.0,
+        T: isTemp ? 4.5 : isPosterior ? 3.5 : 3.0,
+        D: isPosterior ? 2.4 : 2.0,
         noiseGain: eyesOpen ? 0.78 : 0.68,
       }
     case 'normal_drowsy':
-    case 'drowsy':
       return {
-        A: posterior ? (eyesOpen ? 1.6 : 11.5) : 2.4,
+        A: isPosterior ? (eyesOpen ? 1.6 : 11.5) : 2.4,
         B: region === 'frontal' ? 2.8 : 2.2,
-        T: region === 'midtemporal' || region === 'posttemporal' ? 24
-         : region === 'central'   ? 20
-         : region === 'parietal'  ? 16
-         : region === 'frontal'   ? 14.5 : 12.8,
-        D: region === 'frontal' ? 7.2 : region === 'central' ? 6.0 : 5.0,
+        T: isTemp ? 24 : isCentral ? 20 : region === 'parietal' ? 16 : region === 'frontal' ? 14.5 : 12.8,
+        D: region === 'frontal' ? 7.2 : isCentral ? 6.0 : 5.0,
         noiseGain: 0.68,
       }
     case 'normal_sleep':
-    case 'n2':
       return {
-        A: posterior ? 1.2 : 0.9,
-        B: region === 'frontal' ? 3.0 : region === 'central' ? 2.6 : 2.2,
-        T: region === 'central' ? 14.0
-         : region === 'midtemporal' || region === 'posttemporal' ? 12.4 : 10.5,
-        D: region === 'frontal' ? 11.0 : region === 'central' ? 9.0 : region === 'parietal' ? 7.2 : 6.2,
+        A: isPosterior ? 1.2 : 0.9,
+        B: region === 'frontal' ? 3.0 : isCentral ? 2.6 : 2.2,
+        T: isCentral ? 14.0 : isTemp ? 12.4 : 10.5,
+        D: region === 'frontal' ? 11.0 : isCentral ? 9.0 : region === 'parietal' ? 7.2 : 6.2,
         noiseGain: 0.62,
       }
     case 'slow_wave_sleep':
-    case 'sws':
       return {
         A: 0.5, B: 0.7, T: 1.6,
         D: region === 'frontal' ? 60
-         : region === 'central' ? 50
+         : isCentral ? 50
          : region === 'parietal' ? 38
-         : region === 'midtemporal' || region === 'posttemporal' ? 31 : 26,
+         : isTemp ? 31 : 26,
         noiseGain: 0.42,
       }
     case 'diffuse_slowing':
       return {
-        A: posterior ? 3.5 : 1.8,
+        A: isPosterior ? 3.5 : 1.8,
         B: 3,
-        T: region === 'frontal' || region === 'frontopolar' ? 28 : 22,
-        D: region === 'frontal' || region === 'frontopolar' ? 22 : 14,
+        T: isFrontal ? 28 : 22,
+        D: isFrontal ? 22 : 14,
         noiseGain: 0.55,
       }
     case 'alpha_coma':
-      // Frontal-max non-reactive alpha — handled by alphaGradient remapping
-      // in the engine sample() rather than here.
       return {
-        A: 0,   // disabled — see alpha-coma override
-        B: 1.5, T: 2, D: 2,
+        A: 0, B: 1.5, T: 2, D: 2,
         noiseGain: 0.36,
       }
     case 'electrocerebral_inactivity':
@@ -181,6 +181,14 @@ function modeAmps(mode, region, posterior, eyesOpen) {
     default:
       return { A: 6, B: 5, T: 5, D: 3, noiseGain: 0.78 }
   }
+}
+
+function modeAmps(mode, region, posterior, eyesOpen) {
+  const key = `${normMode(mode)}|${region}|${posterior}|${eyesOpen}`
+  if (_ampsCache.has(key)) return _ampsCache.get(key)
+  const amps = _computeAmps(normMode(mode), region, posterior, eyesOpen)
+  _ampsCache.set(key, amps)
+  return amps
 }
 
 // Alpha source mixing weight (how much of the channel's alpha comes from the
@@ -258,6 +266,7 @@ class Channel {
     this.emgHP   = 0
     this.emgPrev = 0
     this.rng = rng
+    this.sampleCount = 0
   }
 
   sample(t, opts) {
@@ -274,9 +283,9 @@ class Channel {
       noiseScale = 1,
     } = opts
     const { region, posterior, name } = this
-    // Advance and read the per-channel local alpha envelope so it tracks
-    // its own slow stochastic process (called once per channel per sample).
-    this.localAlphaEnv.step()
+    // Advance the per-channel local alpha envelope every 4th sample (64 Hz
+    // update rate matching the ~0.1–10 s time constants of the envelope).
+    if ((this.sampleCount++ & 3) === 0) this.localAlphaEnv.step()
     const { A, B, T, D, noiseGain } = modeAmps(mode, region, posterior, eyesOpen)
 
     // Base center frequencies + persistent offset + slow FM drift
@@ -458,13 +467,20 @@ class BlinkOverlay {
     this.nextT = 0.3 + rng() * this.meanIbi
     this.events = []
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
-      this.events.push({
+      const event = {
         t0: this.nextT,
         peak: 180 + this.rng() * 80,
         riseMs: 55 + this.rng() * 30,
         fallMs: 180 + this.rng() * 90,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'blink',
+        label: 'Blink',
+        detail: 'Eye blink',
       })
       // Gamma(k=2) inter-blink interval
       const u1 = Math.max(1e-6, this.rng())
@@ -503,13 +519,20 @@ class SaccadeOverlay {
     this.nextT = 0.5 + rng() * this.meanIbi
     this.events = []
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
-      this.events.push({
+      const event = {
         t0: this.nextT,
         peak: 60 + this.rng() * 40,
         durSec: 0.28 + this.rng() * 0.14,
         direction: this.rng() > 0.5 ? +1 : -1,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'saccade',
+        label: event.direction > 0 ? 'Right gaze' : 'Left gaze',
+        detail: 'Lateral eye movement',
       })
       const u = Math.max(1e-6, this.rng())
       this.nextT += Math.max(0.4, -this.meanIbi * Math.log(u))
@@ -570,9 +593,16 @@ class GpdsOverlay {
     this.nextT = 0.6
     this.events = []   // {t0, ampJ}
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
-      this.events.push({ t0: this.nextT, ampJ: 0.85 + this.rng() * 0.30 })
+      const event = { t0: this.nextT, ampJ: 0.85 + this.rng() * 0.30 }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'gpd',
+        label: 'GPD',
+        detail: 'Generalized periodic discharge',
+      })
       this.nextT += this.ibiMean * (0.88 + this.rng() * 0.24)
     }
     while (this.events.length && this.events[0].t0 < t - 0.6) this.events.shift()
@@ -605,9 +635,16 @@ class LpdsOverlay {
     this.nextT = 0.7
     this.events = []
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
-      this.events.push({ t0: this.nextT, ampJ: 0.85 + this.rng() * 0.30 })
+      const event = { t0: this.nextT, ampJ: 0.85 + this.rng() * 0.30 }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'lpd',
+        label: 'LPD',
+        detail: 'Left periodic discharge',
+      })
       this.nextT += this.ibiMean * (0.88 + this.rng() * 0.24)
     }
     while (this.events.length && this.events[0].t0 < t - 0.5) this.events.shift()
@@ -640,10 +677,17 @@ class AbsenceOverlay {
     this.events = []
     this.nextT = this.runStart
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t < this.runStart || t >= this.runEnd) return
     if (t >= this.nextT) {
-      this.events.push({ t0: this.nextT })
+      const event = { t0: this.nextT }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'spike_wave',
+        label: 'Spike-wave',
+        detail: 'Absence discharge',
+      })
       const x = (this.nextT - this.runStart) / (this.runEnd - this.runStart)
       const freq = 3.4 - 0.8 * x
       this.nextT += (1 / freq) * (0.94 + this.rng() * 0.12)
@@ -688,10 +732,17 @@ class BurstSuppressionOverlay {
     this.burstActive = false
     this.burstUntil = 0
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
       const burstDur = 0.5 + this.rng() * 1.2
-      this.events.push({ t0: this.nextT, durSec: burstDur, ampJ: 0.92 + this.rng() * 0.16 })
+      const event = { t0: this.nextT, durSec: burstDur, ampJ: 0.92 + this.rng() * 0.16 }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'burst',
+        label: 'Burst',
+        detail: 'Burst-suppression burst',
+      })
       this.burstUntil = this.nextT + burstDur
       this.nextT += burstDur + 2 + this.rng() * 2
     }
@@ -815,6 +866,24 @@ function posteriorPhoticField(label) {
   return map[label] ?? 0
 }
 
+function sleepSpindleField(label) {
+  const map = {
+    Cz: 1.00, Fz: 0.92, C3: 0.78, C4: 0.78,
+    F3: 0.52, F4: 0.52, Pz: 0.50, P3: 0.36, P4: 0.36,
+    T3: 0.24, T4: 0.24, F7: 0.18, F8: 0.18,
+  }
+  return map[label] ?? 0
+}
+
+function kComplexField(label) {
+  const map = {
+    Fz: 1.00, Cz: 0.92, F3: 0.78, F4: 0.78,
+    Fp1: 0.62, Fp2: 0.62, C3: 0.58, C4: 0.58,
+    Pz: 0.38, P3: 0.25, P4: 0.25, F7: 0.32, F8: 0.32,
+  }
+  return map[label] ?? 0
+}
+
 function regionLagSeconds(label) {
   switch (regionOf(label)) {
     case 'frontopolar': return 0.000
@@ -844,6 +913,83 @@ function multifocalField(focus, label) {
   return 0.08
 }
 
+class N2SleepGraphoelementsOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextSpindleT = 0.9 + rng() * 2.2
+    this.nextKComplexT = 2.0 + rng() * 5.5
+    this.events = []
+  }
+  advance(t, emitEvent = null) {
+    if (t >= this.nextSpindleT) {
+      const event = {
+        kind: 'spindle',
+        t0: this.nextSpindleT,
+        durSec: 0.65 + this.rng() * 0.85,
+        freq: 12.2 + this.rng() * 2.0,
+        ampJ: 0.80 + this.rng() * 0.40,
+        phase: this.rng() * 2 * Math.PI,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'sleep_spindle',
+        label: 'Spindle',
+        detail: 'N2 sleep spindle',
+      })
+      this.nextSpindleT += 3.4 + this.rng() * 5.2
+    }
+
+    if (t >= this.nextKComplexT) {
+      const event = {
+        kind: 'k_complex',
+        t0: this.nextKComplexT,
+        ampJ: 0.85 + this.rng() * 0.35,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'k_complex',
+        label: 'K-complex',
+        detail: 'N2 K-complex',
+      })
+      this.nextKComplexT += 7.0 + this.rng() * 8.0
+    }
+
+    while (this.events.length) {
+      const ev = this.events[0]
+      const tailSec = ev.kind === 'spindle' ? ev.durSec : 0.95
+      if (ev.t0 + tailSec >= t - 0.2) break
+      this.events.shift()
+    }
+  }
+  valueFor(label, t) {
+    let o = 0
+    let active = false
+    for (const ev of this.events) {
+      const dt = t - ev.t0
+      if (ev.kind === 'spindle') {
+        if (dt < 0 || dt > ev.durSec) continue
+        const w = sleepSpindleField(label)
+        if (w < 0.05) continue
+        active = true
+        const env = Math.sin(Math.PI * dt / ev.durSec)
+        o += w * ev.ampJ * 34 * env * Math.sin(2 * Math.PI * ev.freq * dt + ev.phase)
+      } else if (ev.kind === 'k_complex') {
+        if (dt < -0.03 || dt > 0.82) continue
+        const w = kComplexField(label)
+        if (w < 0.05) continue
+        active = true
+        o += w * ev.ampJ * (
+          gaussianPulse(dt, 0.075, 0.050, -82) +
+          slowHalfSine(dt, 0.14, 0.58, 210)
+        )
+      }
+    }
+    return { overlay: o, preserve: active ? 0.97 : 1 }
+  }
+}
+
 class FocalSlowingOverlay {
   constructor(rng) {
     this.phaseDelta = rng() * 2 * Math.PI
@@ -868,9 +1014,16 @@ class SlowSpikeWaveOverlay {
     this.nextT = 0.35
     this.events = []
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
-      this.events.push({ t0: this.nextT, ampJ: 0.86 + this.rng() * 0.28 })
+      const event = { t0: this.nextT, ampJ: 0.86 + this.rng() * 0.28 }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'slow_spike_wave',
+        label: 'Slow S/W',
+        detail: 'Slow spike-and-wave complex',
+      })
       this.nextT += this.ibiMean * (0.86 + this.rng() * 0.28)
     }
     while (this.events.length && this.events[0].t0 < t - 0.7) this.events.shift()
@@ -903,14 +1056,21 @@ class PolyspikeJmeOverlay {
     this.nextT = 0.8
     this.events = []
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
       const durSec = 0.65 + this.rng() * 0.35
-      this.events.push({
+      const event = {
         t0: this.nextT,
         durSec,
         ampJ: 0.88 + this.rng() * 0.26,
         hz: 3.8 + this.rng() * 0.9,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'polyspike',
+        label: 'Polyspike',
+        detail: 'JME polyspike-wave run',
       })
       this.nextT += durSec + 2.6 + this.rng() * 3.4
     }
@@ -946,12 +1106,19 @@ class CentrotemporalSpikesOverlay {
     this.nextT = 0.7
     this.events = []
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
-      this.events.push({
+      const event = {
         t0: this.nextT,
         side: this.rng() > 0.48 ? 'left' : 'right',
         ampJ: 0.82 + this.rng() * 0.34,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'centrotemporal_spike',
+        label: 'Rolandic spike',
+        detail: `${event.side === 'left' ? 'Left' : 'Right'} centrotemporal spike`,
       })
       const u = Math.max(1e-6, this.rng())
       this.nextT += 0.55 + -1.4 * Math.log(u)
@@ -986,9 +1153,16 @@ class TemporalSharpsOverlay {
     this.nextT = 0.9
     this.events = []
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
-      this.events.push({ t0: this.nextT, ampJ: 0.82 + this.rng() * 0.30 })
+      const event = { t0: this.nextT, ampJ: 0.82 + this.rng() * 0.30 }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'sharp_wave',
+        label: 'Sharp wave',
+        detail: 'Left temporal sharp wave',
+      })
       const u = Math.max(1e-6, this.rng())
       this.nextT += 1.15 + -1.0 * Math.log(u)
     }
@@ -1035,10 +1209,17 @@ class HypsarrhythmiaOverlay {
       }
     }
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
       const focus = this.focuses[Math.floor(this.rng() * this.focuses.length)]
-      this.events.push({ t0: this.nextT, focus, ampJ: 0.75 + this.rng() * 0.55 })
+      const event = { t0: this.nextT, focus, ampJ: 0.75 + this.rng() * 0.55 }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'multifocal_spike',
+        label: 'Multifocal spike',
+        detail: `Hypsarrhythmia focus ${focus}`,
+      })
       this.nextT += 0.18 + this.rng() * 0.42
     }
     while (this.events.length && this.events[0].t0 < t - 0.45) this.events.shift()
@@ -1082,13 +1263,20 @@ class PhotoparoxysmalOverlay {
     this.events = []
     this.phase = rng() * 2 * Math.PI
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     const p = t % this.cycleSec
     if (p < this.pprStart) {
       this.nextT = Math.max(this.nextT, t + (this.pprStart - p))
     }
     if (p >= this.pprStart && p <= this.pprEnd && t >= this.nextT) {
-      this.events.push({ t0: this.nextT, ampJ: 0.90 + this.rng() * 0.25 })
+      const event = { t0: this.nextT, ampJ: 0.90 + this.rng() * 0.25 }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'photoparoxysmal',
+        label: 'PPR',
+        detail: 'Photoparoxysmal spike-wave',
+      })
       this.nextT += (1 / (4.1 + this.rng() * 0.8)) * (0.92 + this.rng() * 0.16)
     }
     while (this.events.length && this.events[0].t0 < t - 0.38) this.events.shift()
@@ -1121,9 +1309,16 @@ class TriphasicWavesOverlay {
     this.nextT = 0.6
     this.events = []
   }
-  advance(t) {
+  advance(t, emitEvent = null) {
     if (t >= this.nextT) {
-      this.events.push({ t0: this.nextT, ampJ: 0.82 + this.rng() * 0.32 })
+      const event = { t0: this.nextT, ampJ: 0.82 + this.rng() * 0.32 }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'triphasic_wave',
+        label: 'Triphasic',
+        detail: 'Triphasic wave',
+      })
       this.nextT += 0.72 + this.rng() * 0.42
     }
     while (this.events.length && this.events[0].t0 < t - 0.75) this.events.shift()
@@ -1192,6 +1387,7 @@ export class StreamingEEG {
     this.mode = 'normal_awake'
     this.eyesOpen = false
     this.overlays = []
+    this.eventLog = []
   }
 
   setMode(mode) { this.mode = mode }
@@ -1207,6 +1403,23 @@ export class StreamingEEG {
   }
   clearOverlays() { this.overlays = [] }
   hasOverlay(predicate) { return this.overlays.some(predicate) }
+  recordEvent(event) {
+    const normalized = {
+      id: `${event.type ?? 'event'}-${Math.round((event.t ?? this.clock) * 1000)}-${this.eventLog.length}`,
+      t: event.t ?? this.clock,
+      type: event.type ?? 'event',
+      label: event.label ?? 'Event',
+      detail: event.detail ?? '',
+    }
+    this.eventLog.push(normalized)
+    const cutoff = this.clock - 120
+    while (this.eventLog.length > 200 || (this.eventLog.length && this.eventLog[0].t < cutoff)) {
+      this.eventLog.shift()
+    }
+  }
+  getEventsSince(timeS = 0) {
+    return this.eventLog.filter(event => event.t >= timeS)
+  }
 
   /**
    * Advance the engine by `durationSec` and return per-channel sample arrays.
@@ -1242,7 +1455,7 @@ export class StreamingEEG {
       const pdrEnv = this.pdrEnvelope.value()
 
       // Let overlays update their schedules for this timestep
-      for (const o of this.overlays) o.advance(t)
+      for (const o of this.overlays) o.advance(t, event => this.recordEvent(event))
 
       const opts = {
         mode: this.mode,
@@ -1278,6 +1491,7 @@ export class StreamingEEG {
   /** Reset clock to 0 (keeps all per-channel state and overlay schedules). */
   rewind() {
     this.clock = 0
+    this.eventLog = []
     for (const o of this.overlays) {
       // Best-effort — overlays carry their own schedules; create new ones to
       // restart cleanly.
@@ -1328,7 +1542,10 @@ export function createEngineForPattern(pattern, options = {}) {
   switch (pattern) {
     case 'normal_awake':         engine.setMode('normal_awake'); break
     case 'normal_drowsy':        engine.setMode('normal_drowsy'); break
-    case 'normal_sleep':         engine.setMode('normal_sleep'); break
+    case 'normal_sleep':
+      engine.setMode('normal_sleep')
+      engine.addOverlay(new N2SleepGraphoelementsOverlay(engine.rng))
+      break
     case 'slow_wave_sleep':      engine.setMode('slow_wave_sleep'); break
     case 'diffuse_slowing':      engine.setMode('diffuse_slowing'); break
     case 'alpha_coma':           engine.setMode('alpha_coma'); break
@@ -1409,6 +1626,7 @@ export {
   LpdsOverlay,
   AbsenceOverlay,
   BurstSuppressionOverlay,
+  N2SleepGraphoelementsOverlay,
   FocalSlowingOverlay,
   SlowSpikeWaveOverlay,
   PolyspikeJmeOverlay,
