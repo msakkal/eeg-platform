@@ -1007,6 +1007,67 @@ function DifferentialAmpSection() {
         <DifferentialAmpDiagram />
       </Figure>
 
+      <Subhead>What This Means in Bipolar Recordings</Subhead>
+      <Para>
+        In a <Highlight>bipolar montage</Highlight>, each displayed channel is not a
+        single electrode. It is the voltage difference between two neighbouring
+        electrodes. For example, the channel <Key>F7-T7</Key> is computed as:
+      </Para>
+      <div className="my-4 max-w-3xl">
+        <div className="card border border-eeg-border rounded-lg px-6 py-4 bg-eeg-card font-mono text-base"
+             style={{ color: '#00D4FF' }}>
+          F7-T7 = V<sub>F7</sub> - V<sub>T7</sub>
+        </div>
+      </div>
+      <Para>
+        If both electrodes see the same activity, the channel is nearly flat because
+        the two inputs subtract away. If F7 is more positive than T7, the trace
+        deflects one way; if T7 is more positive than F7, it deflects the opposite
+        way. So a bipolar trace is best read as a <Highlight>comparison between two
+        points</Highlight>, not as the absolute voltage under one electrode.
+      </Para>
+      <Para>
+        This is why bipolar recordings are so useful for localisation. A focal
+        discharge at T7 appears in both adjacent channels, but with opposite signs:
+        <Key>F7-T7</Key> contains T7 as the second input, while <Key>T7-P7</Key>
+        contains T7 as the first input. The shared electrode flips role from
+        negative input to positive input, so the wave flips polarity. That polarity
+        change is the familiar <Highlight>phase reversal</Highlight>, and it points toward
+        the electrode closest to the generator.
+      </Para>
+      <Figure caption="A focal generator at T7 is shared by two adjacent bipolar derivations. In F7-T7, T7 is the negative input, so the T7-positive field produces a downward deflection. In T7-P7, T7 is the positive input, so the same field produces an upward deflection. The opposite polarity in adjacent channels is the phase reversal.">
+        <PhaseReversalDiagram />
+      </Figure>
+      <Para>
+        A useful limitation is the <Highlight>end-of-chain effect</Highlight>. A phase
+        reversal is easiest to see when the active electrode sits between two
+        bipolar derivations, because the same electrode appears once as the negative
+        input and once as the positive input. At the end of a chain, such as Fp1 or
+        O1 in a longitudinal bipolar montage, there is no neighbouring channel
+        beyond the terminal electrode. A focal maximum there may therefore appear as
+        a large deflection in only the last channel, without a neat opposite-facing
+        partner. In that situation, localisation relies more on field distribution,
+        amplitude gradient, and comparison with another montage.
+      </Para>
+      <ul className="font-body text-eeg-muted text-sm space-y-2 max-w-3xl mt-3 mb-2 list-none">
+        <li>
+          <Key>-</Key> <Highlight>Common-mode signals cancel.</Highlight> Mains hum,
+          movement shared by both inputs, and distant widespread fields are reduced
+          because they appear similarly at both electrodes.
+        </li>
+        <li>
+          <Key>-</Key> <Highlight>Local differences stand out.</Highlight> A focal cortical
+          source creates a voltage gradient across nearby electrodes, so adjacent
+          bipolar channels show different amplitudes and sometimes opposite polarity.
+        </li>
+        <li>
+          <Key>-</Key> <Highlight>The montage determines what you see.</Highlight> The same
+          stored electrode voltages can be recombined as F7-T7, T7-P7, average
+          reference, or another montage. The brain signal is the same; the displayed
+          comparison changes.
+        </li>
+      </ul>
+
       <Subhead>The Signal Chain</Subhead>
       <Para>
         From cortex to digital sample, every channel passes through the same pipeline:
@@ -1152,6 +1213,85 @@ function DifferentialAmpDiagram() {
 }
 
 // ─── Section: Frequency Bands ────────────────────────────────────────────────
+
+function PhaseReversalDiagram() {
+  return (
+    <svg viewBox="0 0 620 300" className="w-full max-w-3xl mx-auto">
+      <defs>
+        <marker id="pr-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6"
+          markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5A6A82" />
+        </marker>
+      </defs>
+
+      <path d="M 60 70 Q 160 35 260 70" fill="none" stroke="#1E2A40" strokeWidth="1.6" />
+      <line x1="70" y1="95" x2="250" y2="95" stroke="#1E2A40" strokeWidth="1" strokeDasharray="4 5" />
+
+      {[
+        { label: 'F7', x: 80, color: '#00D4FF' },
+        { label: 'T7', x: 155, color: '#FFD166' },
+        { label: 'P7', x: 230, color: '#00D4FF' },
+      ].map(electrode => (
+        <g key={electrode.label}>
+          <circle cx={electrode.x} cy="95" r="8" fill="#0D1424" stroke={electrode.color} strokeWidth="1.8" />
+          <text x={electrode.x} y="120" textAnchor="middle" fontSize="11" fontFamily="DM Mono, monospace" fill={electrode.color}>
+            {electrode.label}
+          </text>
+        </g>
+      ))}
+
+      <circle cx="155" cy="72" r="18" fill="#FFD166" opacity="0.14" />
+      <circle cx="155" cy="72" r="7" fill="#FFD166" stroke="#0D1424" strokeWidth="1.2" />
+      <text x="155" y="48" textAnchor="middle" fontSize="10" fontFamily="DM Mono, monospace" fill="#FFD166">
+        focal generator
+      </text>
+
+      <path d="M 80 95 L 80 155 L 330 155" fill="none" stroke="#00D4FF" strokeWidth="1.2" />
+      <path d="M 155 95 L 155 175 L 330 175" fill="none" stroke="#FFD166" strokeWidth="1.2" />
+      <path d="M 155 95 L 155 225 L 330 225" fill="none" stroke="#FFD166" strokeWidth="1.2" />
+      <path d="M 230 95 L 230 245 L 330 245" fill="none" stroke="#00D4FF" strokeWidth="1.2" />
+
+      <rect x="330" y="138" width="92" height="42" rx="6" fill="#0D1424" stroke="#1E2A40" />
+      <text x="376" y="155" textAnchor="middle" fontSize="11" fontFamily="DM Mono, monospace" fill="#E6EDF7">
+        F7-T7
+      </text>
+      <text x="376" y="170" textAnchor="middle" fontSize="9" fontFamily="DM Mono, monospace" fill="#5A6A82">
+        V_F7 - V_T7
+      </text>
+
+      <rect x="330" y="210" width="92" height="42" rx="6" fill="#0D1424" stroke="#1E2A40" />
+      <text x="376" y="227" textAnchor="middle" fontSize="11" fontFamily="DM Mono, monospace" fill="#E6EDF7">
+        T7-P7
+      </text>
+      <text x="376" y="242" textAnchor="middle" fontSize="9" fontFamily="DM Mono, monospace" fill="#5A6A82">
+        V_T7 - V_P7
+      </text>
+
+      <line x1="422" y1="159" x2="462" y2="159" stroke="#5A6A82" strokeWidth="1.2" markerEnd="url(#pr-arr)" />
+      <line x1="422" y1="231" x2="462" y2="231" stroke="#5A6A82" strokeWidth="1.2" markerEnd="url(#pr-arr)" />
+
+      <rect x="465" y="118" width="125" height="70" fill="#0D1424" stroke="#1E2A40" />
+      <line x1="465" y1="153" x2="590" y2="153" stroke="#1E2A40" strokeWidth="0.8" strokeDasharray="3 3" />
+      <path d="M 472 153 L 500 153 Q 510 180 520 153 T 548 153 L 585 153"
+        stroke="#FF6B35" strokeWidth="1.8" fill="none" />
+      <text x="468" y="132" fontSize="10" fontFamily="DM Mono, monospace" fill="#FF6B35">
+        downward
+      </text>
+
+      <rect x="465" y="198" width="125" height="70" fill="#0D1424" stroke="#1E2A40" />
+      <line x1="465" y1="233" x2="590" y2="233" stroke="#1E2A40" strokeWidth="0.8" strokeDasharray="3 3" />
+      <path d="M 472 233 L 500 233 Q 510 206 520 233 T 548 233 L 585 233"
+        stroke="#00FFB0" strokeWidth="1.8" fill="none" />
+      <text x="468" y="212" fontSize="10" fontFamily="DM Mono, monospace" fill="#00FFB0">
+        upward
+      </text>
+
+      <text x="300" y="285" textAnchor="middle" fontSize="10" fontFamily="DM Mono, monospace" fill="#FFD166">
+        same T7 field, opposite input role = phase reversal
+      </text>
+    </svg>
+  )
+}
 
 function FrequencyBandsSection() {
   return (
@@ -1667,12 +1807,12 @@ const ELECTRODE_POSITIONS = [
   { label: 'F7',  cx: 20,  cy: 35 }, { label: 'F3',  cx: 40, cy: 35 },
   { label: 'Fz',  cx: 50,  cy: 35 }, { label: 'F4',  cx: 60, cy: 35 },
   { label: 'F8',  cx: 80,  cy: 35 },
-  { label: 'T3',  cx: 14,  cy: 50 }, { label: 'C3',  cx: 35, cy: 50 },
+  { label: 'T7',  cx: 14,  cy: 50 }, { label: 'C3',  cx: 35, cy: 50 },
   { label: 'Cz',  cx: 50,  cy: 50 }, { label: 'C4',  cx: 65, cy: 50 },
-  { label: 'T4',  cx: 86,  cy: 50 },
-  { label: 'T5',  cx: 18,  cy: 65 }, { label: 'P3',  cx: 38, cy: 65 },
+  { label: 'T8',  cx: 86,  cy: 50 },
+  { label: 'P7',  cx: 18,  cy: 65 }, { label: 'P3',  cx: 38, cy: 65 },
   { label: 'Pz',  cx: 50,  cy: 65 }, { label: 'P4',  cx: 62, cy: 65 },
-  { label: 'T6',  cx: 82,  cy: 65 },
+  { label: 'P8',  cx: 82,  cy: 65 },
   { label: 'O1',  cx: 38,  cy: 82 }, { label: 'O2',  cx: 62, cy: 82 },
 ]
 

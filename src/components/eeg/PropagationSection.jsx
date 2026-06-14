@@ -28,6 +28,7 @@ function toSvg(nx, ny) {
 const MONTAGE_OPTIONS = [
   { id: 'longitudinal_bipolar', label: 'Long. Bipolar',  shortDesc: 'Phase reversals localise generator' },
   { id: 'transverse_bipolar',   label: 'Trans. Bipolar', shortDesc: 'Left-right phase reversal' },
+  { id: 'circumferential_bipolar', label: 'Circ. Bipolar', shortDesc: 'Peripheral ring phase reversals' },
   { id: 'average_reference',    label: 'Avg. Reference', shortDesc: 'Amplitude gradient from source' },
   { id: 'referential_ears',     label: 'Ref. Ears',      shortDesc: 'Direct amplitude gradient' },
 ]
@@ -304,6 +305,7 @@ export default function PropagationSection() {
               channelColor={propagationChannelColor}
               showChannelAmplitudes
               polarity="positive-up"
+              chainGap={isBipolar ? 18 : 0}
               onHoverChannel={setHoveredChannel}
             />
           </div>

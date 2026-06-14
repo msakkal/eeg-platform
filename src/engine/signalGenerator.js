@@ -1,4 +1,4 @@
-﻿/**
+/**
  * EEG Signal Generation Engine
  *
  * Generates physiologically plausible EEG using:
@@ -29,7 +29,7 @@ import {
   leftHemisphereGradient,
 } from './electrodes.js'
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ??? Constants ???????????????????????????????????????????????????????????????
 
 export const SAMPLE_RATE = 256          // Hz
 export const WINDOW_SIZE = SAMPLE_RATE * 10  // 10-second window
@@ -54,17 +54,17 @@ function makeRng(seed) {
   }
 }
 
-// ─── Rhythm Definitions ──────────────────────────────────────────────────────
+// ??? Rhythm Definitions ??????????????????????????????????????????????????????
 
 export const RHYTHMS = {
-  delta: { min: 0.5, max: 4,   label: 'Delta (δ)', color: '#7B5EA7' },
-  theta: { min: 4,   max: 8,   label: 'Theta (θ)', color: '#00D4FF' },
-  alpha: { min: 8,   max: 13,  label: 'Alpha (α)', color: '#00FFB0' },
-  beta:  { min: 13,  max: 30,  label: 'Beta (β)',  color: '#FF6B35' },
-  gamma: { min: 30,  max: 80,  label: 'Gamma (γ)', color: '#FFD166' },
+  delta: { min: 0.5, max: 4,   label: 'Delta (?)', color: '#7B5EA7' },
+  theta: { min: 4,   max: 8,   label: 'Theta (?)', color: '#00D4FF' },
+  alpha: { min: 8,   max: 13,  label: 'Alpha (?)', color: '#00FFB0' },
+  beta:  { min: 13,  max: 30,  label: 'Beta (?)',  color: '#FF6B35' },
+  gamma: { min: 30,  max: 80,  label: 'Gamma (?)', color: '#FFD166' },
 }
 
-// ─── Noise ───────────────────────────────────────────────────────────────────
+// ??? Noise ???????????????????????????????????????????????????????????????????
 
 /** Box-Muller gaussian random number */
 function gaussianRandom(mean = 0, std = 1) {
@@ -91,7 +91,7 @@ function pinkNoise(length) {
   return pink
 }
 
-// ─── Core Generators ─────────────────────────────────────────────────────────
+// ??? Core Generators ?????????????????????????????????????????????????????????
 
 /**
  * Generate a background EEG rhythm as a sum of sine components.
@@ -102,7 +102,7 @@ function pinkNoise(length) {
 export function generateBackground(length, fs = SAMPLE_RATE, options = {}) {
   const {
     freqBands  = ['alpha'],
-    amplitude  = 50,        // µV
+    amplitude  = 50,        // �V
     noiseLevel = 0.3,
     seed       = null,
   } = options
@@ -136,24 +136,24 @@ export function generateBackground(length, fs = SAMPLE_RATE, options = {}) {
   }
 }
 
-// ─── Modulated Rhythm Generator ──────────────────────────────────────────────
+// ??? Modulated Rhythm Generator ??????????????????????????????????????????????
 
 /**
  * Add a narrow-band rhythmic component with slow amplitude envelope
- * (waxing/waning) and gentle frequency drift — mimics the way biological
+ * (waxing/waning) and gentle frequency drift � mimics the way biological
  * rhythms like alpha and mu modulate in vivo.
  *
  * The envelope is a rectified low-frequency carrier plus a noise floor, so
- * the rhythm waxes and wanes every 1–3 s rather than being steady.
+ * the rhythm waxes and wanes every 1�3 s rather than being steady.
  */
 function addModulatedBand(signal, fs, {
   centerFreq,
   bandwidthHz = 1.5,
   amplitude   = 30,
   nComponents = 3,
-  envFreqMin  = 0.1,      // Hz — carrier for waxing/waning
+  envFreqMin  = 0.1,      // Hz � carrier for waxing/waning
   envFreqMax  = 0.3,
-  envFloor    = 0.25,     // minimum envelope (0..1) — never silences completely
+  envFloor    = 0.25,     // minimum envelope (0..1) � never silences completely
   phase0,
 }) {
   const length = signal.length
@@ -186,10 +186,10 @@ function addPinkNoiseTo(signal, amplitude, noiseLevel) {
   for (let i = 0; i < signal.length; i++) signal[i] += noise[i] * amplitude * noiseLevel
 }
 
-// ─── Source-Based Rhythm Mixing ──────────────────────────────────────────────
+// ??? Source-Based Rhythm Mixing ??????????????????????????????????????????????
 // Real EEG is dominated by volume conduction: a single cortical generator
 // projects onto every nearby electrode at varying amplitudes. Adjacent
-// electrodes share most of their signal (correlation 0.7–0.9). The original
+// electrodes share most of their signal (correlation 0.7�0.9). The original
 // per-channel `addModulatedBand` calls produced *independent* phase per
 // channel, which made the simulation look like sprinkled noise rather than
 // coherent brain activity. The helpers below build a unit-amplitude "source"
@@ -207,10 +207,10 @@ function buildSourceRhythm(nSamples, fs, opts) {
  * Mix a shared source buffer into a target channel.
  *  - `gain`: per-channel amplitude multiplier (already includes the gradient
  *    and the global amplitude).
- *  - `phaseJitterSamples`: max ± circular shift, in samples — preserves high
+ *  - `phaseJitterSamples`: max � circular shift, in samples � preserves high
  *    coherence while producing tiny inter-channel time offsets, so the
  *    waveform isn't phase-locked exactly across all 19 sites.
- *  - `incoherenceFactor`: 0..1 — fraction of the channel's contribution that
+ *  - `incoherenceFactor`: 0..1 � fraction of the channel's contribution that
  *    is added as new randomly-phased components instead of from the source.
  *    Real coherence is high but not 1.0; a small incoherent component
  *    prevents the simulation looking artificially synchronous.
@@ -229,10 +229,10 @@ function mixSource(target, source, gain, phaseJitterSamples = 0, _fs = SAMPLE_RA
   }
 }
 
-// ─── Ambient artefacts (always-on at low amplitude) ──────────────────────────
+// ??? Ambient artefacts (always-on at low amplitude) ??????????????????????????
 
 /**
- * Slow baseline drift — very-low-frequency wander (~0.05–0.3 Hz). Larger at
+ * Slow baseline drift � very-low-frequency wander (~0.05�0.3 Hz). Larger at
  * temporal/posterior leads where skin/sweat artifact and cable strain are
  * more pronounced clinically.
  */
@@ -257,7 +257,7 @@ function addBaselineDrift(signal, fs, label, amplitude) {
 
 /**
  * Build a shared cardiac beat schedule for one recording. Each beat is a
- * timestamp (seconds) — the same schedule is then projected onto every
+ * timestamp (seconds) � the same schedule is then projected onto every
  * channel by `addCardiacPulse` so QRS complexes appear synchronously
  * across the head (the heart only beats once).
  */
@@ -273,15 +273,15 @@ function buildCardiacSchedule(durationSec, hr = 65) {
 }
 
 /**
- * Cardiac pulse / ECG artifact — most prominent at ear references and
+ * Cardiac pulse / ECG artifact � most prominent at ear references and
  * temporal/posterior leads near the carotid pulsation. Adds a low-amplitude
  * QRS-like spike + small T-wave shaped bump at the SHARED beat times so
  * every channel pulses synchronously.
  */
 function addCardiacPulse(signal, fs, label, beatTimes) {
   const r = regionOf(label)
-  // µV peak amplitudes per region. Ear references often show prominent QRS
-  // contamination (20–40 µV is typical clinically); temporal/posterior
+  // �V peak amplitudes per region. Ear references often show prominent QRS
+  // contamination (20�40 �V is typical clinically); temporal/posterior
   // leads pick up smaller pulse-related artifact from scalp arteries.
   const ampMap = {
     ear:           22,
@@ -318,7 +318,7 @@ function addCardiacPulse(signal, fs, label, beatTimes) {
   })
 }
 
-// ─── Transient Injectors ─────────────────────────────────────────────────────
+// ??? Transient Injectors ?????????????????????????????????????????????????????
 
 /**
  * Inject a spike transient into a signal buffer.
@@ -328,7 +328,7 @@ function addCardiacPulse(signal, fs, label, beatTimes) {
  */
 export function injectSpike(signal, sampleIndex, options = {}) {
   const {
-    amplitude = 150,   // µV
+    amplitude = 150,   // �V
     duration  = 0.06,  // seconds (< 70 ms = spike)
     polarity  = -1,    // -1 = negative (classic EEG spike)
     asymmetry = 0.3,   // rise:fall ratio
@@ -347,7 +347,7 @@ export function injectSpike(signal, sampleIndex, options = {}) {
   return signal
 }
 
-/** Inject a sharp wave (70–200 ms). */
+/** Inject a sharp wave (70�200 ms). */
 export function injectSharpWave(signal, sampleIndex, options = {}) {
   return injectSpike(signal, sampleIndex, {
     amplitude: 100,
@@ -388,7 +388,7 @@ export function injectPolyspike(signal, sampleIndex, options = {}) {
 
 /**
  * Inject a triphasic wave (classic metabolic / hepatic encephalopathy pattern).
- * Three blunt phases: small positive → large negative → slower positive.
+ * Three blunt phases: small positive ? large negative ? slower positive.
  * Duration ~350 ms total, no needle-like spike component.
  */
 export function injectTriphasicWave(signal, sampleIndex, options = {}) {
@@ -438,16 +438,16 @@ export function injectMuscleArtifact(signal, sampleIndex, options = {}) {
  *
  * A blink produces a positive deflection at frontopolar channels because
  * closing the eyelid briefly brings the positive cornea closer to the
- * Fp electrodes. The waveform rises quickly (~50–80 ms) and decays more
- * slowly (~200–300 ms) — a skewed bell shape, NOT a symmetric sine.
+ * Fp electrodes. The waveform rises quickly (~50�80 ms) and decays more
+ * slowly (~200�300 ms) � a skewed bell shape, NOT a symmetric sine.
  *
  * @param {Float32Array} signal
  * @param {number} sampleIndex - sample at which blink onset begins
  * @param {object} options
- *   - amplitude: peak µV at this channel (caller scales by field factor)
+ *   - amplitude: peak �V at this channel (caller scales by field factor)
  *   - riseMs: ms from onset to peak (default 70)
  *   - fallMs: ms from peak back to baseline (default 220)
- *   - polarity: +1 (Fp positive, standard) or −1
+ *   - polarity: +1 (Fp positive, standard) or ?1
  */
 export function injectEyeBlink(signal, sampleIndex, options = {}) {
   const {
@@ -481,7 +481,7 @@ export function injectEyeBlink(signal, sampleIndex, options = {}) {
 /**
  * Inject a lateral (horizontal) eye-movement artefact. Saccades produce a
  * step-and-hold deflection at frontotemporal electrodes: F7 and F8 form a
- * dipole pair (anti-phase), with smaller contributions at Fp1/Fp2, T3/T4
+ * dipole pair (anti-phase), with smaller contributions at Fp1/Fp2, T7/T8
  * and F3/F4. Caller supplies `polarity * field(label)` as the amplitude.
  */
 export function injectLateralEyeMovement(signal, sampleIndex, options = {}) {
@@ -514,7 +514,7 @@ export { lateralEogField } from './electrodes.js'
 
 /**
  * Generate a train of saccade events (seconds) with random direction. Real
- * awake subjects make 1–3 saccades per second when scanning visually; we
+ * awake subjects make 1�3 saccades per second when scanning visually; we
  * default to a more conservative 25/min (sustained gaze with periodic
  * shifts) to keep the trace readable.
  */
@@ -556,16 +556,16 @@ export function generateBlinkTimes(durationSec, ratePerMin = 18) {
   return times
 }
 
-// ─── Multi-Channel EEG Generator ─────────────────────────────────────────────
+// ??? Multi-Channel EEG Generator ?????????????????????????????????????????????
 
 // Electrode definitions and gradient functions are now in electrodes.js.
 // Unique-to-this-file gradients below:
 
-/** Left anterior-temporal field — for TLE interictal sharps. */
+/** Left anterior-temporal field � for TLE interictal sharps. */
 function leftTemporalSpikeGradient(label) {
   switch (label) {
-    case 'F7': case 'T3':             return 1.00
-    case 'T5':                        return 0.55
+    case 'F7': case 'T7':             return 1.00
+    case 'P7':                        return 0.55
     case 'Fp1':                       return 0.55
     case 'F3':                        return 0.42
     case 'C3':                        return 0.30
@@ -574,11 +574,11 @@ function leftTemporalSpikeGradient(label) {
   }
 }
 
-/** Focal breach — left-central max over a skull defect. */
+/** Focal breach � left-central max over a skull defect. */
 function breachGradient(label) {
   switch (label) {
     case 'C3':                        return 1.00
-    case 'T3':                        return 0.65
+    case 'T7':                        return 0.65
     case 'F3':                        return 0.55
     case 'P3':                        return 0.55
     case 'Cz':                        return 0.32
@@ -586,7 +586,7 @@ function breachGradient(label) {
   }
 }
 
-/** Frontal-maximum alpha (inverted gradient) — for alpha coma. */
+/** Frontal-maximum alpha (inverted gradient) � for alpha coma. */
 function alphaComaFieldGradient(label) {
   switch (regionOf(label)) {
     case 'frontopolar':  return 1.00
@@ -631,7 +631,7 @@ export function generateMultiChannelEEG(options = {}) {
   const nSamples = Math.round(duration * sampleRate)
   const channels = {}
 
-  // ── Shared cortical-source rhythms ──────────────────────────────────────
+  // ?? Shared cortical-source rhythms ??????????????????????????????????????
   // Build each major rhythm ONCE per pattern as a unit-amplitude source. The
   // per-channel functions then mix the source in scaled by its regional
   // gradient with a small phase jitter, producing realistic inter-channel
@@ -684,13 +684,13 @@ export function generateMultiChannelEEG(options = {}) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude, noiseLevel * 0.6)
 
-    // Alpha (posterior dominant rhythm) — strongly gated by eye state.
+    // Alpha (posterior dominant rhythm) � strongly gated by eye state.
     // Source projects with a tiny per-channel phase offset (~10 ms) so the
     // PDR is highly coherent across O1/O2/P3/P4 but not phase-identical.
     const alphaGain = alphaGradient(label) * amplitude * (eyesClosed ? 1.2 : 0.12)
     mixSource(sig, awakeSources.alpha, alphaGain, /* jitter */ 3)
 
-    // Mu rhythm (central 8–12 Hz, arched) — present regardless of eye state.
+    // Mu rhythm (central 8�12 Hz, arched) � present regardless of eye state.
     const muGain = muGradient(label) * amplitude * 0.25
     if (muGain > 0.5) {
       mixSource(sig, awakeSources.mu, muGain, 2)
@@ -698,13 +698,13 @@ export function generateMultiChannelEEG(options = {}) {
       mixSource(sig, awakeSources.muHarmonic, muGain * 0.3, 2)
     }
 
-    // Low-amplitude frontal/diffuse beta — prominent when eyes open
+    // Low-amplitude frontal/diffuse beta � prominent when eyes open
     // (desynchronised, "alert" cortex).
     const betaGain = frontalBetaGradient(label) * amplitude *
       (eyesClosed ? 0.12 : 0.22)
     mixSource(sig, awakeSources.beta, betaGain, 4)
 
-    // Temporal theta — more in mid/post-temporal channels (small in adults).
+    // Temporal theta � more in mid/post-temporal channels (small in adults).
     if (regionOf(label) === 'midtemporal' || regionOf(label) === 'posttemporal') {
       mixSource(sig, awakeSources.tempTheta, amplitude * 0.15, 3)
     }
@@ -713,7 +713,7 @@ export function generateMultiChannelEEG(options = {}) {
   }
 
   // Drowsy: alpha fragments, increased theta, slow roving eye movements.
-  // Shared sources for the drowsy state — same source-projection idea as
+  // Shared sources for the drowsy state � same source-projection idea as
   // awake, so theta is coherent across frontocentral channels.
   const drowsySources = {
     alpha: buildSourceRhythm(nSamples, sampleRate, {
@@ -742,7 +742,7 @@ export function generateMultiChannelEEG(options = {}) {
     const alphaGain = alphaGradient(label) * amplitude * 0.55
     mixSource(sig, drowsySources.alpha, alphaGain, 3)
 
-    // Diffuse theta — slightly amplified frontocentrally
+    // Diffuse theta � slightly amplified frontocentrally
     const thetaGain = amplitude * 0.55 *
       (regionOf(label) === 'central' || regionOf(label) === 'frontal' ? 1.1 : 0.85)
     mixSource(sig, drowsySources.theta, thetaGain, 4)
@@ -772,7 +772,7 @@ export function generateMultiChannelEEG(options = {}) {
     }),
   }
 
-  // Pre-scheduled vertex sharps (1 per ~5 s) — same time across vertex sites
+  // Pre-scheduled vertex sharps (1 per ~5 s) � same time across vertex sites
   const vertexTimes = []
   {
     const n = Math.max(1, Math.round(duration / 5))
@@ -780,7 +780,7 @@ export function generateMultiChannelEEG(options = {}) {
       vertexTimes.push(0.8 + random() * (duration - 1.6))
     }
   }
-  // Pre-scheduled K-complexes (1 per ~8 s) — sharp neg + large positive slow,
+  // Pre-scheduled K-complexes (1 per ~8 s) � sharp neg + large positive slow,
   // synchronous across Fz/Cz/F3/F4.
   const kComplexTimes = []
   {
@@ -789,7 +789,7 @@ export function generateMultiChannelEEG(options = {}) {
       kComplexTimes.push(1.5 + random() * (duration - 3))
     }
   }
-  // Pre-scheduled spindles — synchronous across centroparietal cortex
+  // Pre-scheduled spindles � synchronous across centroparietal cortex
   const spindleSchedule = []
   {
     const n = Math.round(duration / 4)
@@ -814,7 +814,7 @@ export function generateMultiChannelEEG(options = {}) {
     mixSource(sig, sleepSources.delta, amplitude * (isFrontalOrCentral ? 1.7 : 1.0), 4)
     mixSource(sig, sleepSources.theta, amplitude * 0.5, 4)
 
-    // Sleep spindles — same schedule across all relevant channels, scaled by
+    // Sleep spindles � same schedule across all relevant channels, scaled by
     // regional amplitude. Cz/Fz dominant, C3/C4 next, F3/F4 lower, mild
     // elsewhere (so spindles can faintly show on parietal channels too).
     const spindleAmp = (label === 'Cz' || label === 'Fz') ? amplitude * 0.9
@@ -836,7 +836,7 @@ export function generateMultiChannelEEG(options = {}) {
       })
     }
 
-    // Vertex sharp waves — sporadic negative sharp transient at Cz/C3/C4/Fz
+    // Vertex sharp waves � sporadic negative sharp transient at Cz/C3/C4/Fz
     if (label === 'Cz' || label === 'C3' || label === 'C4' || label === 'Fz') {
       const vertexAmp = label === 'Cz' ? 110 : 75
       vertexTimes.forEach(t => {
@@ -845,9 +845,9 @@ export function generateMultiChannelEEG(options = {}) {
       })
     }
 
-    // K-complexes — large biphasic complex maximal Fz/Cz. Real morphology:
-    // a brief sharp negative (~70–100 µV) followed by a much LARGER
-    // positive slow wave (~250 µV). The previous code had these inverted.
+    // K-complexes � large biphasic complex maximal Fz/Cz. Real morphology:
+    // a brief sharp negative (~70�100 �V) followed by a much LARGER
+    // positive slow wave (~250 �V). The previous code had these inverted.
     if (label === 'Fz' || label === 'Cz' || label === 'F3' || label === 'F4') {
       const kAmp = (label === 'Fz' || label === 'Cz') ? 1.0 : 0.65
       kComplexTimes.forEach(t => {
@@ -870,8 +870,8 @@ export function generateMultiChannelEEG(options = {}) {
   }
 
   // Focal slowing: polymorphic delta/theta concentrated over one region
-  // (here: left temporal T3/T5/F7), with normal-looking background elsewhere.
-  // The slowing arises from a single underlying focal generator, so T3/T5/F7
+  // (here: left temporal T7/P7/F7), with normal-looking background elsewhere.
+  // The slowing arises from a single underlying focal generator, so T7/P7/F7
   // should track each other strongly. Build the slowing as shared sources
   // and project them with a regional gain instead of generating fresh
   // independent rhythms per channel.
@@ -897,12 +897,12 @@ export function generateMultiChannelEEG(options = {}) {
       envFloor:    0.2,
     }),
   }
-  // Field weights for the focus — peak at T3 (anatomic centre of the cluster),
-  // dropping off toward T5 and F7. Outside the cluster, weight is 0.
+  // Field weights for the focus � peak at T7 (anatomic centre of the cluster),
+  // dropping off toward P7 and F7. Outside the cluster, weight is 0.
   function focalLeftField(label) {
     switch (label) {
-      case 'T3': return 1.00
-      case 'T5': return 0.78
+      case 'T7': return 1.00
+      case 'P7': return 0.78
       case 'F7': return 0.72
       default:   return 0
     }
@@ -921,7 +921,7 @@ export function generateMultiChannelEEG(options = {}) {
   }
 
   // Burst-suppression: periods of near-flat suppression alternating with
-  // mixed-frequency bursts. PRE-COMPUTE the schedule once — bursts must be
+  // mixed-frequency bursts. PRE-COMPUTE the schedule once � bursts must be
   // bilaterally synchronous (this was previously broken: each channel had
   // its own independent burst schedule).
   const burstSchedule = []
@@ -962,7 +962,7 @@ export function generateMultiChannelEEG(options = {}) {
   function burstSuppressionChannel(label) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude * 0.15, noiseLevel)     // suppression floor
-    const ampJitter = 0.92 + random() * 0.16        // ±8% per channel
+    const ampJitter = 0.92 + random() * 0.16        // �8% per channel
     burstSchedule.forEach(({ start, len, burst }) => {
       for (let i = 0; i < len; i++) {
         const idx = start + i
@@ -1004,7 +1004,7 @@ export function generateMultiChannelEEG(options = {}) {
     return sig
   }
 
-  // Diffuse slowing / encephalopathy background — diffuse theta + delta with
+  // Diffuse slowing / encephalopathy background � diffuse theta + delta with
   // residual A-P gradient on attenuated slow alpha. Diffuse slowing is by
   // definition bilaterally synchronous, so source projection matters here.
   const encephSources = {
@@ -1033,7 +1033,7 @@ export function generateMultiChannelEEG(options = {}) {
     addPinkNoiseTo(sig, amplitude, noiseLevel * 0.7)
     // Diffuse theta dominant
     mixSource(sig, encephSources.theta, amplitude * 1.05, 4)
-    // Delta overlay — slightly more anteriorly
+    // Delta overlay � slightly more anteriorly
     const anterior = regionOf(label) === 'frontal' || regionOf(label) === 'frontopolar'
     mixSource(sig, encephSources.delta, amplitude * (anterior ? 0.9 : 0.55), 4)
     // Residual attenuated, slowed alpha preserving an A-P gradient
@@ -1043,7 +1043,7 @@ export function generateMultiChannelEEG(options = {}) {
   }
 
   // Alpha coma: diffuse non-reactive alpha with FRONTAL max (inverted field).
-  // Single shared alpha source — alpha coma is famously *monotonous* and
+  // Single shared alpha source � alpha coma is famously *monotonous* and
   // synchronous across the head.
   const alphaComaSource = buildSourceRhythm(nSamples, sampleRate, {
     centerFreq:  10,
@@ -1062,7 +1062,7 @@ export function generateMultiChannelEEG(options = {}) {
     return sig
   }
 
-  // Electrocerebral inactivity — near-flat, residual technical noise only.
+  // Electrocerebral inactivity � near-flat, residual technical noise only.
   function ecsChannel(label) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude * 0.04, noiseLevel * 0.3)
@@ -1071,7 +1071,7 @@ export function generateMultiChannelEEG(options = {}) {
 
   // Breach rhythm: awake background amplified over a skull defect.
   // Sharpened beta + accentuated alpha share a single source so the
-  // amplified rhythm at C3/T3/F3/P3 is coherent — these channels surround
+  // amplified rhythm at C3/T7/F3/P3 is coherent � these channels surround
   // the same skull defect and should track each other.
   const breachSources = {
     sharpBeta: buildSourceRhythm(nSamples, sampleRate, {
@@ -1102,7 +1102,7 @@ export function generateMultiChannelEEG(options = {}) {
 
   // Hypsarrhythmia: chaotic very-high-amplitude disorganized slowing with
   // asynchronous multifocal sharp waves. Each channel gets its own random
-  // morphology — that's the whole point (asynchrony).
+  // morphology � that's the whole point (asynchrony).
   function hypsarrhythmiaChannel(label) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude * 2.0, noiseLevel * 1.3)
@@ -1136,19 +1136,19 @@ export function generateMultiChannelEEG(options = {}) {
     return sig
   }
 
-  // LPDs background — left hemisphere attenuated/slowed, right side normal.
+  // LPDs background � left hemisphere attenuated/slowed, right side normal.
   function lpdsBackgroundChannel(label) {
     return leftHemisphereGradient(label) > 0.3
       ? encephalopathyChannel(label)
       : awakeChannel(label)
   }
 
-  // ── Shared cardiac schedule for the whole recording ────────────────────
+  // ?? Shared cardiac schedule for the whole recording ????????????????????
   // The heart only beats once: every channel must show QRS at the same time.
-  const recordingHr   = 60 + Math.round(random() * 12)   // 60–72 bpm
+  const recordingHr   = 60 + Math.round(random() * 12)   // 60�72 bpm
   const cardiacBeats  = buildCardiacSchedule(duration, recordingHr)
 
-  // ── Build each channel ──────────────────────────────────────────────────
+  // ?? Build each channel ??????????????????????????????????????????????????
   ELECTRODES_1020.forEach(label => {
     let sig
     switch (pattern) {
@@ -1183,8 +1183,8 @@ export function generateMultiChannelEEG(options = {}) {
       addPinkNoiseTo(sig, amplitude * 0.1, noiseLevel)
     }
 
-    // ── Ambient artifacts always present in real recordings ─────────────
-    // Slow baseline drift (0.05–0.3 Hz): skin/sweat, cable strain.
+    // ?? Ambient artifacts always present in real recordings ?????????????
+    // Slow baseline drift (0.05�0.3 Hz): skin/sweat, cable strain.
     // Cardiac pulse: visible at temporal/posterior leads and ear refs.
     // ECI leaves these out (the whole point is near-flat signal).
     if (pattern !== 'electrocerebral_silence') {
@@ -1195,7 +1195,7 @@ export function generateMultiChannelEEG(options = {}) {
     channels[label] = sig
   })
 
-  // ── Spontaneous eye blinks ──────────────────────────────────────────────
+  // ?? Spontaneous eye blinks ??????????????????????????????????????????????
   // Blinks only occur when the subject is awake with open eyes.
   const NO_BLINK_PATTERNS = new Set([
     'normal_sleep', 'normal_drowsy', 'slow_wave_sleep',
@@ -1210,7 +1210,7 @@ export function generateMultiChannelEEG(options = {}) {
     const blinkTimes = generateBlinkTimes(duration, blinkRate)
     blinkTimes.forEach(t => {
       const s0 = Math.round(t * sampleRate)
-      const peakAmp = 180 + random() * 80      // 180–260 µV at Fp
+      const peakAmp = 180 + random() * 80      // 180�260 �V at Fp
       const riseMs  = 55 + random() * 30
       const fallMs  = 180 + random() * 90
       ELECTRODES_1020.forEach(label => {
@@ -1226,15 +1226,15 @@ export function generateMultiChannelEEG(options = {}) {
     })
   }
 
-  // ── Lateral eye movements (saccades) ────────────────────────────────────
-  // Saccades depend only on the subject having eyes open — they're separate
+  // ?? Lateral eye movements (saccades) ????????????????????????????????????
+  // Saccades depend only on the subject having eyes open � they're separate
   // from the blink toggle (a user might disable blinks for visual clarity but
   // we still want saccade artefacts present in awake eyes-open recordings).
   if (awakeWithOpenEyes) {
     const saccadeEvents = generateSaccadeTimes(duration, 22)
     saccadeEvents.forEach(({ t, direction }) => {
       const s0     = Math.round(t * sampleRate)
-      const peak   = 60 + random() * 40       // 60–100 µV at F7/F8
+      const peak   = 60 + random() * 40       // 60�100 �V at F7/F8
       const durMs  = 280 + random() * 140
       ELECTRODES_1020.forEach(label => {
         const f = lateralEogField(label, direction)
@@ -1247,12 +1247,12 @@ export function generateMultiChannelEEG(options = {}) {
     })
   }
 
-  // ── Pattern-specific transient injection ────────────────────────────────
+  // ?? Pattern-specific transient injection ????????????????????????????????
   if (pattern === 'absence') {
     // 3 Hz generalised spike-and-wave, maximal frontocentral, attenuated
     // posteriorly. Real absence discharges are NOT perfectly periodic:
-    // each complex shows ±5–10% jitter, and the discharge typically slows
-    // slightly toward its end (e.g. 3.5 → 2.5 Hz over a 5-s run). The
+    // each complex shows �5�10% jitter, and the discharge typically slows
+    // slightly toward its end (e.g. 3.5 ? 2.5 Hz over a 5-s run). The
     // amplitude also waxes early in the run and tapers off.
     const burstStart = 1.0
     const burstEnd   = duration - 1.0
@@ -1272,13 +1272,13 @@ export function generateMultiChannelEEG(options = {}) {
     while (t < burstEnd) {
       // Run-position fraction: 0 at start of discharge, 1 at end
       const x = (t - burstStart) / (burstEnd - burstStart)
-      // Frequency tapers from 3.4 → 2.6 Hz over the run
+      // Frequency tapers from 3.4 ? 2.6 Hz over the run
       const freq = 3.4 - 0.8 * x
       // Amplitude profile: ramps in over first 5%, tapers over last 20%
       const ampEnv = x < 0.05 ? x / 0.05
                    : x > 0.80 ? (1 - x) / 0.20
                    : 1
-      // ±6% timing jitter on each complex
+      // �6% timing jitter on each complex
       const period = (1 / freq) * (0.94 + random() * 0.12)
 
       const scratch = new Float32Array(cmplxLen)
@@ -1297,8 +1297,8 @@ export function generateMultiChannelEEG(options = {}) {
     }
   }
 
-  // ── GPDs: bilaterally synchronous ~1 Hz sharp-and-slow ─────────────────
-  // Real periodic discharges have ±10–15% IBI variation and small per-
+  // ?? GPDs: bilaterally synchronous ~1 Hz sharp-and-slow ?????????????????
+  // Real periodic discharges have �10�15% IBI variation and small per-
   // complex amplitude jitter. Perfectly metronomic timing is a giveaway
   // for a synthetic trace.
   if (pattern === 'gpds') {
@@ -1306,7 +1306,7 @@ export function generateMultiChannelEEG(options = {}) {
     const cmplxLen = Math.round(sampleRate * 0.42)
     let t = 0.6
     while (t < duration - 0.5) {
-      const ampJ = 0.85 + random() * 0.30           // ±15% per complex
+      const ampJ = 0.85 + random() * 0.30           // �15% per complex
       const scratch = new Float32Array(cmplxLen)
       injectSharpWave(scratch, 12,
         { amplitude: 130 * ampJ, duration: 0.11, polarity: -1 })
@@ -1327,11 +1327,11 @@ export function generateMultiChannelEEG(options = {}) {
           channels[label][idx] += scratch[i] * scale
         }
       })
-      t += ibiMean * (0.88 + random() * 0.24)       // ±12% IBI jitter
+      t += ibiMean * (0.88 + random() * 0.24)       // �12% IBI jitter
     }
   }
 
-  // ── LPDs: left-lateralised ~1 Hz periodic discharges ───────────────────
+  // ?? LPDs: left-lateralised ~1 Hz periodic discharges ???????????????????
   if (pattern === 'lpds') {
     const ibiMean  = 1.1
     const cmplxLen = Math.round(sampleRate * 0.38)
@@ -1362,11 +1362,11 @@ export function generateMultiChannelEEG(options = {}) {
     }
   }
 
-  // ── Triphasic waves: ~1.5 Hz blunt 3-phase, A-P phase lag ──────────────
+  // ?? Triphasic waves: ~1.5 Hz blunt 3-phase, A-P phase lag ??????????????
   if (pattern === 'triphasic_waves') {
     const ibiMean  = 0.65
     const cmplxLen = Math.round(sampleRate * 0.4)
-    // Samples of anterior→posterior lag per region (classic triphasic lag)
+    // Samples of anterior?posterior lag per region (classic triphasic lag)
     const regionLag = {
       frontopolar: 0,
       frontal:     4,
@@ -1399,7 +1399,7 @@ export function generateMultiChannelEEG(options = {}) {
     }
   }
 
-  // ── FIRDA: bifrontal rhythmic 2–3 Hz delta bursts ──────────────────────
+  // ?? FIRDA: bifrontal rhythmic 2�3 Hz delta bursts ??????????????????????
   if (pattern === 'firda') {
     const bursts = [
       { t: 1.0, dur: 3.2 },
@@ -1431,10 +1431,10 @@ export function generateMultiChannelEEG(options = {}) {
     })
   }
 
-  // ── Slow spike-and-wave (Lennox-Gastaut): ~2 Hz, frontocentral max ─────
-  // LGS complexes are notoriously irregular — individual complexes vary in
-  // timing (±15%) and morphology, and "slow spike-wave" rarely runs at a
-  // metronome 2 Hz. Real recordings show 1.5–2.5 Hz drift across a run.
+  // ?? Slow spike-and-wave (Lennox-Gastaut): ~2 Hz, frontocentral max ?????
+  // LGS complexes are notoriously irregular � individual complexes vary in
+  // timing (�15%) and morphology, and "slow spike-wave" rarely runs at a
+  // metronome 2 Hz. Real recordings show 1.5�2.5 Hz drift across a run.
   if (pattern === 'slow_spike_wave') {
     const ibiMean  = 0.5                                   // ~2 Hz
     const cmplxLen = Math.round(sampleRate * 0.52)
@@ -1453,7 +1453,7 @@ export function generateMultiChannelEEG(options = {}) {
       }
       const s0 = Math.round(t * sampleRate)
       ELECTRODES_1020.forEach(label => {
-        // per-channel asymmetry — LGS discharges often imperfectly synchronous
+        // per-channel asymmetry � LGS discharges often imperfectly synchronous
         const scale = frontocentralGradient(label) * (0.85 + random() * 0.25)
         if (scale <= 0.05) return
         for (let i = 0; i < cmplxLen; i++) {
@@ -1462,11 +1462,11 @@ export function generateMultiChannelEEG(options = {}) {
           channels[label][idx] += scratch[i] * scale
         }
       })
-      t += ibiMean * (0.85 + random() * 0.30)         // ±15% IBI jitter
+      t += ibiMean * (0.85 + random() * 0.30)         // �15% IBI jitter
     }
   }
 
-  // ── Polyspike-and-wave bursts (JME): 4–6 Hz in short runs ──────────────
+  // ?? Polyspike-and-wave bursts (JME): 4�6 Hz in short runs ??????????????
   if (pattern === 'polyspike_jme') {
     const burstTimes = [1.5, 4.4, 7.2]
     burstTimes.forEach(tStart => {
@@ -1499,13 +1499,13 @@ export function generateMultiChannelEEG(options = {}) {
     })
   }
 
-  // ── Centrotemporal spikes (SeLECTS/BECTS): bilateral independent dipole ──
+  // ?? Centrotemporal spikes (SeLECTS/BECTS): bilateral independent dipole ??
   if (pattern === 'centrotemporal_spikes') {
     // Rolandic dipole: negative max centrotemporal, positive frontal.
     const leftField = (label) => {
       switch (label) {
-        case 'C3': case 'T3': return 1.00
-        case 'T5':            return 0.55
+        case 'C3': case 'T7': return 1.00
+        case 'P7':            return 0.55
         case 'P3':            return 0.45
         case 'Cz':            return 0.35
         case 'F3':            return -0.65           // dipole reversal
@@ -1516,8 +1516,8 @@ export function generateMultiChannelEEG(options = {}) {
     }
     const rightField = (label) => {
       switch (label) {
-        case 'C4': case 'T4': return 1.00
-        case 'T6':            return 0.55
+        case 'C4': case 'T8': return 1.00
+        case 'P8':            return 0.55
         case 'P4':            return 0.45
         case 'Cz':            return 0.35
         case 'F4':            return -0.65
@@ -1559,7 +1559,7 @@ export function generateMultiChannelEEG(options = {}) {
     })
   }
 
-  // ── Temporal sharps (TLE): left anterior-temporal interictal sharps ────
+  // ?? Temporal sharps (TLE): left anterior-temporal interictal sharps ????
   if (pattern === 'temporal_sharps') {
     const times = [1.4, 3.2, 5.1, 7.0, 8.8]
     times.forEach(t => {
@@ -1586,12 +1586,12 @@ export function generateMultiChannelEEG(options = {}) {
     })
   }
 
-  // ── Photoparoxysmal: photic driving at O1/O2, then generalized PPR ─────
+  // ?? Photoparoxysmal: photic driving at O1/O2, then generalized PPR ?????
   if (pattern === 'photoparoxysmal') {
     const flashFreq  = 16
     const flashStart = 0.8
     const flashEnd   = 4.2
-    // Photic driving — occipital following response at flash frequency
+    // Photic driving � occipital following response at flash frequency
     ;['O1', 'O2'].forEach(label => {
       for (let t = flashStart; t < flashEnd; t += 1 / flashFreq) {
         const s    = Math.round(t * sampleRate)
@@ -1603,7 +1603,7 @@ export function generateMultiChannelEEG(options = {}) {
         }
       }
     })
-    // PPR — starts ~2.5 s after flash, outlasts the stimulus
+    // PPR � starts ~2.5 s after flash, outlasts the stimulus
     const pprStart = 2.5
     const pprEnd   = 6.5
     const pprPeriod = 1 / 4.5                              // 4.5 Hz
@@ -1637,7 +1637,7 @@ export function generateMultiChannelEEG(options = {}) {
   }
 }
 
-// ─── Time Axis ────────────────────────────────────────────────────────────────
+// ??? Time Axis ????????????????????????????????????????????????????????????????
 
 /** Generate time axis array (seconds) for a given sample count */
 export function makeTimeAxis(nSamples, sampleRate = SAMPLE_RATE) {

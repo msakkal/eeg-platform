@@ -228,7 +228,7 @@ export const QUIZ_QUESTIONS = [
     difficulty: 'beginner',
     module: 'concepts',
     patternId: null,
-    question: 'In the 10-20 electrode system, what do even-numbered electrode labels (e.g. F4, T4, O2) indicate?',
+    question: 'In the 10-20 electrode system, what do even-numbered electrode labels (e.g. F4, T8, O2) indicate?',
     options: [
       { id: 'a', text: 'Midline electrodes',     correct: false },
       { id: 'b', text: 'Left hemisphere',         correct: false },

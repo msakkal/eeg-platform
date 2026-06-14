@@ -19,6 +19,21 @@ const DETAIL_TABS = [
   { id: 'clinical'      },
 ]
 
+const ARTIFACT_VIEWER_MAX_CHANNEL_HEIGHT = 46
+const ARTIFACT_VIEWER_MIN_CHANNEL_HEIGHT = 34
+const ARTIFACT_VIEWER_FOOTER_HEIGHT = 24
+const ARTIFACT_VIEWER_CHROME_HEIGHT = 97
+const ARTIFACT_VIEWER_VERTICAL_PADDING = 18
+const ECG_CHANNEL_TOP_PADDING = 18
+const ARTIFACT_VIEWER_AXIS_CLEARANCE = 25
+const ARTIFACT_DETAIL_MIN_HEIGHT = {
+  overview: 330,
+  identify: 300,
+  differentiate: 280,
+  reduce: 340,
+  clinical: 260,
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ArtifactsPage() {
@@ -33,6 +48,9 @@ export default function ArtifactsPage() {
   const [filterConfig, setFilterConfig] = useState({ hp: null, lp: null, notch: null })
   const [viewerTheme, setViewerTheme] = useState('midnight')
   const [viewerStyle, setViewerStyle] = useState(DEFAULT_VIEWER_STYLE)
+  const [viewportHeight, setViewportHeight] = useState(
+    typeof window === 'undefined' ? 900 : window.innerHeight
+  )
 
   const artifact = useMemo(
     () => ARTIFACT_CATALOGUE.find(a => a.id === selectedId),
@@ -68,9 +86,22 @@ export default function ArtifactsPage() {
     setHoveredChannel(null)
   }, [selectedId])
 
+  useEffect(() => {
+    function updateViewportHeight() {
+      setViewportHeight(window.innerHeight)
+    }
+
+    updateViewportHeight()
+    window.addEventListener('resize', updateViewportHeight)
+    return () => window.removeEventListener('resize', updateViewportHeight)
+  }, [])
+
   const timeAxis = useMemo(() => makeTimeAxis(8 * SAMPLE_RATE, SAMPLE_RATE), [])
   const baseTheme = getViewerTheme(viewerTheme)
-  const themeOverrides = useMemo(() => buildViewerThemeOverrides(viewerStyle), [viewerStyle])
+  const themeOverrides = useMemo(
+    () => viewerTheme === 'custom' ? buildViewerThemeOverrides(viewerStyle) : {},
+    [viewerStyle, viewerTheme]
+  )
   const effectiveTheme = useMemo(() => ({ ...baseTheme, ...themeOverrides }), [baseTheme, themeOverrides])
 
   const filterGroups = [
@@ -99,6 +130,22 @@ export default function ArtifactsPage() {
     : ARTIFACT_CATALOGUE.filter(a => filterMap[a.id] === filter)
 
   const { channels, events, hot } = viewState
+  const ecgChannelPadding = channels.some(ch => ch.label === 'ECG') ? ECG_CHANNEL_TOP_PADDING : 0
+  const viewerChannelCount = Math.max(channels.length, 16)
+  const detailMinHeight = ARTIFACT_DETAIL_MIN_HEIGHT[detailTab] ?? ARTIFACT_DETAIL_MIN_HEIGHT.overview
+  const availableViewerHeight = Math.max(
+    ARTIFACT_VIEWER_CHROME_HEIGHT + ARTIFACT_VIEWER_AXIS_CLEARANCE + ARTIFACT_VIEWER_FOOTER_HEIGHT + ARTIFACT_VIEWER_VERTICAL_PADDING * 2 + ecgChannelPadding + viewerChannelCount * ARTIFACT_VIEWER_MIN_CHANNEL_HEIGHT,
+    viewportHeight - detailMinHeight
+  )
+  const dynamicChannelHeight = Math.max(
+    ARTIFACT_VIEWER_MIN_CHANNEL_HEIGHT,
+    Math.min(
+      ARTIFACT_VIEWER_MAX_CHANNEL_HEIGHT,
+      Math.floor((availableViewerHeight - ARTIFACT_VIEWER_CHROME_HEIGHT - ARTIFACT_VIEWER_AXIS_CLEARANCE - ARTIFACT_VIEWER_FOOTER_HEIGHT - ARTIFACT_VIEWER_VERTICAL_PADDING * 2 - ecgChannelPadding) / viewerChannelCount)
+    )
+  )
+  const viewerCanvasHeight = viewerChannelCount * dynamicChannelHeight + ARTIFACT_VIEWER_VERTICAL_PADDING * 2 + ecgChannelPadding + ARTIFACT_VIEWER_FOOTER_HEIGHT
+  const viewerPanelHeight = ARTIFACT_VIEWER_CHROME_HEIGHT + viewerCanvasHeight + ARTIFACT_VIEWER_AXIS_CLEARANCE
   const eventAnnotations = useMemo(() => (
     events.map(ev => ({
       id: `${selectedId}-${ev.t}-${ev.text ?? 'event'}`,
@@ -109,7 +156,7 @@ export default function ArtifactsPage() {
   ), [artifact?.color, events, selectedId])
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex min-h-[100dvh] overflow-visible">
 
       {/* ── Left sidebar ─────────────────────────────────────────────────── */}
       <aside className="w-52 flex-shrink-0 border-r border-eeg-border flex flex-col overflow-hidden">
@@ -163,10 +210,13 @@ export default function ArtifactsPage() {
       </aside>
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 min-w-0 flex flex-col overflow-visible">
 
         {/* Multi-channel EEG viewer */}
-        <div className="flex-shrink-0 border-b border-eeg-border" style={{ height: '52%' }}>
+        <div
+          className="flex-shrink-0 overflow-hidden border-b border-eeg-border"
+          style={{ height: `${viewerPanelHeight}px` }}
+        >
 
           {/* Viewer header */}
           <div className="px-5 py-2.5 border-b border-eeg-border flex items-center justify-between bg-eeg-surface">
@@ -207,8 +257,8 @@ export default function ArtifactsPage() {
           />
 
           {/* Canvas */}
-          <div className="flex flex-col lg:flex-row min-h-0" style={{ height: 'calc(100% - 97px)' }}>
-            <div className="flex-1 min-w-0 min-h-0 overflow-y-auto overflow-x-hidden" style={{ background: effectiveTheme.pageBg }}>
+          <div className="flex flex-col lg:flex-row min-h-0" style={{ height: `calc(100% - ${ARTIFACT_VIEWER_CHROME_HEIGHT}px)` }}>
+            <div className="flex-1 min-w-0 min-h-0 overflow-hidden" style={{ background: effectiveTheme.pageBg }}>
             {generating || channels.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="flex items-center gap-2 text-eeg-muted font-mono text-sm animate-pulse">
@@ -225,14 +275,17 @@ export default function ArtifactsPage() {
                 filterConfig={filterConfig}
                 theme={viewerTheme}
                 themeOverrides={themeOverrides}
-                curveWidth={viewerStyle.curveWidth}
-                polarity={viewerStyle.polarity}
-                channelHeight={38}
+                curveWidth={viewerTheme === 'custom' ? viewerStyle.curveWidth : DEFAULT_VIEWER_STYLE.curveWidth}
+                polarity={viewerTheme === 'custom' ? viewerStyle.polarity : DEFAULT_VIEWER_STYLE.polarity}
+                channelHeight={dynamicChannelHeight}
                 leftLabelWidth={88}
-                footerHeight={24}
+                footerHeight={ARTIFACT_VIEWER_FOOTER_HEIGHT}
+                verticalPadding={ARTIFACT_VIEWER_VERTICAL_PADDING}
                 signalColor={viewerStyle.signalColor || baseTheme.signal}
                 highlightedChannels={hot}
                 highlightColor={artifact?.color}
+                channelScale={(label) => label === 'ECG' ? 0.18 : 1}
+                channelGapBefore={(label) => label === 'ECG' ? ECG_CHANNEL_TOP_PADDING : 0}
                 showChannelAmplitudes
                 onHoverChannel={setHoveredChannel}
               />
@@ -246,7 +299,10 @@ export default function ArtifactsPage() {
         </div>
 
         {/* Detail panel */}
-        <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+        <div
+          className="relative z-10 flex flex-col bg-eeg-bg"
+          style={{ minHeight: `${detailMinHeight}px` }}
+        >
           <div className="flex border-b border-eeg-border flex-shrink-0 bg-eeg-surface overflow-x-auto">
             {DETAIL_TABS.map(tab => (
               <button
@@ -264,7 +320,7 @@ export default function ArtifactsPage() {
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto overscroll-contain">
             {artifact && (
               <DetailContent artifact={artifact} tab={detailTab} hot={hot} />
             )}
@@ -279,7 +335,7 @@ export default function ArtifactsPage() {
 
 function DetailContent({ artifact, tab, hot }) {
   return (
-    <div className="px-7 py-5 max-w-3xl">
+    <div className="px-7 pt-5 pb-12 max-w-3xl">
       {tab === 'overview' && (
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-3">
@@ -414,6 +470,7 @@ function getDifferentiationRule(id) {
     lateral_eye:    'OPPOSITE POLARITY at Fp1 vs Fp2 = eye movement. SAME POLARITY at Fp1 and Fp2 = blink. Frontal EDs: no systematic mirror-opposite relationship.',
     muscle:         'EMG artifact: high-frequency (>30 Hz), temporal maximum, no coherent field. Spikes: sharply contoured with field, < 70 ms, propagate across channels.',
     chewing:        'Chewing: rhythmic HIGH-FREQUENCY BURSTS at temporal chains at 1–2 Hz. Ictal activity: may start focally but has lower-frequency cerebral field; video correlation is key.',
+    shiver:         'Shiver: rhythmic tremulous EMG bursts, usually 4-10 Hz, with high-frequency texture and no coherent cerebral field. Filter effect: low-pass filters may smooth the EMG and leave a misleading rhythmic envelope; high-pass filters do not remove the bursts.',
     powerline:      'Powerline: EXACT frequency, perfectly sinusoidal, no variability. Genuine HFOs: variable, brief, not perfectly sinusoidal. Notch filter distinguishes definitively.',
     electrode_pop:  'Pop: SINGLE CHANNEL, no field, long DC-recovery tail, no after-going slow wave. Genuine spike: FIELD in adjacent channels, appropriate gradient, followed by slow wave.',
     ecg:            'ECG artifact: phase-locked to simultaneous ECG, temporal-maximum. GPDs: NOT locked to ECG, variable morphology, not perfectly regular. Use simultaneous ECG channel.',

@@ -23,10 +23,11 @@
  * pathology overlays.
  *
  * The streaming engine is used by `useEEGSignal` for the live Sandbox
- * view. The older buffered `signalGenerator.js` remains in place for the
- * Propagation interactive demo and the small `generateDemoTrace` calls
- * used by the Waveforms / Findings / Quiz / Artifacts catalogues — those
- * are "render-once-and-display" callers that don't need streaming.
+ * view. Full multi-channel EEG viewers share this same engine; the older
+ * buffered `signalGenerator.js` remains in place for the small
+ * `generateDemoTrace` calls used by the Waveforms / Findings / Quiz
+ * catalogues, which are render-once explanatory snippets rather than full
+ * EEG backgrounds.
  */
 
 import { ELECTRODES_1020 } from './signalGenerator.js'
@@ -818,15 +819,15 @@ function polyspikeWave(dt, {
 }
 
 function hemisphereOf(label) {
-  if (label.endsWith('1') || ['F7', 'T3', 'T5', 'C3', 'F3', 'P3', 'O1', 'A1'].includes(label)) return 'left'
-  if (label.endsWith('2') || ['F8', 'T4', 'T6', 'C4', 'F4', 'P4', 'O2', 'A2'].includes(label)) return 'right'
+  if (label.endsWith('1') || ['F7', 'T7', 'P7', 'C3', 'F3', 'P3', 'O1', 'A1'].includes(label)) return 'left'
+  if (label.endsWith('2') || ['F8', 'T8', 'P8', 'C4', 'F4', 'P4', 'O2', 'A2'].includes(label)) return 'right'
   if (label.endsWith('z')) return 'midline'
   return 'midline'
 }
 
 function leftTemporalField(label) {
   const map = {
-    T3: 1.00, F7: 0.82, T5: 0.76,
+    T7: 1.00, F7: 0.82, P7: 0.76,
     F3: 0.42, C3: 0.42, P3: 0.35,
     Fp1: 0.24, O1: 0.20,
     Fz: 0.12, Cz: 0.10, Pz: 0.08,
@@ -837,9 +838,9 @@ function leftTemporalField(label) {
 
 function breachField(label) {
   const map = {
-    C3: 1.00, T3: 0.90,
+    C3: 1.00, T7: 0.90,
     F3: 0.75, P3: 0.65,
-    F7: 0.45, T5: 0.45,
+    F7: 0.45, P7: 0.45,
     Cz: 0.22, Fz: 0.12, Pz: 0.12,
   }
   return map[label] ?? 0
@@ -847,11 +848,11 @@ function breachField(label) {
 
 function centrotemporalField(side, label) {
   const left = {
-    C3: 1.00, T3: 0.95, T5: 0.55, P3: 0.45, Cz: 0.35,
+    C3: 1.00, T7: 0.95, P7: 0.55, P3: 0.45, Cz: 0.35,
     F3: -0.65, Fp1: -0.45, F7: -0.35,
   }
   const right = {
-    C4: 1.00, T4: 0.95, T6: 0.55, P4: 0.45, Cz: 0.35,
+    C4: 1.00, T8: 0.95, P8: 0.55, P4: 0.45, Cz: 0.35,
     F4: -0.65, Fp2: -0.45, F8: -0.35,
   }
   return side === 'left' ? (left[label] ?? 0) : (right[label] ?? 0)
@@ -861,7 +862,7 @@ function posteriorPhoticField(label) {
   const map = {
     O1: 1.00, O2: 1.00,
     P3: 0.66, P4: 0.66, Pz: 0.60,
-    T5: 0.38, T6: 0.38,
+    P7: 0.38, P8: 0.38,
   }
   return map[label] ?? 0
 }
@@ -870,7 +871,7 @@ function sleepSpindleField(label) {
   const map = {
     Cz: 1.00, Fz: 0.92, C3: 0.78, C4: 0.78,
     F3: 0.52, F4: 0.52, Pz: 0.50, P3: 0.36, P4: 0.36,
-    T3: 0.24, T4: 0.24, F7: 0.18, F8: 0.18,
+    T7: 0.24, T8: 0.24, F7: 0.18, F8: 0.18,
   }
   return map[label] ?? 0
 }
@@ -1195,7 +1196,7 @@ class HypsarrhythmiaOverlay {
     this.rng = rng
     this.nextT = 0.25
     this.events = []
-    this.focuses = ['Fp1', 'F3', 'C3', 'T3', 'T5', 'P3', 'O1', 'Fp2', 'F4', 'C4', 'T4', 'T6', 'P4', 'O2', 'Pz']
+    this.focuses = ['Fp1', 'F3', 'C3', 'T7', 'P7', 'P3', 'O1', 'Fp2', 'F4', 'C4', 'T8', 'P8', 'P4', 'O2', 'Pz']
     this.states = {}
     for (const label of ELECTRODES_1020) {
       this.states[label] = {

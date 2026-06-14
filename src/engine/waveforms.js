@@ -17,9 +17,6 @@
 import {
   injectSpike,
   injectSharpWave,
-  injectPolyspike,
-  injectSpikeAndWave,
-  injectMuscleArtifact,
   injectEyeBlink,
   SAMPLE_RATE,
 } from './signalGenerator.js'
@@ -58,21 +55,41 @@ function gauss(mean = 0, std = 1) {
   return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v)
 }
 
-/** Add a narrow-band rhythm with slow (0.1–0.3 Hz) amplitude envelope. */
+function makeIrregularEnvelope(length, fs, {
+  floor = 0.3,
+  drift = 0.996,
+  slowFreq = 0.18,
+  phase = random() * 2 * Math.PI,
+} = {}) {
+  const env = new Float32Array(length)
+  let state = 0
+  for (let i = 0; i < length; i++) {
+    const t = i / fs
+    state = drift * state + (1 - drift) * gauss(0, 1)
+    const slow = 0.5 + 0.5 * Math.sin(2 * Math.PI * slowFreq * t + phase)
+    const noisy = Math.max(0, Math.min(1, slow + state))
+    env[i] = floor + (1 - floor) * noisy
+  }
+  return env
+}
+
+/** Add a narrow-band rhythm with a slightly irregular waxing/waning envelope. */
 function addRhythm(sig, fs, {
   centerFreq, bandwidthHz = 1.2, amplitude = 40, nComp = 3,
-  envFreq = 0.15 + random() * 0.2, envFloor = 0.3,
+  envFreq = 0.15 + random() * 0.2, envFloor = 0.3, envDrift = 0.996,
 }) {
-  const envPhase = random() * 2 * Math.PI
+  const env = makeIrregularEnvelope(sig.length, fs, {
+    floor: envFloor,
+    slowFreq: envFreq,
+    drift: envDrift,
+  })
   for (let c = 0; c < nComp; c++) {
     const f     = centerFreq + (random() - 0.5) * bandwidthHz
     const ph    = random() * 2 * Math.PI
     const amp   = amplitude * (0.6 + random() * 0.4) / nComp
     for (let i = 0; i < sig.length; i++) {
       const t  = i / fs
-      const e  = envFloor + (1 - envFloor) *
-                 (0.5 + 0.5 * Math.sin(2 * Math.PI * envFreq * t + envPhase))
-      sig[i] += amp * e * Math.sin(2 * Math.PI * f * t + ph)
+      sig[i] += amp * env[i] * Math.sin(2 * Math.PI * f * t + ph)
     }
   }
 }
@@ -84,6 +101,109 @@ function addNoise(sig, std = 4) {
     // 1-pole lowpass on white noise → brown-ish noise
     x = 0.96 * x + 0.04 * gauss(0, std)
     sig[i] += x
+  }
+}
+
+function addPolymorphicSlow(sig, fs, {
+  amplitude = 100,
+  minFreq = 0.7,
+  maxFreq = 4,
+  nComp = 7,
+  envFloor = 0.25,
+} = {}) {
+  const env = makeIrregularEnvelope(sig.length, fs, {
+    floor: envFloor,
+    slowFreq: 0.08 + random() * 0.12,
+    drift: 0.99,
+  })
+  for (let c = 0; c < nComp; c++) {
+    const f = minFreq + random() * (maxFreq - minFreq)
+    const ph = random() * 2 * Math.PI
+    const wobbleFreq = 0.04 + random() * 0.05
+    const amp = amplitude * (0.45 + random() * 0.75) / nComp
+    for (let i = 0; i < sig.length; i++) {
+      const t = i / fs
+      const warped = t + 0.025 * Math.sin(2 * Math.PI * wobbleFreq * t + ph)
+      sig[i] += amp * env[i] * Math.sin(2 * Math.PI * f * warped + ph)
+    }
+  }
+}
+
+function injectAfterSlowWave(sig, at, fs, {
+  amp = 55,
+  delay = 0.06,
+  duration = 0.28,
+  polarity = 1,
+} = {}) {
+  const s = at + Math.round(delay * fs)
+  const n = Math.max(1, Math.round(duration * fs))
+  for (let i = 0; i < n; i++) {
+    const idx = s + i
+    if (idx < 0 || idx >= sig.length) continue
+    const x = i / n
+    sig[idx] += polarity * amp * Math.sin(Math.PI * x) * Math.exp(-0.4 * x)
+  }
+}
+
+function injectPolyspikeAndSlow(sig, at, fs, {
+  count = 4,
+  amp = 180,
+  spacing = 0.026,
+} = {}) {
+  for (let k = 0; k < count; k++) {
+    injectSpike(sig, at + Math.round(k * spacing * fs), {
+      amplitude: amp * (1 - k * 0.09) * (0.9 + random() * 0.18),
+      duration: 0.035 + random() * 0.012,
+      polarity: -1,
+      asymmetry: 0.28,
+    })
+  }
+  injectAfterSlowWave(sig, at + Math.round(count * spacing * fs), fs, {
+    amp: amp * 0.42,
+    delay: 0.035,
+    duration: 0.35,
+    polarity: 1,
+  })
+}
+
+function injectSpikeWaveComplex(sig, at, fs, {
+  spikeAmp = 190,
+  slowAmp = 115,
+  slowDuration = 0.24,
+} = {}) {
+  injectSpike(sig, at, {
+    amplitude: spikeAmp * (0.9 + random() * 0.2),
+    duration: 0.038 + random() * 0.01,
+    polarity: -1,
+    asymmetry: 0.25,
+  })
+  injectAfterSlowWave(sig, at, fs, {
+    amp: slowAmp * (0.9 + random() * 0.2),
+    delay: 0.045,
+    duration: slowDuration,
+    polarity: 1,
+  })
+}
+
+function injectEmgBurst(sig, fs, {
+  startSec = 1,
+  duration = 1,
+  amplitude = 70,
+} = {}) {
+  const start = Math.round(startSec * fs)
+  const n = Math.round(duration * fs)
+  const phases = Array.from({ length: 12 }, () => random() * 2 * Math.PI)
+  const freqs = Array.from({ length: 12 }, () => 32 + random() * 58)
+  for (let i = 0; i < n; i++) {
+    const idx = start + i
+    if (idx >= sig.length) break
+    const x = i / n
+    const env = Math.sin(Math.PI * x) * (0.75 + 0.25 * Math.sin(2 * Math.PI * 7 * x))
+    let v = gauss(0, 0.35)
+    for (let c = 0; c < freqs.length; c++) {
+      v += Math.sin(2 * Math.PI * freqs[c] * i / fs + phases[c]) / freqs.length
+    }
+    sig[idx] += amplitude * env * v
   }
 }
 
@@ -575,16 +695,16 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       addNoise(sig, 5)
       addRhythm(sig, sampleRate, {
         centerFreq: 6, bandwidthHz: 2.0, amplitude: 70, nComp: 3,
-        envFreq: 0.15, envFloor: 0.4,
+        envFreq: 0.15, envFloor: 0.35, envDrift: 0.992,
       })
+      addPolymorphicSlow(sig, sampleRate, { amplitude: 18, minFreq: 2.5, maxFreq: 5, nComp: 3 })
       return sig
     }
     case 'delta': {
       const sig = new Float32Array(nSamples)
       addNoise(sig, 6)
-      addRhythm(sig, sampleRate, {
-        centerFreq: 1.8, bandwidthHz: 1.5, amplitude: 130, nComp: 3,
-        envFreq: 0.1, envFloor: 0.5,
+      addPolymorphicSlow(sig, sampleRate, {
+        amplitude: 520, minFreq: 0.6, maxFreq: 3.2, nComp: 7, envFloor: 0.35,
       })
       return sig
     }
@@ -654,15 +774,18 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 35, nComp: 2, envFloor: 0.5 })
       ;[0.6, 1.4, 2.2].forEach(t => {
         const at = Math.round(t * sampleRate)
-        injectSpike(sig, at, { amplitude: 180, duration: 0.05 })
-        // After-going slow wave
-        const sw = at + Math.round(0.05 * sampleRate)
-        const swDur = Math.round(0.18 * sampleRate)
-        for (let i = 0; i < swDur; i++) {
-          const idx = sw + i
-          if (idx >= nSamples) break
-          sig[idx] += 40 * Math.sin(Math.PI * i / swDur)
-        }
+        injectSpike(sig, at, {
+          amplitude: 170 + random() * 45,
+          duration: 0.04 + random() * 0.015,
+          polarity: -1,
+          asymmetry: 0.25,
+        })
+        injectAfterSlowWave(sig, at, sampleRate, {
+          amp: 55 + random() * 25,
+          delay: 0.05,
+          duration: 0.24 + random() * 0.08,
+          polarity: 1,
+        })
       })
       return sig
     }
@@ -670,14 +793,31 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       const sig = new Float32Array(nSamples)
       addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 35, nComp: 2, envFloor: 0.5 })
-      ;[0.7, 1.6, 2.4].forEach(t => injectSharpWave(sig, Math.round(t * sampleRate)))
+      ;[0.7, 1.6, 2.4].forEach(t => {
+        const at = Math.round(t * sampleRate)
+        injectSharpWave(sig, at, {
+          amplitude: 120 + random() * 50,
+          duration: 0.095 + random() * 0.045,
+          polarity: -1,
+          asymmetry: 0.38,
+        })
+        injectAfterSlowWave(sig, at, sampleRate, {
+          amp: 50 + random() * 25,
+          delay: 0.09,
+          duration: 0.32 + random() * 0.08,
+          polarity: 1,
+        })
+      })
       return sig
     }
     case 'polyspike': {
       const sig = new Float32Array(nSamples)
       addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 25, nComp: 2, envFloor: 0.4 })
-      ;[0.8, 1.8].forEach(t => injectPolyspike(sig, Math.round(t * sampleRate), { count: 5 }))
+      ;[0.8, 1.8].forEach(t => injectPolyspikeAndSlow(sig, Math.round(t * sampleRate), sampleRate, {
+        count: 4 + Math.floor(random() * 2),
+        amp: 175 + random() * 45,
+      }))
       return sig
     }
     case 'spike_wave': {
@@ -691,7 +831,11 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       while (t < tEnd) {
         const x    = (t - t0) / (tEnd - t0)
         const freq = 3.4 - 0.6 * x                     // 3.4 → 2.8 Hz
-        injectSpikeAndWave(sig, Math.round(t * sampleRate), { frequency: 3 })
+        injectSpikeWaveComplex(sig, Math.round(t * sampleRate), sampleRate, {
+          spikeAmp: 170 + 45 * (1 - x),
+          slowAmp: 100 + 30 * (1 - x),
+          slowDuration: Math.min(0.28, 0.65 / freq),
+        })
         t += (1 / freq) * (0.94 + random() * 0.12)
       }
       return sig
@@ -700,8 +844,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       const sig = new Float32Array(nSamples)
       addNoise(sig, 12)
       // Chaotic high-amplitude slow background
-      addRhythm(sig, sampleRate, { centerFreq: 1.2, bandwidthHz: 1.5, amplitude: 140, nComp: 4, envFloor: 0.2 })
-      addRhythm(sig, sampleRate, { centerFreq: 3,   bandwidthHz: 2,   amplitude:  90, nComp: 3, envFloor: 0.2 })
+      addPolymorphicSlow(sig, sampleRate, { amplitude: 220, minFreq: 0.6, maxFreq: 4.0, nComp: 9, envFloor: 0.12 })
       addRhythm(sig, sampleRate, { centerFreq: 6,   bandwidthHz: 3,   amplitude:  60, nComp: 3, envFloor: 0.2 })
       // Multifocal, asynchronous spikes at random times
       const nSpikes = 18
@@ -748,12 +891,12 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
         const s    = Math.round(t * sampleRate)
         injectSharpWave(sig, s,
           { amplitude: 140 * ampJ, duration: 0.12, polarity: -1 })
-        const swDur = Math.round(0.22 * sampleRate)
-        for (let i = 0; i < swDur; i++) {
-          const idx = s + Math.round(0.09 * sampleRate) + i
-          if (idx >= nSamples) break
-          sig[idx] += 55 * ampJ * Math.sin(Math.PI * i / swDur)
-        }
+        injectAfterSlowWave(sig, s, sampleRate, {
+          amp: 60 * ampJ,
+          delay: 0.09,
+          duration: 0.28,
+          polarity: 1,
+        })
         t += ibiMean * (0.88 + random() * 0.24)
       }
       return sig
@@ -772,8 +915,12 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
         const s    = Math.round(t * sampleRate)
         injectSharpWave(sig, s,
           { amplitude: 200 * ampJ, duration: 0.10, polarity: -1 })
-        injectSharpWave(sig, s + Math.round(0.07 * sampleRate),
-          { amplitude: 70 * ampJ, duration: 0.06, polarity: +1 })
+        injectAfterSlowWave(sig, s, sampleRate, {
+          amp: 85 * ampJ,
+          delay: 0.08,
+          duration: 0.34,
+          polarity: 1,
+        })
         t += ibiMean * (0.85 + random() * 0.30)
       }
       return sig
@@ -784,8 +931,8 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       const sig = new Float32Array(nSamples)
       addNoise(sig, 6)
       // Polymorphic delta/theta, irregular
-      addRhythm(sig, sampleRate, { centerFreq: 2, bandwidthHz: 2, amplitude: 110, nComp: 4, envFloor: 0.3 })
-      addRhythm(sig, sampleRate, { centerFreq: 5, bandwidthHz: 2, amplitude: 60,  nComp: 3, envFloor: 0.3 })
+      addPolymorphicSlow(sig, sampleRate, { amplitude: 230, minFreq: 0.7, maxFreq: 3.8, nComp: 8, envFloor: 0.25 })
+      addRhythm(sig, sampleRate, { centerFreq: 5, bandwidthHz: 2, amplitude: 45,  nComp: 3, envFloor: 0.35 })
       // Minimal alpha — the attenuated side
       addRhythm(sig, sampleRate, { centerFreq: 9, amplitude: 12, nComp: 1, envFloor: 0.5 })
       return sig
@@ -884,7 +1031,8 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       const sig = new Float32Array(nSamples)
       addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 25, nComp: 2, envFloor: 0.5 })
-      injectMuscleArtifact(sig, Math.round(1.0 * sampleRate), { duration: 1.0, amplitude: 100 })
+      injectEmgBurst(sig, sampleRate, { startSec: 0.8, duration: 1.35, amplitude: 120 })
+      injectEmgBurst(sig, sampleRate, { startSec: 2.25, duration: 0.45, amplitude: 75 })
       return sig
     }
     case 'eye_blink': {

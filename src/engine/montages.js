@@ -26,9 +26,9 @@ export const MONTAGES = {
     channels: [
       // Left parasagittal chain
       { label: 'Fp1–F7',  pos: 'Fp1', neg: 'F7'  },
-      { label: 'F7–T3',   pos: 'F7',  neg: 'T3'  },
-      { label: 'T3–T5',   pos: 'T3',  neg: 'T5'  },
-      { label: 'T5–O1',   pos: 'T5',  neg: 'O1'  },
+      { label: 'F7–T7',   pos: 'F7',  neg: 'T7'  },
+      { label: 'T7–P7',   pos: 'T7',  neg: 'P7'  },
+      { label: 'P7–O1',   pos: 'P7',  neg: 'O1'  },
       // Left central chain
       { label: 'Fp1–F3',  pos: 'Fp1', neg: 'F3'  },
       { label: 'F3–C3',   pos: 'F3',  neg: 'C3'  },
@@ -44,9 +44,9 @@ export const MONTAGES = {
       { label: 'P4–O2',   pos: 'P4',  neg: 'O2'  },
       // Right parasagittal chain
       { label: 'Fp2–F8',  pos: 'Fp2', neg: 'F8'  },
-      { label: 'F8–T4',   pos: 'F8',  neg: 'T4'  },
-      { label: 'T4–T6',   pos: 'T4',  neg: 'T6'  },
-      { label: 'T6–O2',   pos: 'T6',  neg: 'O2'  },
+      { label: 'F8–T8',   pos: 'F8',  neg: 'T8'  },
+      { label: 'T8–P8',   pos: 'T8',  neg: 'P8'  },
+      { label: 'P8–O2',   pos: 'P8',  neg: 'O2'  },
     ],
   },
 
@@ -57,18 +57,40 @@ export const MONTAGES = {
     shortLabel:  'Trans. Bipolar',
     description: 'Electrodes connected in chains running left-to-right across the scalp. Useful for lateralising focal activity.',
     channels: [
+      { label: 'Fp1–Fp2', pos: 'Fp1', neg: 'Fp2' },
       { label: 'F7–F3',   pos: 'F7',  neg: 'F3'  },
       { label: 'F3–Fz',   pos: 'F3',  neg: 'Fz'  },
       { label: 'Fz–F4',   pos: 'Fz',  neg: 'F4'  },
       { label: 'F4–F8',   pos: 'F4',  neg: 'F8'  },
-      { label: 'T3–C3',   pos: 'T3',  neg: 'C3'  },
+      { label: 'T7–C3',   pos: 'T7',  neg: 'C3'  },
       { label: 'C3–Cz',   pos: 'C3',  neg: 'Cz'  },
       { label: 'Cz–C4',   pos: 'Cz',  neg: 'C4'  },
-      { label: 'C4–T4',   pos: 'C4',  neg: 'T4'  },
-      { label: 'T5–P3',   pos: 'T5',  neg: 'P3'  },
+      { label: 'C4–T8',   pos: 'C4',  neg: 'T8'  },
+      { label: 'P7–P3',   pos: 'P7',  neg: 'P3'  },
       { label: 'P3–Pz',   pos: 'P3',  neg: 'Pz'  },
       { label: 'Pz–P4',   pos: 'Pz',  neg: 'P4'  },
-      { label: 'P4–T6',   pos: 'P4',  neg: 'T6'  },
+      { label: 'P4–P8',   pos: 'P4',  neg: 'P8'  },
+      { label: 'O1–O2',   pos: 'O1',  neg: 'O2'  },
+    ],
+  },
+
+  // ── Circumferential Bipolar ───────────────────────────────────────────────
+  circumferential_bipolar: {
+    id:          'circumferential_bipolar',
+    label:       'Circumferential Bipolar',
+    shortLabel:  'Circ. Bipolar',
+    description: 'Electrodes are connected around the outer scalp ring. Useful for following anterior-temporal, temporal, posterior-temporal, and occipital fields around the periphery.',
+    channels: [
+      { label: 'Fp1–F7',  pos: 'Fp1', neg: 'F7'  },
+      { label: 'F7–T7',   pos: 'F7',  neg: 'T7'  },
+      { label: 'T7–P7',   pos: 'T7',  neg: 'P7'  },
+      { label: 'P7–O1',   pos: 'P7',  neg: 'O1'  },
+      { label: 'O1–O2',   pos: 'O1',  neg: 'O2'  },
+      { label: 'O2–P8',   pos: 'O2',  neg: 'P8'  },
+      { label: 'P8–T8',   pos: 'P8',  neg: 'T8'  },
+      { label: 'T8–F8',   pos: 'T8',  neg: 'F8'  },
+      { label: 'F8–Fp2',  pos: 'F8',  neg: 'Fp2' },
+      { label: 'Fp2–Fp1', pos: 'Fp2', neg: 'Fp1' },
     ],
   },
 

@@ -2,3 +2,121 @@
 > eeg-learning-platform@0.1.0 dev
 > vite --host 127.0.0.1 --port 5173
 
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m503[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
+[2m12:58:40 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/QuizPage.jsx, /src/styles/globals.css[22m
+[2m1:01:07 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/QuizPage.jsx, /src/styles/globals.css[22m
+[2m1:05:01 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/QuizPage.jsx, /src/styles/globals.css[22m
+[2m1:05:01 pm[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/components/eeg/ScalpElectrodeMap.jsx[22m
+[2m1:05:01 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/QuizPage.jsx[22m
+[2m1:05:01 pm[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/components/eeg/ScalpTopoMap.jsx[22m
+[2m1:05:01 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/QuizPage.jsx[22m
+[2m1:05:01 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/QuizPage.jsx[22m
+[2m1:05:01 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/QuizPage.jsx, /src/components/eeg/DemoTraceViewer.jsx, /src/components/eeg/EEGViewer.jsx[22m
+[2m1:05:01 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/QuizPage.jsx, /src/components/eeg/DemoTraceViewer.jsx, /src/components/eeg/EEGViewer.jsx[22m
+[2m1:05:01 pm[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine/streaming.js[22m
+[2m1:05:01 pm[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine/artifacts.js[22m
+[2m1:05:41 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/QuizPage.jsx[22m
+[2m1:05:41 pm[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine/artifacts.js[22m
+[2m1:06:15 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/QuizPage.jsx, /src/styles/globals.css[22m
+[2m1:26:29 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/QuizPage.jsx[22m
+[2m1:34:26 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/QuizPage.jsx[22m
+[2m1:34:34 pm[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/components/eeg/PropagationSection.jsx[22m
+[2m1:44:39 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MontagesPage.jsx, /src/styles/globals.css[22m
+[2m1:45:08 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MontagesPage.jsx, /src/styles/globals.css[22m
+[2m1:45:52 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MontagesPage.jsx, /src/styles/globals.css[22m
+[2m1:48:04 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/eeg/EEGViewer.jsx, /src/styles/globals.css[22m
+[2m1:48:12 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MontagesPage.jsx, /src/styles/globals.css[22m
+[2m1:48:30 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SandboxPage.jsx, /src/styles/globals.css[22m
+[2m1:48:34 pm[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/components/eeg/PropagationSection.jsx[22m
+[2m1:51:37 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MontagesPage.jsx, /src/styles/globals.css[22m
+[2m1:52:21 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/QuizPage.jsx, /src/pages/MontagesPage.jsx, /src/components/eeg/ChannelHoverMap.jsx[22m
+[2m1:52:21 pm[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/components/eeg/ChannelHoverMap.jsx[22m Could not Fast Refresh ("getChannelElectrodes" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m1:52:21 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/components/eeg/CollapsibleChannelPanel.jsx, /src/pages/SandboxPage.jsx[22m
+[2m1:52:35 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m1:53:17 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m1:53:22 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m1:53:26 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m1:53:31 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m1:53:38 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m1:53:43 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m1:53:47 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m1:54:09 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m1:54:22 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/SandboxPage.jsx, /src/pages/MontagesPage.jsx, /src/pages/QuizPage.jsx, /src/components/eeg/ChannelHoverMap.jsx, /src/components/eeg/PropagationSection.jsx, /src/pages/ArtifactsPage.jsx[22m
+[2m1:54:22 pm[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/components/eeg/ChannelHoverMap.jsx[22m Could not Fast Refresh ("getChannelElectrodes" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m1:54:22 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/components/eeg/CollapsibleChannelPanel.jsx, /src/pages/SandboxPage.jsx, /src/components/eeg/PropagationSection.jsx[22m
+[2m1:57:49 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/eeg/EEGViewerControls.jsx, /src/styles/globals.css[22m
+[2m1:57:50 pm[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/components/eeg/EEGViewerControls.jsx[22m Could not Fast Refresh ("DEFAULT_VIEWER_STYLE" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m1:57:50 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/MontagesPage.jsx, /src/pages/ArtifactsPage.jsx[22m
+[2m1:57:55 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MontagesPage.jsx, /src/styles/globals.css[22m
+[2m1:58:02 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m1:58:24 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SandboxPage.jsx, /src/styles/globals.css[22m
+[2m1:59:03 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SandboxPage.jsx, /src/styles/globals.css[22m
+[2m1:59:40 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SandboxPage.jsx, /src/styles/globals.css[22m
+[2m1:59:59 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/eeg/EEGViewerControls.jsx, /src/styles/globals.css[22m
+[2m2:00:00 pm[22m [36m[1m[vite][22m[39m [33mhmr invalidate [39m[2m/src/components/eeg/EEGViewerControls.jsx[22m Could not Fast Refresh ("DEFAULT_VIEWER_STYLE" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+[2m2:00:00 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/MontagesPage.jsx, /src/pages/ArtifactsPage.jsx, /src/pages/SandboxPage.jsx[22m
+[2m2:00:11 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MontagesPage.jsx, /src/styles/globals.css[22m
+[2m2:00:16 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m2:00:21 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/SandboxPage.jsx, /src/styles/globals.css[22m
+[2m2:06:03 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m2:06:20 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m2:06:30 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m2:06:49 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m2:07:07 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m5:30:01 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m5:30:19 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m5:30:35 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m5:31:02 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m5:31:22 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m5:31:36 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m6:01:41 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/components/eeg/DemoTraceViewer.jsx[22m
+[2m6:01:50 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/components/eeg/DemoTraceViewer.jsx[22m
+[2m6:02:37 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/components/eeg/DemoTraceViewer.jsx[22m
+[2m6:04:00 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/components/eeg/DemoTraceViewer.jsx[22m
+[2m6:05:07 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/components/eeg/DemoTraceViewer.jsx[22m
+[2m11:48:54 am[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m11:49:52 am[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m11:51:39 am[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m11:57:31 am[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m11:57:40 am[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m11:59:51 am[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:00:01 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:05:30 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:05:39 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:07:57 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:19:06 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:19:16 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:20:03 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:20:07 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:22:52 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:23:05 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:26:13 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:27:31 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:31:20 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:36:15 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:38:23 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/eeg/EEGViewer.jsx, /src/styles/globals.css[22m
+[2m12:38:35 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:47:12 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:47:37 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:48:51 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:49:16 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:50:39 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:50:45 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:51:07 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m12:55:15 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m12:55:22 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m1:01:07 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/styles/globals.css, /src/pages/ArtifactsPage.jsx[22m
+[2m1:02:20 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m1:02:33 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m1:05:30 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/eeg/EEGViewer.jsx, /src/styles/globals.css[22m
+[2m1:05:37 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m1:06:53 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/components/eeg/EEGViewer.jsx, /src/styles/globals.css[22m
+[2m1:07:35 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m1:07:47 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m1:09:12 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m1:10:20 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m1:10:31 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m
+[2m1:10:36 pm[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ArtifactsPage.jsx, /src/styles/globals.css[22m

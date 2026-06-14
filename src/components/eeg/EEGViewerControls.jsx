@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MONTAGE_LIST } from '@/engine/montages'
 import { FILTER_PRESETS } from '@/engine/filters'
 import { SENSITIVITY_STEPS, VIEWER_THEME_LIST } from '@/engine/viewerThemes'
@@ -72,15 +72,25 @@ export default function EEGViewerControls({
   baseTheme,
   viewerStyle,
   onViewerStyleChange,
+  blinksEnabled,
+  onBlinksEnabledChange,
+  blinkRate,
+  onBlinkRateChange,
 }) {
-  const [styleOpen, setStyleOpen] = useState(false)
-  const activeFilter = useMemo(() => (
+  const matchedFilter = useMemo(() => (
     Object.entries(FILTER_PRESETS).find(([, preset]) =>
       preset.hp === filterConfig?.hp &&
       preset.lp === filterConfig?.lp &&
       preset.notch === filterConfig?.notch
     )?.[0] ?? 'custom'
   ), [filterConfig])
+  const [selectedFilterId, setSelectedFilterId] = useState(matchedFilter)
+  const activeFilter = selectedFilterId === 'custom' ? 'custom' : matchedFilter
+  const isCustomTheme = viewerTheme === 'custom'
+
+  useEffect(() => {
+    if (selectedFilterId !== 'custom') setSelectedFilterId(matchedFilter)
+  }, [matchedFilter, selectedFilterId])
 
   const setStyle = (key, value) => {
     onViewerStyleChange(current => ({ ...current, [key]: value }))
@@ -114,12 +124,34 @@ export default function EEGViewerControls({
             onChange={onEyesClosedChange}
           />
         )}
+        {blinksEnabled != null && onBlinksEnabledChange && (
+          <ToolbarToggle
+            label="Blinks"
+            value={blinksEnabled}
+            offLabel="Off"
+            onLabel="On"
+            onChange={onBlinksEnabledChange}
+          />
+        )}
+        {blinkRate != null && onBlinkRateChange && (
+          <ToolbarRange
+            label="Blink rate"
+            value={blinkRate}
+            min={0}
+            max={40}
+            step={1}
+            unit="/min"
+            onChange={onBlinkRateChange}
+            disabled={blinksEnabled === false}
+          />
+        )}
         {filterConfig && onFilterChange && (
           <>
             <ToolbarSelect
               label="Filter"
               value={activeFilter}
               onChange={id => {
+                setSelectedFilterId(id)
                 if (id === 'custom') return
                 const preset = FILTER_PRESETS[id]
                 onFilterChange({ hp: preset.hp, lp: preset.lp, notch: preset.notch })
@@ -129,19 +161,22 @@ export default function EEGViewerControls({
               {Object.entries(FILTER_PRESETS).map(([id, preset]) => <option key={id} value={id}>{preset.label}</option>)}
               <option value="custom">Custom</option>
             </ToolbarSelect>
-            <div className="grid grid-cols-3 gap-1">
-              <ToolbarNumber label="HP" value={filterConfig.hp} onChange={value => onFilterChange({ ...filterConfig, hp: value })} />
-              <ToolbarNumber label="LP" value={filterConfig.lp} onChange={value => onFilterChange({ ...filterConfig, lp: value })} />
-              <ToolbarNumber label="Notch" value={filterConfig.notch} onChange={value => onFilterChange({ ...filterConfig, notch: value })} />
-            </div>
+            {activeFilter === 'custom' && (
+              <div className="grid grid-cols-3 gap-1">
+                <ToolbarNumber label="HP" value={filterConfig.hp} onChange={value => onFilterChange({ ...filterConfig, hp: value })} />
+                <ToolbarNumber label="LP" value={filterConfig.lp} onChange={value => onFilterChange({ ...filterConfig, lp: value })} />
+                <ToolbarNumber label="Notch" value={filterConfig.notch} onChange={value => onFilterChange({ ...filterConfig, notch: value })} />
+              </div>
+            )}
           </>
         )}
         {viewerTheme && onViewerThemeChange && (
           <ToolbarSelect label="Theme" value={viewerTheme} onChange={onViewerThemeChange} className="w-32">
             {VIEWER_THEME_LIST.map(th => <option key={th.id} value={th.id}>{th.label}</option>)}
+            <option value="custom">Custom</option>
           </ToolbarSelect>
         )}
-        {viewerStyle && onViewerStyleChange && (
+        {isCustomTheme && viewerStyle && onViewerStyleChange && (
           <ToolbarToggle
             label="Polarity"
             value={(viewerStyle.polarity ?? 'negative-up') === 'negative-up'}
@@ -150,21 +185,9 @@ export default function EEGViewerControls({
             onChange={value => setStyle('polarity', value ? 'negative-up' : 'positive-up')}
           />
         )}
-        {viewerStyle && onViewerStyleChange && baseTheme && (
-          <button
-            type="button"
-            onClick={() => setStyleOpen(v => !v)}
-            className={`h-8 px-3 rounded border text-xs font-mono transition-colors ${styleOpen
-              ? 'border-eeg-accent text-eeg-accent bg-eeg-accent bg-opacity-10'
-              : 'border-eeg-border text-eeg-muted hover:text-eeg-text'
-            }`}
-          >
-            Style
-          </button>
-        )}
       </div>
 
-      {styleOpen && viewerStyle && (
+      {isCustomTheme && viewerStyle && (
         <div className="px-3 pb-3 flex flex-wrap items-end gap-3 border-t border-eeg-border bg-eeg-bg bg-opacity-35">
           <ToolbarColor label="Curve" value={viewerStyle.signalColor || baseTheme.signal} onChange={value => setStyle('signalColor', value)} />
           <ToolbarColor label="Plot" value={viewerStyle.plotBg || baseTheme.plotBg} onChange={value => setStyle('plotBg', value)} />
@@ -220,13 +243,13 @@ function ToolbarSelect({ label, value, onChange, children, className = '' }) {
   )
 }
 
-function ToolbarRange({ label, value, min, max, step, unit, onChange, wide = false }) {
+function ToolbarRange({ label, value, min, max, step, unit, onChange, wide = false, disabled = false }) {
   return (
     <label className={`flex flex-col gap-1 ${wide ? 'w-40' : 'w-28'}`}>
       <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">
         {label} <span className="text-eeg-accent">{Number(value).toFixed(step < 1 ? 2 : 0)}{unit}</span>
       </span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={event => onChange(Number(event.target.value))} className="h-8 w-full accent-eeg-accent" />
+      <input type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={event => onChange(Number(event.target.value))} className="h-8 w-full accent-eeg-accent disabled:opacity-40" />
     </label>
   )
 }

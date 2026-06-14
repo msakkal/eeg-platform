@@ -344,9 +344,9 @@ const FINDINGS = [
     tags: ['SeLECTS', 'BECTS', 'Rolandic'],
     color: '#FF6B35',
     description:
-      'Self-limited epilepsy with centrotemporal spikes (SeLECTS; formerly BECTS / "Rolandic epilepsy") is the most common self-limited focal epilepsy of childhood. It is characterised by high-amplitude diphasic sharp waves at the centrotemporal region (C3/C4, T3/T4), markedly activated by drowsiness and sleep. Seizures are typically nocturnal, hemifacial, and resolve by mid-adolescence.',
+      'Self-limited epilepsy with centrotemporal spikes (SeLECTS; formerly BECTS / "Rolandic epilepsy") is the most common self-limited focal epilepsy of childhood. It is characterised by high-amplitude diphasic sharp waves at the centrotemporal region (C3/C4, T7/T8), markedly activated by drowsiness and sleep. Seizures are typically nocturnal, hemifacial, and resolve by mid-adolescence.',
     keyFeatures: [
-      'Diphasic (sharp-then-slow) discharges at C3/T3 or C4/T4',
+      'Diphasic (sharp-then-slow) discharges at C3/T7 or C4/T8',
       'Horizontal tangential dipole (positive frontal, negative centrotemporal)',
       'Markedly activated by drowsiness / sleep — may be very rare awake',
       'Normal background and neurological examination',
@@ -371,9 +371,9 @@ const FINDINGS = [
     tags: ['TLE', 'Anterior temporal', 'Hippocampal'],
     color: '#FF5544',
     description:
-      'Focal interictal sharp waves or spike-and-slow-wave complexes at F7/T3 (left) or F8/T4 (right), often with an anterior-temporal maximum. The defining pattern of temporal lobe epilepsy (TLE), the most common focal epilepsy of adulthood, usually with hippocampal sclerosis as the underlying pathology.',
+      'Focal interictal sharp waves or spike-and-slow-wave complexes at F7/T7 (left) or F8/T8 (right), often with an anterior-temporal maximum. The defining pattern of temporal lobe epilepsy (TLE), the most common focal epilepsy of adulthood, usually with hippocampal sclerosis as the underlying pathology.',
     keyFeatures: [
-      'Maximum at F7/T3 or F8/T4 (anterior/mid-temporal)',
+      'Maximum at F7/T7 or F8/T8 (anterior/mid-temporal)',
       'Sharp-wave or spike-and-slow-wave morphology',
       'After-going slow wave confirms epileptiform nature',
       'Activated by sleep; often seen in N1–N2',
