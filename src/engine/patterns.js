@@ -26,9 +26,18 @@ export const PATTERN_GROUPS = [
     color: '#00FFB0',
     patterns: [
       { id: 'normal_awake', label: 'Awake', color: '#00FFB0', implemented: true },
+      { id: 'fast_alpha_variant', label: 'Fast Alpha Variant', color: '#5EEAD4', implemented: true },
+      { id: 'mu_rhythm', label: 'Mu Rhythm', color: '#7FFFD4', implemented: true },
+      { id: 'lambda_waves', label: 'Lambda Waves', color: '#A7F3D0', implemented: true },
+      { id: 'rmtd', label: 'RMTD / Psychomotor Variant', color: '#67E8F9', implemented: true },
+      { id: 'wicket_rhythm', label: 'Wicket Rhythm', color: '#8BE0D0', implemented: true },
+      { id: 'sreda', label: 'SREDA', color: '#6FE7DD', implemented: true },
+      { id: 'small_sharp_spikes', label: 'Small Sharp Spikes (BETS)', color: '#9BE7C4', implemented: true },
+      { id: 'phantom_spike_wave', label: 'Phantom Spike-Wave (6 Hz)', color: '#B7E4C7', implemented: true },
       { id: 'normal_drowsy', label: 'Drowsy (N1)', color: '#88DDAA', implemented: true },
       { id: 'normal_sleep', label: 'Stage N2', color: '#00D4FF', implemented: true },
       { id: 'slow_wave_sleep', label: 'Slow Wave (N3)', color: '#7B5EA7', implemented: true },
+      { id: 'normal_rem', label: 'REM Sleep', color: '#C084FC', implemented: true },
     ],
   },
   {
@@ -109,4 +118,19 @@ export const PATTERN_REGISTRY = Object.fromEntries(
 
 export function getPatternMeta(id) {
   return PATTERN_REGISTRY[id] ?? null
+}
+
+export const ACTIVATION_PROCEDURES = {
+  hyperventilation: { label: 'Hyperventilation', patterns: ['normal_awake', 'fast_alpha_variant', 'mu_rhythm', 'absence'] },
+  photic_stimulation: { label: 'Photic stimulation', patterns: ['normal_awake', 'fast_alpha_variant', 'mu_rhythm', 'absence', 'polyspike_jme', 'photoparoxysmal'] },
+  photomyogenic_response: { label: 'Photomyogenic response', patterns: ['normal_awake', 'fast_alpha_variant', 'mu_rhythm', 'photoparoxysmal'] },
+}
+
+export function isActivationProcedureAllowed(procedure, pattern) {
+  if (!procedure || procedure === 'none') return true
+  return ACTIVATION_PROCEDURES[procedure]?.patterns.includes(pattern) ?? false
+}
+
+export function hasActivationProcedures(pattern) {
+  return Object.values(ACTIVATION_PROCEDURES).some(procedure => procedure.patterns.includes(pattern))
 }

@@ -11,7 +11,8 @@ export default function DemoTraceViewer({
   height = 84,
   sampleRate = SAMPLE_RATE,
   className = '',
-  polarity = 'positive-up',
+  polarity = 'negative-up',
+  traceScale = 1,
 }) {
   const signal = useMemo(() => {
     if (data) return data
@@ -32,6 +33,7 @@ export default function DemoTraceViewer({
       isPlaying={false}
       scaleMode="global-fit"
       signalColor={color}
+      channelScale={traceScale === 1 ? null : () => traceScale}
       channelHeight={Math.max(40, height - 18)}
       footerHeight={18}
       leftLabelWidth={0}

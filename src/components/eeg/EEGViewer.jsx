@@ -147,6 +147,7 @@ function channelPairFromLabel(label) {
 function buildChannelLayout(channels, rowH, chainGap, verticalPadding = 0, channelGapBefore = null) {
   const centers = []
   const breakBefore = []
+  const gapBefore = []
   let extraY = verticalPadding
   let previousPair = null
 
@@ -161,9 +162,10 @@ function buildChannelLayout(channels, rowH, chainGap, verticalPadding = 0, chann
       previousPair[1] !== pair[0]
     )
 
-    if (startsNewChain) extraY += chainGap
-    if (customGap > 0) extraY += customGap
+    const gap = (startsNewChain ? chainGap : 0) + customGap
+    if (gap > 0) extraY += gap
     breakBefore[idx] = startsNewChain || customGap > 0
+    gapBefore[idx] = gap
     centers[idx] = idx * rowH + rowH / 2 + extraY
     previousPair = pair
   })
@@ -171,6 +173,7 @@ function buildChannelLayout(channels, rowH, chainGap, verticalPadding = 0, chann
   return {
     breakBefore,
     centers,
+    gapBefore,
     totalGap: extraY,
   }
 }
@@ -192,6 +195,7 @@ function channelIndexAtY(y, centers, rowH) {
  *   sensitivity    - display sensitivity in µV/mm (default 7)
  *   filterConfig   - { hp, lp, notch } | null
  *   annotations    - Array<{ id, timeS, label, color }>
+ *   eventHighlight - Temporary { timeS, durationS, color } region highlight
  *   windowStart    - seconds offset for annotation time mapping
  *   onAnnotate     - (timeS, channelLabel) => void, enables crosshair+click
  *   onHoverChannel - (channelLabel | null) => void
@@ -203,6 +207,7 @@ export default function EEGViewer({
   sensitivity = DEFAULT_SENSITIVITY,
   filterConfig = null,
   annotations = EMPTY_ARRAY,
+  eventHighlight = null,
   windowStart = 0,
   onAnnotate = null,
   onHoverChannel = null,
@@ -297,7 +302,7 @@ export default function EEGViewer({
     const chs = filteredChannels
     const nCh = chs.length
     const rowH = channelHeight
-    const { breakBefore, centers: rowCenters, totalGap } = channelLayout
+    const { breakBefore, centers: rowCenters, gapBefore, totalGap } = channelLayout
     const labelW = showChannelLabels || showChannelAmplitudes ? leftLabelWidth : 0
     const H = Math.max(footerHeight, nCh * rowH + totalGap + verticalPadding + footerHeight)
 
@@ -379,6 +384,32 @@ export default function EEGViewer({
       ctx.stroke()
     }
 
+    if (eventHighlight) {
+      const durationS = Math.max(0.06, eventHighlight.durationS ?? 0.20)
+      const startS = eventHighlight.timeS - Math.min(0.04, durationS * 0.2)
+      const endS = startS + durationS
+      const visibleStart = Math.max(windowStart, startS)
+      const visibleEnd = Math.min(windowStart + duration, endS)
+
+      if (visibleEnd >= visibleStart) {
+        const color = eventHighlight.color ?? rowHighlightColor
+        const x1 = labelW + (visibleStart - windowStart) * pxPerSec
+        const x2 = labelW + (visibleEnd - windowStart) * pxPerSec
+        const eventX = labelW + (eventHighlight.timeS - windowStart) * pxPerSec
+
+        ctx.fillStyle = color + '22'
+        ctx.fillRect(x1, 0, Math.max(2, x2 - x1), plotH)
+        ctx.strokeStyle = color + 'DD'
+        ctx.lineWidth = 2
+        ctx.setLineDash([5, 3])
+        ctx.beginPath()
+        ctx.moveTo(eventX, 0)
+        ctx.lineTo(eventX, plotH)
+        ctx.stroke()
+        ctx.setLineDash([])
+      }
+    }
+
     if (showTimeLabels) {
       ctx.fillStyle = th.axisText
       ctx.font = '10px "DM Mono", monospace'
@@ -455,13 +486,16 @@ export default function EEGViewer({
       const isHighlighted = highlightedSet.has(label)
 
       if (breakBefore[idx]) {
+        const gap = gapBefore[idx] ?? chainGap
+        const gapTop = cy - rowH / 2 - gap
+        const gapMid = gapTop + gap / 2
         ctx.fillStyle = th.pageBg
-        ctx.fillRect(labelW, cy - rowH / 2 - chainGap, plotW, chainGap)
+        ctx.fillRect(0, gapTop, labelW, gap)
         ctx.strokeStyle = th.divider
         ctx.lineWidth = 1
         ctx.beginPath()
-        ctx.moveTo(labelW, cy - rowH / 2 - chainGap / 2)
-        ctx.lineTo(W, cy - rowH / 2 - chainGap / 2)
+        ctx.moveTo(0, gapMid)
+        ctx.lineTo(labelW, gapMid)
         ctx.stroke()
       }
 
@@ -570,6 +604,7 @@ export default function EEGViewer({
     channelLayout,
     channelStats,
     curveWidth,
+    eventHighlight,
     filteredChannels,
     footerHeight,
     highlightedSet,

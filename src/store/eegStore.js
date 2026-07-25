@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { DEFAULT_MONTAGE } from '@/engine/montages'
 import { DEFAULT_VIEWER_THEME, DEFAULT_SENSITIVITY } from '@/engine/viewerThemes'
+import { isActivationProcedureAllowed } from '@/engine/patterns'
 
 function resolveValue(valueOrUpdater, currentValue) {
   return typeof valueOrUpdater === 'function'
@@ -19,6 +20,7 @@ export const useEEGStore = create((set, _get) => ({
   isPlaying:      true,
   pendingSpike:   false,
   pendingArtifact:false,
+  activationProcedure: 'none',
 
   // ── Physiologic state (awake modifiers) ──────────────────────────────────
   eyesClosed:     true,     // Berger effect: alpha dominant when closed
@@ -27,7 +29,15 @@ export const useEEGStore = create((set, _get) => ({
 
   // ── Actions ───────────────────────────────────────────────────────────────
   setMontage:      (id)      => set({ montageId: id }),
-  setPattern:      (p)       => set({ pattern: p }),
+  setPattern:      (p)       => set(s => ({
+    pattern: p,
+    activationProcedure: isActivationProcedureAllowed(s.activationProcedure, p) ? s.activationProcedure : 'none',
+    ...(['mu_rhythm', 'lambda_waves', 'phantom_spike_wave'].includes(p) ? { montageId: 'average_reference' } : {}),
+    ...(p === 'lambda_waves' ? { eyesClosed: false } : {}),
+    ...(['rmtd', 'wicket_rhythm'].includes(p) ? { montageId: 'longitudinal_bipolar', eyesClosed: true } : {}),
+    ...(p === 'phantom_spike_wave' ? { eyesClosed: true } : {}),
+    ...(p === 'normal_rem' ? { eyesClosed: true } : {}),
+  })),
   setAmplitude:    (v)       => set(s => ({ amplitude: resolveValue(v, s.amplitude) })),
   setSensitivity:  (v)       => set(s => ({ sensitivity: resolveValue(v, s.sensitivity) })),
   setNoiseLevel:   (v)       => set(s => ({ noiseLevel: resolveValue(v, s.noiseLevel) })),
@@ -36,6 +46,9 @@ export const useEEGStore = create((set, _get) => ({
   triggerSpike:    ()        => set({ pendingSpike: true }),
   triggerArtifact: ()        => set({ pendingArtifact: true }),
   clearPending:    ()        => set({ pendingSpike: false, pendingArtifact: false }),
+  setActivationProcedure: (procedure) => set(s => ({
+    activationProcedure: isActivationProcedureAllowed(procedure, s.pattern) ? procedure : 'none',
+  })),
   setEyesClosed:    (v)      => set(s => ({ eyesClosed: resolveValue(v, s.eyesClosed) })),
   toggleEyes:       ()       => set(s => ({ eyesClosed: !s.eyesClosed })),
   setBlinksEnabled: (v)      => set(s => ({ blinksEnabled: resolveValue(v, s.blinksEnabled) })),

@@ -182,9 +182,40 @@ const FINDINGS = [
 
   // ══════════════ BENIGN VARIANTS ════════════════════════════════════════
   {
+    id: 'fast_alpha_variant',
+    category: 'benign_variant',
+    title: 'Fast Alpha Variant',
+    sandboxPattern: 'fast_alpha_variant',
+    tags: ['Posterior', '16–18 Hz', 'Alpha harmonic', 'Benign'],
+    color: '#5EEAD4',
+    description:
+      'A benign posterior rhythm produced by a harmonic of the underlying posterior dominant rhythm, usually near twice its frequency. It retains the spatial distribution, synchrony, waxing and waning, and eye-opening reactivity of alpha despite falling in the beta-frequency range.',
+    keyFeatures: [
+      'Usually 14–20 Hz, commonly around 16–18 Hz',
+      'Posterior dominant at O1/O2 with symmetric parietal spread',
+      'Frequency is often approximately twice the patient’s underlying alpha rhythm',
+      'Waxes and wanes and attenuates with eye opening like the posterior dominant rhythm',
+      'May alternate or coexist with the fundamental alpha frequency',
+    ],
+    etiology: [
+      'Normal harmonic variant of the posterior dominant rhythm; no treatment or additional investigation is required in isolation',
+    ],
+    differential: [
+      'Frontal beta activity — lower amplitude, anteriorly dominant, and not governed by eye opening',
+      'Benzodiazepine-related beta — diffuse or frontocentral rather than posterior and alpha-reactive',
+      'Photically induced driving — time-locked to an external flash frequency',
+    ],
+    pitfalls: [
+      'Do not call it abnormal fast activity when it preserves posterior alpha distribution and reactivity',
+      'Confirm symmetry and eye-opening attenuation before accepting it as a benign variant',
+    ],
+  },
+
+  {
     id: 'mu',
     category: 'benign_variant',
     title: 'Mu Rhythm',
+    sandboxPattern: 'mu_rhythm',
     waveformId: 'mu',
     tags: ['Central', 'Arched', 'Motor reactivity'],
     color: '#7FFFD4',
@@ -204,6 +235,101 @@ const FINDINGS = [
     ],
     pitfalls: [
       'Easily mistaken for sharp waves due to the arched morphology — the reactivity test is key',
+    ],
+  },
+
+  {
+    id: 'rmtd',
+    category: 'benign_variant',
+    title: 'Rhythmic Mid-temporal Theta of Drowsiness (RMTD)',
+    sandboxPattern: 'rmtd',
+    waveformId: 'theta',
+    tags: ['Psychomotor variant', '5–7 Hz', 'Mid-temporal', 'Benign'],
+    color: '#67E8F9',
+    description:
+      'Rhythmic mid-temporal theta of drowsiness (RMTD), historically called the psychomotor variant, is a benign monomorphic 5–7 Hz rhythm arising over the mid-temporal regions during drowsiness or light sleep. Runs may be unilateral or independently bilateral and can look strikingly ictal, but they do not evolve in frequency, morphology, or spatial distribution and have no clinical correlate.',
+    keyFeatures: [
+      'Stable 5–7 Hz rhythmic theta, often rounded, flat-topped, or mildly notched',
+      'Maximal at T7/T8 with a mid-temporal phase reversal in bipolar montages',
+      'Occurs in drowsiness and light sleep; runs last seconds and occasionally much longer',
+      'May be unilateral, bilateral asynchronous, or independently present on either side',
+      'No frequency acceleration, spatial spread, postictal slowing, or clinical change',
+    ],
+    etiology: [
+      'Benign physiologic drowsiness variant; no treatment or additional investigation is required in isolation',
+    ],
+    differential: [
+      'Temporal ictal theta — typically evolves in frequency, amplitude, morphology, or spatial extent and may have a clinical correlate',
+      'Wicket rhythm — usually 6–11 Hz arciform temporal activity composed of wicket-shaped waves',
+      'Focal temporal slowing — polymorphic rather than monomorphic and rhythmic',
+    ],
+    pitfalls: [
+      'The obsolete name psychomotor variant can imply epilepsy; RMTD is a benign EEG variant',
+      'Do not diagnose a seizure from rhythmicity alone—look for evolution, spread, disruption of background, and clinical change',
+    ],
+  },
+
+  {
+    id: 'wicket_rhythm',
+    category: 'benign_variant',
+    title: 'Wicket Rhythm / Wicket Spikes',
+    sandboxPattern: 'wicket_rhythm',
+    waveformId: 'wicket_rhythm',
+    tags: ['Temporal', '6–11 Hz', 'Arciform', 'Benign'],
+    color: '#8BE0D0',
+    description:
+      'Wicket rhythms are benign temporal alpha-range waves that occur singly or in brief trains, most often in drowsy or lightly sleeping adults. Their arch-like shape and sharp negative crest can resemble temporal epileptiform discharges, but wickets do not disrupt the background and are not followed by a slow wave.',
+    keyFeatures: [
+      'Arciform, comb-like waves at 6–11 Hz, commonly around 8–10 Hz',
+      'Maximal over the anterior- to mid-temporal region, often unilateral or independently bilateral',
+      'Occur as short trains (wicket rhythm) or isolated sharp-looking waves (wicket spikes)',
+      'No after-going slow wave and no disturbance of the surrounding background',
+      'Stable morphology and field without ictal evolution or clinical correlate',
+    ],
+    etiology: [
+      'Benign normal variant, most often seen in adults during drowsiness or light sleep',
+      'No antiseizure treatment or additional investigation is indicated in isolation',
+    ],
+    differential: [
+      'Temporal interictal epileptiform discharge — usually has a more asymmetric sharp contour, a physiologic field, and an after-going slow wave',
+      'RMTD — slower at 5–7 Hz, more monomorphic and theta-like rather than distinctly arciform',
+      'Temporal ictal rhythm — evolves in frequency, amplitude, morphology, or spatial distribution',
+    ],
+    pitfalls: [
+      'An isolated wicket may look more epileptiform than a full train; inspect the surrounding page for recurring arciform waves',
+      'Do not diagnose temporal epilepsy from sharpness alone—require background disruption, a convincing field, or an after-going slow wave',
+    ],
+  },
+
+  {
+    id: 'sreda',
+    category: 'benign_variant',
+    title: 'Subclinical Rhythmic Electrographic Discharge of Adults (SREDA)',
+    sandboxPattern: 'sreda',
+    waveformId: 'sreda',
+    tags: ['SREDA', '5–7 Hz', 'Posterior temporoparietal', 'Benign'],
+    color: '#6FE7DD',
+    description:
+      'SREDA is an uncommon benign EEG variant seen mainly in middle-aged and older adults. It consists of a prolonged, sharply contoured rhythmic theta discharge, usually maximal over the posterior temporal and parietal regions. Despite its seizure-like appearance, it has no clinical correlate and shows little or no evolution in frequency, morphology, or spatial distribution.',
+    keyFeatures: [
+      'Rhythmic 5–7 Hz theta, often sharply contoured or notched',
+      'Bilateral, usually synchronous posterior temporal–parietal maximum; may be asymmetric',
+      'Often begins with one or more sharp or slow transients and ends relatively abruptly',
+      'Runs commonly last tens of seconds and may recur during wakefulness or drowsiness',
+      'No meaningful ictal evolution, clinical change, or postictal slowing',
+    ],
+    etiology: [
+      'Benign normal variant, reported predominantly in middle-aged and older adults',
+      'No antiseizure treatment or additional investigation is indicated when the pattern is confidently identified in isolation',
+    ],
+    differential: [
+      'Focal impaired-awareness seizure pattern — usually evolves in frequency, amplitude, morphology, or distribution and may have a clinical correlate',
+      'RMTD — typically shorter, more restricted to the mid-temporal region, and most prominent in drowsiness',
+      'Generalized rhythmic theta or an encephalopathic pattern — interpreted in the context of background organization and clinical state',
+    ],
+    pitfalls: [
+      'Its abrupt onset, sharp contours, and long rhythmic run can be mistaken for an electrographic seizure',
+      'Do not diagnose an ictal pattern from rhythmicity alone; confirm the stable frequency and field, preserved background, absent clinical change, and lack of postictal slowing',
     ],
   },
 
@@ -234,19 +360,81 @@ const FINDINGS = [
   },
 
   {
+    id: 'small_sharp_spikes',
+    category: 'benign_variant',
+    title: 'Small Sharp Spikes of Sleep (BETS)',
+    sandboxPattern: 'small_sharp_spikes',
+    waveformId: 'small_sharp_spikes',
+    tags: ['BETS', 'SSS', 'Drowsiness', 'Benign'],
+    color: '#9BE7C4',
+    description:
+      'Small sharp spikes of sleep (SSS), historically called benign epileptiform transients of sleep (BETS), are brief, low-amplitude temporal transients seen during drowsiness and light NREM sleep. They may be unilateral or independently bilateral and can look sharp, but they do not disrupt the background or produce a prominent after-going slow wave.',
+    keyFeatures: [
+      'Brief monophasic or diphasic sharply contoured transients, usually under 50 ms for the main component',
+      'Low amplitude, commonly below 50 µV, with a broad temporal field',
+      'Maximal over anterior- to mid-temporal electrodes; unilateral or independently bilateral',
+      'Restricted to drowsiness and light sleep, especially N1–N2',
+      'No prominent after-going slow wave, background disruption, ictal evolution, or clinical correlate',
+    ],
+    etiology: [
+      'Benign sleep-related EEG variant in adults',
+      'No antiseizure treatment or additional investigation is indicated in isolation',
+    ],
+    differential: [
+      'Temporal interictal epileptiform discharge — typically higher amplitude, disrupts the background, has a more convincing field, and is often followed by a slow wave',
+      'Wicket spike — arciform and usually recognizable as part of a 6–11 Hz wicket train',
+      'Electrode or muscle artifact — assess the field, polarity, distribution, and relationship to nearby channels',
+    ],
+    pitfalls: [
+      'The historical term “benign epileptiform transient” is misleading: BETS are not evidence of epilepsy',
+      'Do not label isolated sharpness as epileptiform without a physiologic field, background disruption, or an after-going slow wave',
+    ],
+  },
+
+  {
+    id: 'phantom_spike_wave',
+    category: 'benign_variant',
+    title: 'Phantom Spike-Wave Discharges (6 Hz Spike-Wave)',
+    sandboxPattern: 'phantom_spike_wave',
+    waveformId: 'phantom_spike_wave',
+    tags: ['6 Hz spike-wave', 'FOLD', 'WHAM', 'Benign variant'],
+    color: '#B7E4C7',
+    description:
+      'Phantom spike-wave consists of brief bursts of low-amplitude 5–7 Hz spike-and-wave complexes, usually seen during relaxed wakefulness or drowsiness. The spike is characteristically tiny—sometimes nearly hidden within the following slow wave—giving the pattern its “phantom” name. The common posterior, low-amplitude FOLD form is a benign variant without a clinical correlate.',
+    keyFeatures: [
+      'Brief runs of 5–7 Hz spike-and-wave, commonly near 6 Hz and lasting about 0.5–2 seconds',
+      'Very small spike component relative to the rounded slow wave',
+      'Usually low amplitude and maximal over posterior or occipital regions during drowsiness',
+      'Bilaterally synchronous and symmetric or mildly asymmetric, without meaningful evolution',
+      'No clinical change, background disruption, or postictal slowing',
+    ],
+    etiology: [
+      'FOLD: female, occipital, low-amplitude, drowsy pattern—generally regarded as benign',
+      'WHAM: waking, high-amplitude, anterior, male pattern—less reassuring and warrants careful clinical correlation',
+    ],
+    differential: [
+      'Generalized epileptic spike-wave — typically has a more prominent spike, broader field, greater amplitude, longer runs, or a clinical correlate',
+      'Occipital rhythmic theta — lacks a consistent spike component',
+      'SREDA — longer 5–7 Hz posterior temporoparietal runs with sharply contoured theta rather than discrete spike-wave complexes',
+    ],
+    pitfalls: [
+      'Do not treat all 6 Hz spike-wave as interchangeable: posterior low-amplitude FOLD morphology is more reassuring than anterior high-amplitude WHAM morphology',
+      'A prominent spike, anterior maximum, persistence into alert wakefulness, or other epileptiform abnormalities should prompt caution before labeling the pattern benign',
+    ],
+  },
+
+  {
     id: 'benign_variants_misc',
     category: 'benign_variant',
     title: 'Miscellaneous Benign Variants',
     waveformId: 'sharp_wave',
-    tags: ['Wicket', 'SREDA', '14&6', 'Not epileptiform'],
+    tags: ['14&6', 'Not epileptiform'],
     color: '#B0E0FF',
     description:
-      'Several benign variants are important primarily because they are commonly misread as epileptiform. Key examples: wicket spikes (arciform temporal, no after-going slow wave), 14-and-6 positive spikes, small sharp spikes of sleep (SSS/BETS), and subclinical rhythmic electrographic discharge of adults (SREDA).',
+      'Several benign variants are important primarily because they are commonly misread as epileptiform. The 14-and-6 positive-spike pattern is summarized here; wicket rhythms, SREDA, and small sharp spikes of sleep are covered separately in this section.',
     keyFeatures: [
       'Wicket: 6–11 Hz arciform temporal waves; single wave can look sharp but has no after-going slow wave',
       '14-and-6 Hz positive spikes: posterior-temporal, pediatric, drowsiness',
-      'Small sharp spikes (SSS/BETS): brief, low-amplitude, drowsy/light sleep',
-      'SREDA: rhythmic theta in older adults, abrupt start/stop, no clinical change',
     ],
     etiology: ['All are normal variants; no treatment indicated'],
     differential: [

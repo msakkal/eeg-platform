@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { MONTAGE_LIST } from '@/engine/montages'
 import { FILTER_PRESETS } from '@/engine/filters'
 import { SENSITIVITY_STEPS, VIEWER_THEME_LIST } from '@/engine/viewerThemes'
+import { ACTIVATION_PROCEDURES, hasActivationProcedures, isActivationProcedureAllowed } from '@/engine/patterns'
 
 export const DEFAULT_VIEWER_STYLE = {
   signalColor: '',
@@ -76,6 +77,9 @@ export default function EEGViewerControls({
   onBlinksEnabledChange,
   blinkRate,
   onBlinkRateChange,
+  activationProcedure,
+  onActivationProcedureChange,
+  pattern,
 }) {
   const matchedFilter = useMemo(() => (
     Object.entries(FILTER_PRESETS).find(([, preset]) =>
@@ -87,6 +91,8 @@ export default function EEGViewerControls({
   const [selectedFilterId, setSelectedFilterId] = useState(matchedFilter)
   const activeFilter = selectedFilterId === 'custom' ? 'custom' : matchedFilter
   const isCustomTheme = viewerTheme === 'custom'
+  const blinkControlsDisabled = eyesClosed === true
+  const effectiveBlinksEnabled = blinkControlsDisabled ? false : blinksEnabled
 
   useEffect(() => {
     if (selectedFilterId !== 'custom') setSelectedFilterId(matchedFilter)
@@ -127,10 +133,11 @@ export default function EEGViewerControls({
         {blinksEnabled != null && onBlinksEnabledChange && (
           <ToolbarToggle
             label="Blinks"
-            value={blinksEnabled}
+            value={effectiveBlinksEnabled}
             offLabel="Off"
             onLabel="On"
             onChange={onBlinksEnabledChange}
+            disabled={blinkControlsDisabled}
           />
         )}
         {blinkRate != null && onBlinkRateChange && (
@@ -142,8 +149,24 @@ export default function EEGViewerControls({
             step={1}
             unit="/min"
             onChange={onBlinkRateChange}
-            disabled={blinksEnabled === false}
+            disabled={blinkControlsDisabled || effectiveBlinksEnabled === false}
           />
+        )}
+        {activationProcedure != null && onActivationProcedureChange && (
+          <ToolbarSelect
+            label="Activation"
+            value={activationProcedure}
+            onChange={onActivationProcedureChange}
+            className="w-44"
+            disabled={!hasActivationProcedures(pattern)}
+          >
+            <option value="none">None</option>
+            {Object.entries(ACTIVATION_PROCEDURES).map(([id, procedure]) => (
+              <option key={id} value={id} disabled={!isActivationProcedureAllowed(id, pattern)}>
+                {procedure.label}
+              </option>
+            ))}
+          </ToolbarSelect>
         )}
         {filterConfig && onFilterChange && (
           <>
@@ -207,22 +230,28 @@ export default function EEGViewerControls({
   )
 }
 
-function ToolbarToggle({ label, value, offLabel, onLabel, onChange }) {
+function ToolbarToggle({ label, value, offLabel, onLabel, onChange, disabled = false }) {
+  const inactiveClass = disabled
+    ? 'text-eeg-muted cursor-not-allowed'
+    : 'text-eeg-muted hover:text-eeg-text'
+
   return (
-    <label className="flex flex-col gap-1">
+    <label className={`flex flex-col gap-1 ${disabled ? 'opacity-50' : ''}`}>
       <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{label}</span>
       <div className="h-8 grid grid-cols-2 rounded border border-eeg-border bg-eeg-card overflow-hidden text-xs font-mono">
         <button
           type="button"
           onClick={() => onChange(false)}
-          className={`px-2 transition-colors ${!value ? 'bg-eeg-accent text-eeg-bg' : 'text-eeg-muted hover:text-eeg-text'}`}
+          disabled={disabled}
+          className={`px-2 transition-colors disabled:cursor-not-allowed ${!value ? 'bg-eeg-accent text-eeg-bg' : inactiveClass}`}
         >
           {offLabel}
         </button>
         <button
           type="button"
           onClick={() => onChange(true)}
-          className={`px-2 transition-colors ${value ? 'bg-eeg-accent text-eeg-bg' : 'text-eeg-muted hover:text-eeg-text'}`}
+          disabled={disabled}
+          className={`px-2 transition-colors disabled:cursor-not-allowed ${value ? 'bg-eeg-accent text-eeg-bg' : inactiveClass}`}
         >
           {onLabel}
         </button>
@@ -231,12 +260,12 @@ function ToolbarToggle({ label, value, offLabel, onLabel, onChange }) {
   )
 }
 
-function ToolbarSelect({ label, value, onChange, children, className = '' }) {
+function ToolbarSelect({ label, value, onChange, children, className = '', disabled = false }) {
   return (
-    <label className="flex flex-col gap-1">
+    <label className={`flex flex-col gap-1 ${disabled ? 'opacity-45' : ''}`}>
       <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{label}</span>
-      <select value={value} onChange={event => onChange(event.target.value)}
-        className={`h-8 bg-eeg-card border border-eeg-border rounded px-2 text-xs font-mono text-eeg-text focus:outline-none focus:border-eeg-accent ${className}`}>
+      <select value={value} onChange={event => onChange(event.target.value)} disabled={disabled}
+        className={`h-8 bg-eeg-card border border-eeg-border rounded px-2 text-xs font-mono text-eeg-text focus:outline-none focus:border-eeg-accent disabled:cursor-not-allowed ${className}`}>
         {children}
       </select>
     </label>
@@ -245,11 +274,11 @@ function ToolbarSelect({ label, value, onChange, children, className = '' }) {
 
 function ToolbarRange({ label, value, min, max, step, unit, onChange, wide = false, disabled = false }) {
   return (
-    <label className={`flex flex-col gap-1 ${wide ? 'w-40' : 'w-28'}`}>
+    <label className={`flex flex-col gap-1 ${wide ? 'w-40' : 'w-28'} ${disabled ? 'opacity-50' : ''}`}>
       <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">
         {label} <span className="text-eeg-accent">{Number(value).toFixed(step < 1 ? 2 : 0)}{unit}</span>
       </span>
-      <input type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={event => onChange(Number(event.target.value))} className="h-8 w-full accent-eeg-accent disabled:opacity-40" />
+      <input type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={event => onChange(Number(event.target.value))} className="h-8 w-full accent-eeg-accent disabled:cursor-not-allowed disabled:opacity-40" />
     </label>
   )
 }

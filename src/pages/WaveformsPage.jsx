@@ -1,11 +1,24 @@
-import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { WAVEFORM_PATTERNS, WAVEFORM_GROUPS } from '@/engine/waveforms'
 import DemoTraceViewer from '@/components/eeg/DemoTraceViewer'
 
 const GROUPS_ORDER = ['background','sleep','epileptiform','periodic','abnormal','artifact']
+const DEMO_TRACE_SCALE = {
+  beta: 0.42,
+}
 
 export default function WaveformsPage() {
-  const [selected, setSelected] = useState('alpha')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedId = searchParams.get('id')
+  const selected = requestedId && WAVEFORM_PATTERNS[requestedId]
+    ? requestedId
+    : 'alpha'
+
+  const selectPattern = id => {
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.set('id', id)
+    setSearchParams(nextParams)
+  }
 
   const pattern = WAVEFORM_PATTERNS[selected]
 
@@ -27,7 +40,7 @@ export default function WaveformsPage() {
                 {items.map(p => (
                   <button
                     key={p.id}
-                    onClick={() => setSelected(p.id)}
+                    onClick={() => selectPattern(p.id)}
                     className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all
                       ${selected === p.id
                         ? 'text-eeg-text bg-eeg-card border border-eeg-border'
@@ -65,7 +78,13 @@ export default function WaveformsPage() {
               <span className="text-xs font-mono text-eeg-muted">Demo trace — {pattern.label}</span>
             </div>
             <div className="eeg-paper p-2">
-              <DemoTraceViewer patternId={selected} color={pattern.color} height={84} label={pattern.label} />
+              <DemoTraceViewer
+                patternId={selected}
+                color={pattern.color}
+                height={84}
+                label={pattern.label}
+                traceScale={DEMO_TRACE_SCALE[selected] ?? 1}
+              />
             </div>
           </div>
 

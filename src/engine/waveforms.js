@@ -18,6 +18,7 @@ import {
   injectSpike,
   injectSharpWave,
   injectEyeBlink,
+  injectKComplex,
   SAMPLE_RATE,
 } from './signalGenerator.js'
 
@@ -25,6 +26,7 @@ import {
 
 const nativeRandom = Math.random
 let activeRandom = nativeRandom
+const TWO_PI = 2 * Math.PI
 
 function random() {
   return activeRandom()
@@ -221,41 +223,99 @@ function addArched(sig, fs, { freq = 10, amp = 40, envFreq = 0.2, envFloor = 0.2
   }
 }
 
-/** Inject a vertex sharp wave — negative sharp transient (~150 ms). */
-function injectVertexSharp(sig, at, { amp = 120 } = {}) {
-  const dur = Math.round(0.15 * SAMPLE_RATE)
-  for (let i = -dur; i <= dur; i++) {
-    const idx = at + i
-    if (idx < 0 || idx >= sig.length) continue
-    const t = i / dur
-    // Asymmetric sharp: faster rise than fall
-    const env = t < 0 ? Math.exp(-Math.pow(t / 0.35, 2) * 4)
-                      : Math.exp(-Math.pow(t / 0.55, 2) * 4)
-    sig[idx] += -amp * env
-  }
+function smoothstep(edge0, edge1, x) {
+  const u = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)))
+  return u * u * (3 - 2 * u)
 }
 
-/**
- * Inject a K-complex: brief sharp negative followed by a much LARGER positive
- * slow wave, ≥0.5 s total. Real K-complexes are dominated by the positive
- * slow wave (often 200–400 µV); the leading negative sharp is smaller
- * (~50–100 µV). `amp` is interpreted as the peak positive-slow amplitude.
- */
-function injectKComplex(sig, at, { amp = 250 } = {}) {
-  // Phase 1: brief sharp negative deflection ~100 ms (~⅓ of slow-wave amp)
-  injectSharpWave(sig, at, {
-    amplitude: amp * 0.4,
-    duration:  0.10,
-    polarity:  -1,
-    asymmetry: 0.35,
+function muArciformCarrier(phase, harmonic = 0.24) {
+  // Mu is a non-sinusoidal alpha-range rhythm, not a train of identical
+  // sharp transients. A modest phase-locked second harmonic broadens the
+  // positive arch and steepens the negative vertex while keeping the trace
+  // and its derivatives continuous. A tiny third harmonic adds the subtle
+  // pre-vertex shoulder often responsible for its comb-like appearance.
+  return Math.sin(phase) +
+    harmonic * Math.cos(2 * phase) +
+    0.035 * Math.sin(3 * phase + 0.35)
+}
+
+/** Mu rhythm: central alpha-range, arciform, and movement-reactive. */
+function addMuRhythm(sig, fs, {
+  freq = 10,
+  amp = 44,
+  envFloor = 0.35,
+  blockStartSec = 1.16,
+  blockEndSec = 1.82,
+  blockDepth = 0.82,
+} = {}) {
+  const env = makeIrregularEnvelope(sig.length, fs, {
+    floor: envFloor,
+    slowFreq: 0.10 + random() * 0.06,
+    drift: 0.997,
   })
-  // Phase 2: dominant broad positive slow wave ~600 ms
-  const s2  = at + Math.round(0.08 * SAMPLE_RATE)
-  const dur = Math.round(0.60 * SAMPLE_RATE)
-  for (let i = 0; i < dur; i++) {
-    const idx = s2 + i
-    if (idx >= sig.length) break
-    sig[idx] += amp * Math.sin(Math.PI * i / dur)
+  const tmp = new Float32Array(sig.length)
+  const fmPhase = random() * TWO_PI
+  let phase = random() * TWO_PI
+  let mean = 0
+
+  for (let i = 0; i < sig.length; i++) {
+    const t = i / fs
+    const f = freq +
+      0.18 * Math.sin(TWO_PI * 0.07 * t + fmPhase) +
+      0.06 * Math.sin(TWO_PI * 0.23 * t + fmPhase * 0.7)
+    phase += TWO_PI * f / fs
+
+    const blockIn = smoothstep(blockStartSec - 0.12, blockStartSec + 0.02, t)
+    const blockOut = smoothstep(blockEndSec, blockEndSec + 0.18, t)
+    const movementBlock = blockIn * (1 - blockOut)
+    const blockScale = 1 - blockDepth * movementBlock
+    const microVariation = 1 +
+      0.035 * Math.sin(TWO_PI * 0.9 * t + fmPhase) +
+      0.018 * Math.sin(TWO_PI * 2.1 * t + fmPhase * 0.43)
+    const harmonic = 0.23 + 0.025 * Math.sin(TWO_PI * 0.19 * t + fmPhase * 1.3)
+
+    tmp[i] = amp * env[i] * blockScale * microVariation * muArciformCarrier(phase, harmonic)
+    mean += tmp[i]
+  }
+
+  mean /= sig.length
+  for (let i = 0; i < sig.length; i++) sig[i] += tmp[i] - mean
+}
+
+/** Inject a normal sleep vertex wave: brief V-shaped surface-negative sharp. */
+function injectVertexSharp(sig, at, fs = SAMPLE_RATE, {
+  amp = 125,
+  preShoulder = 0.16,
+  postShoulder = 0.24,
+  riseSec = 0.045,
+  fallSec = 0.080,
+} = {}) {
+  const start = Math.round(-0.11 * fs)
+  const end = Math.round(0.18 * fs)
+
+  for (let i = start; i <= end; i++) {
+    const idx = at + i
+    if (idx < 0 || idx >= sig.length) continue
+    const t = i / fs
+    let v = 0
+
+    if (t >= -0.105 && t < -riseSec * 0.65) {
+      const x = (t + 0.105) / (0.105 - riseSec * 0.65)
+      v += amp * preShoulder * Math.pow(Math.sin(Math.PI * x), 1.25)
+    }
+    if (t >= -riseSec && t <= 0) {
+      const x = (t + riseSec) / riseSec
+      v += -amp * Math.pow(x, 1.18)
+    } else if (t > 0 && t <= fallSec) {
+      const x = t / fallSec
+      v += -amp * Math.pow(1 - x, 1.45)
+    }
+    if (t > fallSec * 0.55 && t <= 0.175) {
+      const x = (t - fallSec * 0.55) / (0.175 - fallSec * 0.55)
+      v += amp * postShoulder * Math.pow(Math.sin(Math.PI * x), 1.15)
+    }
+
+    sig[idx] += v
   }
 }
 
@@ -290,16 +350,38 @@ function injectTriphasic(sig, at, { amp = 120 } = {}) {
   }
 }
 
-/** Inject a POSTS: surface-positive sharp triangular wave (~4 Hz trains). */
-function injectPOSTS(sig, at, { amp = 60 } = {}) {
-  // Asymmetric triangular: steep rise, slower fall
-  const riseN = Math.round(0.04 * SAMPLE_RATE)
-  const fallN = Math.round(0.11 * SAMPLE_RATE)
-  for (let i = 0; i < riseN + fallN; i++) {
+/** Inject a POSTS: asymmetric surface-positive occipital sharp transient. */
+function injectPOSTS(sig, at, fs = SAMPLE_RATE, {
+  amp = 60,
+  riseSec = 0.045,
+  fallSec = 0.105,
+  shoulder = 0.10,
+} = {}) {
+  const preN = Math.round(0.025 * fs)
+  const riseN = Math.round(riseSec * fs)
+  const fallN = Math.round(fallSec * fs)
+  const postN = Math.round(0.030 * fs)
+  const totalN = preN + riseN + fallN + postN
+
+  for (let i = 0; i < totalN; i++) {
     const idx = at + i
     if (idx >= sig.length) return
-    const v = i < riseN ? i / riseN : 1 - (i - riseN) / fallN
-    sig[idx] += amp * v                 // positive polarity
+    let v
+
+    if (i < preN) {
+      v = -amp * shoulder * Math.sin(Math.PI * i / preN)
+    } else if (i < preN + riseN) {
+      const x = (i - preN) / riseN
+      v = amp * Math.pow(x, 0.78)
+    } else if (i < preN + riseN + fallN) {
+      const x = (i - preN - riseN) / fallN
+      v = amp * Math.pow(1 - x, 1.18)
+    } else {
+      const x = (i - preN - riseN - fallN) / postN
+      v = -amp * shoulder * 0.65 * Math.sin(Math.PI * x)
+    }
+
+    sig[idx] += v
   }
 }
 
@@ -327,8 +409,8 @@ export const WAVEFORM_PATTERNS = {
     group:       'background',
     label:       'Beta',
     freq:        '13–30 Hz',
-    amplitude:   '5–30 µV',
-    morphology:  'Low amplitude, symmetric, often intermixed with faster rhythms',
+    amplitude:   '5–20 µV (usually low voltage)',
+    morphology:  'Low-amplitude, symmetric fast activity, often intermixed with background rhythms',
     location:    'Frontal / central',
     reactivity:  'Attenuated by movement; enhanced by eyes open and alertness',
     clinical:    'Normal; enhanced by benzodiazepines and barbiturates',
@@ -364,18 +446,93 @@ export const WAVEFORM_PATTERNS = {
     color:       '#7B5EA7',
   },
 
+  lambda_waves: {
+    id:          'lambda_waves',
+    group:       'background',
+    label:       'Lambda Waves',
+    freq:        'Transient (irregular, non-rhythmic)',
+    duration:    '100–200 ms',
+    amplitude:   '20–50 µV typical',
+    morphology:  'Sharply contoured surface-positive monophasic or biphasic transients resembling the Greek letter lambda',
+    location:    'Occipital, maximal at O1/O2; commonly asymmetric or unilateral with limited posterior spread',
+    reactivity:  'Appear with eyes open during active visual scanning; disappear with eye closure and visual fixation',
+    clinical:    'Normal awake variant that may resemble occipital spikes; the visual-scanning context and absence with eye closure are distinguishing features',
+    pathological: false,
+    color:       '#A7F3D0',
+  },
+
   mu: {
     id:          'mu',
     group:       'background',
     label:       'Mu Rhythm',
-    freq:        '8–12 Hz (alpha range)',
+    freq:        '8–13 Hz (central alpha; often ~9–11 Hz)',
     amplitude:   '20–60 µV',
-    morphology:  'Arciform / comb-shaped; asymmetric (sharp negative peaks, rounded positives)',
-    location:    'Central, over the rolandic strip (C3/C4)',
-    reactivity:  'Attenuates with CONTRALATERAL hand movement or intent to move',
-    clinical:    'Normal variant; persistence at rest, unilateral, or asymmetric can be pathological',
+    morphology:  'Arciform / comb-shaped; asymmetric with a sharp negative component and rounded positive arch',
+    location:    'Central sensorimotor cortex, maximal at C3/C4/Cz; may be asymmetric or unilateral',
+    reactivity:  'Attenuates with contralateral movement, motor imagery, or tactile stimulation; not eye opening',
+    clinical:    'Normal awake rhythm that can mimic central sharp waves; marked asymmetry or focal loss needs clinical context',
     pathological: false,
     color:       '#7FFFD4',
+  },
+
+  wicket_rhythm: {
+    id:          'wicket_rhythm',
+    group:       'background',
+    label:       'Wicket Rhythm',
+    freq:        '6–11 Hz (commonly 8–10 Hz)',
+    duration:    'Isolated waves or brief trains lasting about 0.5–3 s',
+    amplitude:   '60–200 µV',
+    morphology:  'Arciform, comb-like temporal waves with a sharp negative crest and rounded return; no after-going slow wave',
+    location:    'Anterior- to mid-temporal, unilateral or independently bilateral',
+    reactivity:  'Most prominent during drowsiness and light sleep; does not evolve',
+    clinical:    'Benign normal variant and common temporal epileptiform mimic. Isolated waves are often called wicket spikes.',
+    pathological: false,
+    color:       '#8BE0D0',
+  },
+
+  sreda: {
+    id:          'sreda',
+    group:       'background',
+    label:       'SREDA',
+    freq:        '5–7 Hz (usually about 6 Hz)',
+    duration:    'Usually 20–80 s; the teaching trace shows a shortened run',
+    amplitude:   'Approximately 40–100 µV',
+    morphology:  'Sharply contoured or notched rhythmic theta with an abrupt onset and offset and little internal evolution',
+    location:    'Bilateral posterior temporal and parietal regions, often synchronous but sometimes asymmetric',
+    reactivity:  'Occurs during wakefulness or drowsiness without a clinical correlate or postictal change',
+    clinical:    'Uncommon benign adult variant that can closely mimic an electrographic seizure, especially in older adults.',
+    pathological: false,
+    color:       '#6FE7DD',
+  },
+
+  small_sharp_spikes: {
+    id:          'small_sharp_spikes',
+    group:       'background',
+    label:       'Small Sharp Spikes (BETS)',
+    freq:        'Isolated transients rather than a rhythm',
+    duration:    'Main sharp component usually < 50 ms',
+    amplitude:   'Usually < 50 µV',
+    morphology:  'Low-amplitude monophasic or diphasic sharp transient without a prominent after-going slow wave',
+    location:    'Broad anterior- to mid-temporal field; unilateral or independently bilateral',
+    reactivity:  'Appears during drowsiness and light NREM sleep without background disruption',
+    clinical:    'Benign adult sleep variant. The historical term benign epileptiform transient of sleep does not imply epilepsy.',
+    pathological: false,
+    color:       '#9BE7C4',
+  },
+
+  phantom_spike_wave: {
+    id:          'phantom_spike_wave',
+    group:       'background',
+    label:       'Phantom Spike-Wave',
+    freq:        '5–7 Hz (typically about 6 Hz)',
+    duration:    'Brief bursts, usually 0.5–2 s',
+    amplitude:   'Low amplitude; the spike is small relative to the slow wave',
+    morphology:  'Tiny sharp spike followed by a rounded slow wave, repeating at approximately 6 Hz without evolution',
+    location:    'Usually bilateral posterior/occipital maximum in the benign FOLD form',
+    reactivity:  'Most often appears during relaxed wakefulness or drowsiness without a clinical correlate',
+    clinical:    'The posterior low-amplitude FOLD form is benign; anterior high-amplitude WHAM morphology deserves greater caution.',
+    pathological: false,
+    color:       '#B7E4C7',
   },
 
   // ── Sleep features ───────────────────────────────────────────────────────
@@ -384,12 +541,12 @@ export const WAVEFORM_PATTERNS = {
     group:       'sleep',
     label:       'Vertex Sharp Wave',
     freq:        'Transient',
-    duration:    '100–200 ms',
-    amplitude:   '50–250 µV',
-    morphology:  'Monophasic (usually negative) sharp transient, symmetrical',
-    location:    'Cz maximum; often C3/C4. Symmetric bilaterally',
-    reactivity:  'Provoked by arousing stimuli during drowsiness / N1',
-    clinical:    'Normal feature of N1–N2 sleep; can appear "spiky" and be misread as epileptiform',
+    duration:    '100–200 ms main sharp component',
+    amplitude:   '50–150 µV typical; occasionally larger',
+    morphology:  'Surface-negative V-shaped sharp transient, often bi- or triphasic with small positive shoulders',
+    location:    'Cz maximum with symmetric spread to C3/C4 and midline frontal-parietal leads',
+    reactivity:  'Spontaneous or evoked by arousal, auditory, or tactile stimuli during drowsiness / N1–N2',
+    clinical:    'Normal N1–N2 graphoelement; can appear spiky, but symmetry, state, and lack of a prominent after-going slow wave distinguish it from epileptiform activity',
     pathological: false,
     color:       '#B0E0FF',
   },
@@ -414,10 +571,10 @@ export const WAVEFORM_PATTERNS = {
     group:       'sleep',
     label:       'K-Complex',
     freq:        'Transient',
-    duration:    '≥ 500 ms',
+    duration:    '≥ 500 ms (typically about 0.5–1 s)',
     amplitude:   '100–400 µV',
-    morphology:  'Sharp negative wave immediately followed by a broad slow positive wave; often followed by a spindle',
-    location:    'Fz/Cz maximum',
+    morphology:  'High-voltage biphasic complex: a well-delineated steep surface-negative sharp wave followed immediately by a broad positive slow component; may be followed by a spindle',
+    location:    'Frontocentral maximum, usually Fz/Cz, with symmetric parasagittal spread',
     reactivity:  'Spontaneous or evoked by stimuli during N2',
     clinical:    'Defining graphoelement of N2 sleep. Periodic K-complexes can resemble generalised periodic discharges if taken out of context.',
     pathological: false,
@@ -429,10 +586,10 @@ export const WAVEFORM_PATTERNS = {
     group:       'sleep',
     label:       'POSTS',
     freq:        '4–5 Hz (trains)',
-    duration:    '~200 ms each',
+    duration:    '80–200 ms each',
     amplitude:   '20–75 µV',
-    morphology:  'Surface-positive triangular/sharply-contoured waves; steep rising limb',
-    location:    'O1 and O2, symmetric',
+    morphology:  'Surface-positive, sharply contoured triangular waves with a steep rising limb and slower return; occur singly or in 4–5 Hz trains',
+    location:    'Occipital maximum at O1/O2, usually synchronous and symmetric but sometimes asymmetric',
     reactivity:  'Appear in N1–N2 sleep; disappear with arousal',
     clinical:    'Positive Occipital Sharp Transients of Sleep — BENIGN. Commonly misread as occipital sharp waves.',
     pathological: false,
@@ -683,10 +840,10 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
     }
     case 'beta': {
       const sig = new Float32Array(nSamples)
-      addNoise(sig, 4)
+      addNoise(sig, 2)
       addRhythm(sig, sampleRate, {
-        centerFreq: 20, bandwidthHz: 6, amplitude: 22, nComp: 4,
-        envFreq: 0.4, envFloor: 0.45,
+        centerFreq: 20, bandwidthHz: 6, amplitude: 12, nComp: 5,
+        envFreq: 0.35, envFloor: 0.55,
       })
       return sig
     }
@@ -708,22 +865,143 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       })
       return sig
     }
+    case 'lambda_waves': {
+      const sig = new Float32Array(nSamples)
+      // Low-voltage, desynchronised eyes-open background.
+      addNoise(sig, 2.8)
+      addRhythm(sig, sampleRate, {
+        centerFreq: 18, bandwidthHz: 7, amplitude: 6, nComp: 4,
+        envFreq: 0.3, envFloor: 0.6,
+      })
+      addRhythm(sig, sampleRate, {
+        centerFreq: 9.5, bandwidthHz: 2, amplitude: 5, nComp: 2,
+        envFreq: 0.2, envFloor: 0.25,
+      })
+      ;[0.38, 0.72, 1.27, 1.54, 2.12, 2.58].forEach(t => {
+        injectLambdaWave(sig, Math.round(t * sampleRate), sampleRate, {
+          amp: 37 + random() * 15,
+          durationSec: 0.105 + random() * 0.065,
+        })
+      })
+      return sig
+    }
     case 'mu': {
       const sig = new Float32Array(nSamples)
-      addNoise(sig, 4)
-      addArched(sig, sampleRate, { freq: 10, amp: 55, envFreq: 0.15, envFloor: 0.2 })
-      // A dusting of background alpha/beta for context
-      addRhythm(sig, sampleRate, { centerFreq: 20, amplitude: 10, nComp: 2, envFloor: 0.5 })
+      addNoise(sig, 3)
+      addMuRhythm(sig, sampleRate, { freq: 10.1, amp: 36, envFloor: 0.34 })
+      // Low central beta gives the Mu run realistic awake background context.
+      addRhythm(sig, sampleRate, { centerFreq: 18, bandwidthHz: 5, amplitude: 7, nComp: 2, envFloor: 0.55 })
+      return sig
+    }
+    case 'wicket_rhythm': {
+      const sig = new Float32Array(nSamples)
+      addNoise(sig, 3)
+      addRhythm(sig, sampleRate, {
+        centerFreq: 5.5, bandwidthHz: 1.5, amplitude: 14, nComp: 3,
+        envFreq: 0.12, envFloor: 0.4,
+      })
+      const start = Math.round(0.42 * sampleRate)
+      const end = Math.round(2.62 * sampleRate)
+      const freq = 8.7
+      for (let i = start; i < end; i++) {
+        const elapsed = (i - start) / sampleRate
+        const duration = (end - start) / sampleRate
+        const edge = Math.min(1, elapsed / 0.20, (duration - elapsed) / 0.20)
+        const envelope = Math.max(0, edge) * (0.94 + 0.06 * Math.sin(2 * Math.PI * 0.45 * elapsed))
+        const phase = 2 * Math.PI * freq * elapsed
+        sig[i] += 72 * envelope * (
+          Math.sin(phase) + 0.34 * Math.sin(2 * phase + 0.48) + 0.10 * Math.sin(3 * phase + 0.18)
+        )
+      }
+      return sig
+    }
+
+    case 'sreda': {
+      const sig = new Float32Array(nSamples)
+      addNoise(sig, 3)
+      addRhythm(sig, sampleRate, {
+        centerFreq: 9.5, bandwidthHz: 2.0, amplitude: 8, nComp: 2,
+        envFreq: 0.18, envFloor: 0.35,
+      })
+      const start = Math.round(0.34 * sampleRate)
+      const end = Math.round(2.76 * sampleRate)
+      const freq = 6.15
+      for (let i = start; i < end; i++) {
+        const elapsed = (i - start) / sampleRate
+        const remaining = (end - i) / sampleRate
+        const envelope = Math.min(1, elapsed / 0.10, remaining / 0.14)
+        const phase = 2 * Math.PI * freq * elapsed
+        const onsetSharpness = Math.max(0, 1 - elapsed / 0.75)
+        sig[i] += 58 * Math.max(0, envelope) * (
+          Math.sin(phase) +
+          (0.20 + 0.18 * onsetSharpness) * Math.sin(2 * phase + 0.42) +
+          0.07 * Math.sin(3 * phase - 0.18)
+        )
+      }
+      return sig
+    }
+    case 'small_sharp_spikes': {
+      const sig = new Float32Array(nSamples)
+      addNoise(sig, 3.2)
+      addRhythm(sig, sampleRate, {
+        centerFreq: 5.7, bandwidthHz: 1.8, amplitude: 14, nComp: 3,
+        envFreq: 0.14, envFloor: 0.42,
+      })
+      ;[0.48, 1.06, 1.78, 2.42].forEach((time, index) => {
+        const center = Math.round(time * sampleRate)
+        const polarity = index === 2 ? 1 : -1
+        const amp = 30 + random() * 12
+        for (let offset = -Math.round(0.025 * sampleRate); offset <= Math.round(0.105 * sampleRate); offset++) {
+          const sample = center + offset
+          if (sample < 0 || sample >= nSamples) continue
+          const dt = offset / sampleRate
+          const sharp = Math.exp(-Math.pow((dt - 0.012) / 0.016, 2) * 5.5)
+          const returnPhase = Math.exp(-Math.pow((dt - 0.060) / 0.027, 2) * 4.5)
+          sig[sample] += polarity * amp * (sharp - 0.34 * returnPhase)
+        }
+      })
+      return sig
+    }
+    case 'phantom_spike_wave': {
+      const sig = new Float32Array(nSamples)
+      addNoise(sig, 3)
+      addRhythm(sig, sampleRate, {
+        centerFreq: 5.5, bandwidthHz: 1.6, amplitude: 10, nComp: 3,
+        envFreq: 0.13, envFloor: 0.38,
+      })
+      const start = Math.round(0.48 * sampleRate)
+      const end = Math.round(2.35 * sampleRate)
+      const period = 1 / 6.05
+      for (let i = start; i < end; i++) {
+        const elapsed = (i - start) / sampleRate
+        const remaining = (end - i) / sampleRate
+        const envelope = Math.min(1, elapsed / 0.12, remaining / 0.16)
+        const cycle = elapsed % period
+        const spike = -29 * Math.exp(-Math.pow((cycle - 0.018) / 0.010, 2) * 5.5)
+        const wavePosition = (cycle - 0.040) / (period - 0.045)
+        const slowWave = wavePosition >= 0 && wavePosition <= 1
+          ? 38 * Math.sin(Math.PI * wavePosition)
+          : 0
+        sig[i] += Math.max(0, envelope) * (spike + slowWave)
+      }
       return sig
     }
 
     // ── Sleep features ───────────────────────────────────────────────────
     case 'vertex_sharp_wave': {
       const sig = new Float32Array(nSamples)
-      addNoise(sig, 3)
-      addRhythm(sig, sampleRate, { centerFreq: 6, amplitude: 25, nComp: 2, envFloor: 0.5 })
-      ;[0.6, 1.5, 2.4].forEach(t =>
-        injectVertexSharp(sig, Math.round(t * sampleRate), { amp: 140 }))
+      addNoise(sig, 2.5)
+      addRhythm(sig, sampleRate, {
+        centerFreq: 5.5, bandwidthHz: 2.0, amplitude: 22, nComp: 3,
+        envFreq: 0.12, envFloor: 0.45,
+      })
+      ;[
+        { t: 0.55, amp: 118, preShoulder: 0.12, postShoulder: 0.22, riseSec: 0.042, fallSec: 0.074 },
+        { t: 1.18, amp: 138, preShoulder: 0.17, postShoulder: 0.25, riseSec: 0.046, fallSec: 0.082 },
+        { t: 1.86, amp: 105, preShoulder: 0.08, postShoulder: 0.18, riseSec: 0.039, fallSec: 0.070 },
+        { t: 2.48, amp: 128, preShoulder: 0.14, postShoulder: 0.21, riseSec: 0.044, fallSec: 0.078 },
+      ].forEach(({ t, amp, ...shape }) =>
+        injectVertexSharp(sig, Math.round(t * sampleRate), sampleRate, { amp, ...shape }))
       return sig
     }
     case 'sleep_spindle': {
@@ -739,12 +1017,19 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
     case 'k_complex': {
       const sig = new Float32Array(nSamples)
       addNoise(sig, 3)
-      addRhythm(sig, sampleRate, { centerFreq: 2, amplitude: 25, nComp: 2, envFloor: 0.5 })
-      // `amp` is the dominant positive-slow peak (200–300 µV typical)
-      injectKComplex(sig, Math.round(0.9 * sampleRate), { amp: 280 })
+      addRhythm(sig, sampleRate, { centerFreq: 1.5, amplitude: 18, nComp: 2, envFloor: 0.45 })
+      addRhythm(sig, sampleRate, { centerFreq: 5.2, amplitude: 12, nComp: 2, envFloor: 0.5 })
+      // Reuse the sandbox generator with a teaching profile that makes the
+      // defining sharp negative phase distinct from the broad positive phase.
+      injectKComplex(sig, Math.round(0.82 * sampleRate), sampleRate, {
+        amp: 220,
+        prePositiveScale: 0.10,
+        negativeScale: 0.98,
+        positiveScale: 0.64,
+        terminalScale: 0.07,
+      })
       // K-complex often followed by a sleep spindle
-      injectSpindle(sig, Math.round(1.55 * sampleRate), { amp: 35, durSec: 0.8, freq: 13 })
-      injectKComplex(sig, Math.round(2.3 * sampleRate), { amp: 220 })
+      injectSpindle(sig, Math.round(1.48 * sampleRate), { amp: 28, durSec: 0.82, freq: 13 })
       return sig
     }
     case 'posts': {
@@ -757,8 +1042,12 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
         const ibi = 1 / 4
         let t = start
         while (t < end) {
-          injectPOSTS(sig, Math.round(t * sampleRate),
-            { amp: ampMean + random() * 20 })
+          injectPOSTS(sig, Math.round(t * sampleRate), sampleRate, {
+            amp: ampMean + random() * 15,
+            riseSec: 0.038 + random() * 0.014,
+            fallSec: 0.090 + random() * 0.025,
+            shoulder: 0.07 + random() * 0.05,
+          })
           t += ibi * (0.90 + random() * 0.20)
         }
       }
@@ -1052,6 +1341,29 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
   }
   } finally {
     if (seed != null) activeRandom = previousRandom
+  }
+}
+
+/** Inject one surface-positive lambda wave on an eyes-open occipital trace. */
+function injectLambdaWave(sig, at, fs = SAMPLE_RATE, {
+  amp = 45,
+  durationSec = 0.14,
+} = {}) {
+  const n = Math.max(1, Math.round(durationSec * fs))
+  for (let i = 0; i <= n; i++) {
+    const idx = at + i
+    if (idx < 0 || idx >= sig.length) continue
+    const x = i / n
+    let value = 0
+
+    if (x < 0.20) value -= amp * 0.10 * Math.sin(Math.PI * x / 0.20)
+    if (x >= 0.12 && x < 0.40) {
+      value += amp * Math.pow((x - 0.12) / 0.28, 0.72)
+    } else if (x >= 0.40 && x < 0.84) {
+      value += amp * Math.pow(1 - (x - 0.40) / 0.44, 1.18)
+    }
+    if (x >= 0.72) value -= amp * 0.08 * Math.sin(Math.PI * (x - 0.72) / 0.28)
+    sig[idx] += value
   }
 }
 

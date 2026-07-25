@@ -30,6 +30,7 @@ export function useEEGSignal({
   montageId,
   pattern,
   noiseLevel,
+  activationProcedure = 'none',
   isPlaying,
   pendingSpike,
   pendingArtifact,
@@ -146,6 +147,7 @@ export function useEEGSignal({
       eyesClosed,
       blinksEnabled,
       noiseLevel,
+      activationProcedure,
     })
     engineRef.current = engine
 
@@ -184,7 +186,7 @@ export function useEEGSignal({
     setTimeAxis(makeTimeAxis(visibleN, SAMPLE_RATE))
     publishEvents(windowSecs)
     setIsReady(true)
-  }, [pattern, eyesClosed, blinksEnabled, noiseLevel, maxWindowSecs, materialiseMontage, publishEvents])
+  }, [pattern, eyesClosed, blinksEnabled, noiseLevel, activationProcedure, maxWindowSecs, materialiseMontage, publishEvents])
 
   // Montage and sweep-window changes should rematerialise immediately. The
   // animation loop also does this while playing, but this keeps controls

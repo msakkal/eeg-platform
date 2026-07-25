@@ -140,6 +140,35 @@ function injectSaccade(buf, s0, { amp = 200, polarity = +1, stepMs = 30, holdMs 
   }
 }
 
+function injectNystagmusBeat(buf, s0, { amp = 160, polarity = +1, slowMs = 230, fastMs = 38, pauseMs = 35 } = {}) {
+  const fs = SAMPLE_RATE
+  const slow = Math.round(slowMs * fs / 1000)
+  const fast = Math.round(fastMs * fs / 1000)
+  const pause = Math.round(pauseMs * fs / 1000)
+
+  for (let i = 0; i < slow; i++) {
+    const idx = s0 + i
+    if (idx >= buf.length) return
+    const x = i / Math.max(1, slow - 1)
+    const drift = 0.5 - 0.5 * Math.cos(Math.PI * x)
+    buf[idx] += polarity * amp * drift
+  }
+
+  for (let i = 0; i < fast; i++) {
+    const idx = s0 + slow + i
+    if (idx >= buf.length) return
+    const x = i / Math.max(1, fast - 1)
+    const reset = 1 - (0.5 - 0.5 * Math.cos(Math.PI * x))
+    buf[idx] += polarity * amp * reset
+  }
+
+  for (let i = 0; i < pause; i++) {
+    const idx = s0 + slow + fast + i
+    if (idx >= buf.length) return
+    buf[idx] += polarity * amp * 0.04 * Math.sin(2 * Math.PI * 9 * i / fs)
+  }
+}
+
 /**
  * Electrode pop: abrupt step with brief plateau followed by slow DC
  * recovery back to baseline over ~0.5–1.5 s. This slow tail is the most
@@ -486,7 +515,136 @@ export function generateLateralEyeMovementArtifact() {
 }
 
 /**
- * 3. MUSCLE (EMG) ARTIFACT
+ * 3. ROVING EYE MOVEMENT ARTIFACT
+ * Slow, conjugate wandering eye movements that create broad frontal drift.
+ */
+export function generateRovingEyeMovementArtifact() {
+  const hot = []
+  const electrodeArtifacts = createElectrodeArtifacts()
+
+  const horizontalField = {
+    Fp1: -0.62, F7: -1.00, F3: -0.42, T7: -0.20, C3: -0.06,
+    Fp2: +0.62, F8: +1.00, F4: +0.42, T8: +0.20, C4: +0.06,
+    Fz: 0.00, Cz: 0.00, Pz: 0.00,
+    P7: -0.03, P3: -0.02, O1: -0.02,
+    P8: +0.03, P4: +0.02, O2: +0.02,
+  }
+  const verticalField = {
+    Fp1: 1.00, Fp2: 1.00,
+    F7:  0.46, F8:  0.46,
+    F3:  0.42, F4:  0.42, Fz: 0.36,
+    T7:  0.08, T8:  0.08,
+    C3:  0.05, C4:  0.05, Cz: 0.04,
+    P3:  0.02, P4:  0.02, Pz: 0.02,
+    P7:  0.02, P8:  0.02,
+    O1:  0.00, O2:  0.00,
+  }
+
+  const hPhases = [0.35, 1.7, 4.1]
+  const vPhases = [2.2, 0.8, 5.0]
+
+  for (let i = 0; i < N; i++) {
+    const t = i / SAMPLE_RATE
+    const h =
+      0.62 * Math.sin(2 * Math.PI * 0.18 * t + hPhases[0]) +
+      0.28 * Math.sin(2 * Math.PI * 0.31 * t + hPhases[1]) +
+      0.10 * Math.sin(2 * Math.PI * 0.07 * t + hPhases[2])
+    const v =
+      0.55 * Math.sin(2 * Math.PI * 0.13 * t + vPhases[0]) +
+      0.32 * Math.sin(2 * Math.PI * 0.24 * t + vPhases[1]) +
+      0.13 * Math.sin(2 * Math.PI * 0.05 * t + vPhases[2])
+    const envelope = 0.82 + 0.18 * Math.sin(2 * Math.PI * 0.045 * t + 0.6)
+
+    for (const electrode of DEMO_ELECTRODES) {
+      const hScale = horizontalField[electrode] ?? 0
+      const vScale = verticalField[electrode] ?? 0
+      electrodeArtifacts[electrode][i] += envelope * (112 * hScale * h + 86 * vScale * v)
+    }
+  }
+
+  const channels = DEMO_CHANNELS.map(label => {
+    const data = bgChannel(N, ['delta', 'theta'], 30, 0.20, label)
+    if (hasRegion(label, 'frontopolar') || (hasRegion(label, 'frontal') && hasRegion(label, 'temporal'))) {
+      hot.push(label)
+    }
+    addElectrodeFieldToChannel(data, label, electrodeArtifacts)
+    return { label, data }
+  })
+
+  const events = [
+    { t: 1.1, text: 'rove' },
+    { t: 3.6, text: 'rove' },
+    { t: 6.1, text: 'rove' },
+  ]
+
+  return buildResult(channels, events, hot)
+}
+
+/**
+ * 4. NYSTAGMUS ARTIFACT
+ * Repetitive ocular slow phase with fast corrective reset.
+ */
+export function generateNystagmusArtifact() {
+  const episodes = [
+    { start: 0.75, duration: 2.15, dir: +1, rate: 3.2 },
+    { start: 4.15, duration: 2.55, dir: -1, rate: 3.8 },
+  ]
+  const hot = []
+  const electrodeArtifacts = createElectrodeArtifacts()
+
+  const lateralField = {
+    Fp1: -0.58, F7: -1.00, F3: -0.38, T7: -0.24, C3: -0.08,
+    Fp2: +0.58, F8: +1.00, F4: +0.38, T8: +0.24, C4: +0.08,
+    Fz: 0.00, Cz: 0.00, Pz: 0.00,
+    P7: -0.05, P3: -0.03, O1: -0.03,
+    P8: +0.05, P4: +0.03, O2: +0.03,
+  }
+
+  const events = []
+
+  episodes.forEach(({ start, duration, dir, rate }) => {
+    const period = 1 / rate
+    const beatCount = Math.floor(duration / period)
+
+    for (let beat = 0; beat < beatCount; beat++) {
+      const t = start + beat * period
+      const s0 = Math.round(t * SAMPLE_RATE)
+      const ampMod = 0.86 + Math.random() * 0.28
+      const slowMs = period * 1000 * (0.72 + Math.random() * 0.08)
+      const fastMs = period * 1000 * (0.11 + Math.random() * 0.03)
+      const pauseMs = Math.max(12, period * 1000 - slowMs - fastMs)
+      const peak = 165 * ampMod
+
+      for (const electrode of DEMO_ELECTRODES) {
+        const field = lateralField[electrode] ?? 0
+        if (Math.abs(field) < 0.01) continue
+        injectNystagmusBeat(electrodeArtifacts[electrode], s0, {
+          amp: peak * Math.abs(field),
+          polarity: Math.sign(field) * dir,
+          slowMs,
+          fastMs,
+          pauseMs,
+        })
+      }
+
+      events.push({ t, text: 'ny' })
+    }
+  })
+
+  const channels = DEMO_CHANNELS.map(label => {
+    const data = bgChannel(N, ['alpha'], 36, 0.18, label)
+    if (hasRegion(label, 'frontopolar') || (hasRegion(label, 'temporal') && hasRegion(label, 'frontal'))) {
+      hot.push(label)
+    }
+    addElectrodeFieldToChannel(data, label, electrodeArtifacts)
+    return { label, data }
+  })
+
+  return buildResult(channels, events, hot)
+}
+
+/**
+ * 5. MUSCLE (EMG) ARTIFACT
  * Broadband (>30 Hz) MUAP-shaped activity, temporal-maximum.
  */
 export function generateMuscleArtifact() {
@@ -655,39 +813,136 @@ export function generateShiverArtifact() {
 }
 
 /**
+ * 6. TREMOR ARTIFACT
+ * Regular rhythmic movement artifact with superimposed EMG texture.
+ */
+export function generateTremorArtifact() {
+  const tremorFreq = 4.6 + Math.random() * 1.4
+  const tremorStart = 1.0
+  const tremorEnd = 7.2
+  const side = Math.random() < 0.5 ? 'left' : 'right'
+  const hot = []
+  const electrodeArtifacts = createElectrodeArtifacts()
+  const tremorField = {
+    Fp1: 0.20, Fp2: 0.20,
+    F7:  0.72, F8:  0.70,
+    T7:  1.00, T8:  0.96,
+    P7:  0.88, P8:  0.84,
+    F3:  0.38, F4:  0.36,
+    C3:  0.28, C4:  0.26, Cz: 0.14,
+    P3:  0.30, P4:  0.28, Pz: 0.12,
+    O1:  0.34, O2:  0.32,
+  }
+
+  const leftElectrodes = ['Fp1', 'F7', 'T7', 'P7', 'F3', 'C3', 'P3', 'O1']
+  const rightElectrodes = ['Fp2', 'F8', 'T8', 'P8', 'F4', 'C4', 'P4', 'O2']
+
+  for (const electrode of DEMO_ELECTRODES) {
+    const isLeft = leftElectrodes.includes(electrode)
+    const isRight = rightElectrodes.includes(electrode)
+    const sideScale = side === 'left' ? (isLeft ? 1 : isRight ? 0.34 : 0.55) : (isRight ? 1 : isLeft ? 0.34 : 0.55)
+    const field = (tremorField[electrode] ?? 0.08) * sideScale
+    if (field < 0.04) continue
+    const phase = Math.random() * Math.PI * 2
+    const buf = electrodeArtifacts[electrode]
+
+    for (let i = 0; i < buf.length; i++) {
+      const t = i / SAMPLE_RATE
+      if (t < tremorStart || t > tremorEnd) continue
+      const ramp = Math.min(1, (t - tremorStart) / 0.55, (tremorEnd - t) / 0.55)
+      const envelope = Math.max(0, ramp) * (0.78 + 0.22 * Math.sin(2 * Math.PI * 0.18 * t + phase))
+      const movement = Math.sin(2 * Math.PI * tremorFreq * t + phase)
+      const harmonic = 0.28 * Math.sin(2 * Math.PI * tremorFreq * 2 * t + phase * 0.7)
+      buf[i] += field * envelope * (62 * movement + 18 * harmonic)
+    }
+  }
+
+  const cycleN = Math.round(SAMPLE_RATE / tremorFreq)
+  for (let s = Math.round((tremorStart + 0.25) * SAMPLE_RATE); s < Math.round((tremorEnd - 0.2) * SAMPLE_RATE); s += cycleN) {
+    const burstN = Math.round((0.025 + Math.random() * 0.018) * SAMPLE_RATE)
+    for (const electrode of DEMO_ELECTRODES) {
+      const isLeft = leftElectrodes.includes(electrode)
+      const isRight = rightElectrodes.includes(electrode)
+      const sideScale = side === 'left' ? (isLeft ? 1 : isRight ? 0.26 : 0.45) : (isRight ? 1 : isLeft ? 0.26 : 0.45)
+      const amp = 52 * sideScale * (tremorField[electrode] ?? 0.05)
+      if (amp < 4) continue
+      emgBurst(electrodeArtifacts[electrode], s + Math.round(gaussian(0, 0.008 * SAMPLE_RATE)), burstN, amp, {
+        bandMin: 35,
+        bandMax: 95,
+        nComponents: 7,
+        envShape: 'bell',
+        stochasticAmp: 0.42,
+        muapRatePerS: 20,
+      })
+    }
+  }
+
+  const channels = DEMO_CHANNELS.map(label => {
+    const data = bgChannel(N, ['alpha'], 32, 0.17, label)
+    const isAffectedSide = side === 'left' ? hasRegion(label, 'left') : hasRegion(label, 'right')
+    if ((hasRegion(label, 'temporal') || hasRegion(label, 'frontal') || hasRegion(label, 'central')) && isAffectedSide) {
+      hot.push(label)
+    }
+    addElectrodeFieldToChannel(data, label, electrodeArtifacts)
+    return { label, data }
+  })
+
+  return buildResult(channels, [
+    { t: tremorStart, text: `${tremorFreq.toFixed(1)} Hz` },
+    { t: tremorEnd, text: 'tremor-off' },
+  ], hot)
+}
+
+/**
  * 6. 50/60 Hz POWERLINE ARTIFACT
  * Monomorphic sinusoidal contamination at mains frequency,
  * with a harmonic and gentle AM from lighting ballast.
  */
 export function generatePowerlineArtifact() {
-  const lineFreq = Math.random() < 0.5 ? 50 : 60
+  const lineFreq = 50
   const badElectrode = Math.random() < 0.5 ? 'T7' : 'P7'
-  const hot = channelsSharingElectrode(badElectrode)
+  const neighborElectrodes = badElectrode === 'T7' ? ['F7', 'P7'] : ['T7', 'O1']
+  const hot = Array.from(new Set([
+    ...channelsSharingElectrode(badElectrode),
+    ...neighborElectrodes.flatMap(channelsSharingElectrode),
+  ]))
   const electrodeArtifacts = createElectrodeArtifacts()
   const commonPhase = Math.random() * Math.PI * 2
+  const badPhase = commonPhase + 0.55
 
   for (const electrode of DEMO_ELECTRODES) {
     const bad = electrode === badElectrode
-    const amp = bad ? 120 + Math.random() * 45 : 22 * (0.75 + Math.random() * 0.50)
-    const phase = commonPhase + (bad ? 0.35 : (Math.random() - 0.5) * 0.18)
-    const harmonicPhase = commonPhase * 1.7 + Math.random() * 0.35
+    const neighbor = neighborElectrodes.includes(electrode)
+    const amp = bad ? 215 : neighbor ? 66 : 24
+    const phase = bad
+      ? badPhase
+      : neighbor
+        ? badPhase + (Math.random() - 0.5) * 0.20
+        : commonPhase + (Math.random() - 0.5) * 0.08
+    const harmonicPhase = phase + 0.42
     const buf = electrodeArtifacts[electrode]
 
     for (let i = 0; i < buf.length; i++) {
       const t = i / SAMPLE_RATE
-      const am = 1 + 0.05 * Math.sin(2 * Math.PI * 0.4 * t + commonPhase)
-      buf[i] += am * amp * Math.sin(2 * Math.PI * lineFreq * t + phase)
+      const amplitudeMod = 1 + 0.025 * Math.sin(2 * Math.PI * 0.25 * t + commonPhase)
+      const local = amplitudeMod * amp * Math.sin(2 * Math.PI * lineFreq * t + phase)
+      const common = 16 * Math.sin(2 * Math.PI * lineFreq * t + commonPhase)
+      buf[i] += local + common
     }
-    addSine(buf, lineFreq * 2, amp * 0.18, harmonicPhase)
+    addSine(buf, lineFreq * 2, amp * 0.08, harmonicPhase)
   }
 
   const channels = DEMO_CHANNELS.map(label => {
-    const data = bgChannel(N, ['alpha'], 36, 0.18, label)
+    const data = bgChannel(N, ['alpha'], 30, 0.15, label)
     addElectrodeFieldToChannel(data, label, electrodeArtifacts)
     return { label, data }
   })
 
-  return buildResult(channels, [], hot)
+  const events = [
+    { t: 0.6, text: `${lineFreq} Hz` },
+  ]
+
+  return buildResult(channels, events, hot)
 }
 
 /**
@@ -897,41 +1152,77 @@ export function generateGlossokinetic() {
 
 /**
  * 10. RESPIRATION ARTIFACT
- * Regular breathing-rate undulation with slightly asymmetric
- * inspiration/expiration (inspiration faster than expiration).
+ * Breathing-linked slow drift with subtle residual lead movement.
  */
 export function generateRespirationArtifact() {
-  const breathRate = 0.25                // 15 breaths/min
-  const period     = 1 / breathRate
-  const hot = ['F3–C3', 'C3–P3', 'F4–C4', 'C4–P4', 'Fz–Cz', 'Cz–Pz']
+  const breathRate = 0.25
+  const period = 1 / breathRate
+  const breathStarts = [0.55, 4.55]
+  const inspirationFrac = 0.36
+  const hot = DEMO_CHANNELS.filter(label =>
+    ['F3', 'C3', 'P3', 'F4', 'C4', 'P4', 'Fz', 'Cz', 'Pz'].some(electrode => label.includes(electrode))
+  )
   const electrodeArtifacts = createElectrodeArtifacts()
 
   const field = {
-    Fp1: 0.45, Fp2: 0.48,
-    F7:  0.55, F8:  0.58,
-    F3:  0.78, F4:  0.82, Fz: 0.90,
-    T7:  0.55, T8:  0.58,
-    C3:  1.00, C4:  0.96, Cz: 1.05,
-    P7:  0.42, P8:  0.44,
-    P3:  0.70, P4:  0.68, Pz: 0.76,
-    O1:  0.25, O2:  0.25,
+    Fp1: 0.30, Fp2: 0.31,
+    F7:  0.36, F8:  0.38,
+    F3:  0.34, F4:  0.36, Fz: 0.32,
+    T7:  0.40, T8:  0.42,
+    C3:  0.82, C4:  0.78, Cz: 0.88,
+    P7:  0.44, P8:  0.45,
+    P3:  0.50, P4:  0.49, Pz: 0.54,
+    O1:  0.34, O2:  0.34,
   }
 
   for (const electrode of DEMO_ELECTRODES) {
-    const amp = 42 * (field[electrode] ?? 0.4) * (0.85 + Math.random() * 0.25)
-    const phaseOff = (electrode.endsWith('2') || electrode.endsWith('4') || electrode === 'T8' || electrode === 'P8')
-      ? 0.08
+    const amp = 78 * (field[electrode] ?? 0.42) * (0.94 + Math.random() * 0.12)
+    const sideDelay = (electrode.endsWith('2') || electrode.endsWith('4') || electrode === 'T8' || electrode === 'P8')
+      ? 0.06
       : 0
-    addSlowCycle(electrodeArtifacts[electrode], period, amp, phaseOff, 'respiration')
+    const buf = electrodeArtifacts[electrode]
+
+    for (let i = 0; i < buf.length; i++) {
+      const t = i / SAMPLE_RATE - breathStarts[0] - sideDelay
+      if (t < 0) continue
+      const cycleIndex = Math.floor(t / period)
+      if (cycleIndex < 0 || cycleIndex >= breathStarts.length) continue
+      const cyc = (t - cycleIndex * period) / period
+      const pos = cyc < inspirationFrac
+        ? 0.5 - 0.5 * Math.cos(Math.PI * cyc / inspirationFrac)
+        : 0.5 + 0.5 * Math.cos(Math.PI * (cyc - inspirationFrac) / (1 - inspirationFrac))
+      const centered = pos - 0.45
+      buf[i] += amp * centered
+    }
   }
 
+  breathStarts.forEach(t => {
+    const s0 = Math.round((t + period * inspirationFrac) * SAMPLE_RATE)
+    const dur = Math.round(0.26 * SAMPLE_RATE)
+    for (const electrode of ['F3', 'F4', 'Fz', 'C3', 'C4', 'Cz', 'P3', 'P4', 'Pz']) {
+      const polarity = electrode.startsWith('P') ? -0.35 : 1
+      const amp = (electrode === 'Cz' ? 10 : 7) * polarity
+      for (let i = 0; i < dur; i++) {
+        const idx = s0 + i
+        if (idx < 0 || idx >= N) continue
+        const x = i / dur
+        electrodeArtifacts[electrode][idx] += amp * Math.sin(Math.PI * x)
+      }
+    }
+  })
+
   const channels = DEMO_CHANNELS.map(label => {
-    const data = bgChannel(N, ['alpha'], 36, 0.18, label)
+    const data = bgChannel(N, ['alpha', 'theta'], 30, 0.16, label)
     addElectrodeFieldToChannel(data, label, electrodeArtifacts)
     return { label, data }
   })
 
-  return buildResult(channels, [], hot)
+  const events = breathStarts.flatMap(t => [
+    { t, text: 'insp' },
+    { t: t + period * inspirationFrac, text: 'exp' },
+  ])
+
+  return buildResult(channels, events, hot)
 }
 
 /**
@@ -1044,7 +1335,7 @@ export const ARTIFACT_CATALOGUE = [
     id:         'eye_blink',
     label:      'Eye Blink',
     shortLabel: 'Blink',
-    icon:       '👁',
+    icon:       '😉',
     color:      '#66AAFF',
     frequency:  '< 1 Hz (transients)',
     amplitude:  '100–400 µV at Fp1/Fp2',
@@ -1095,6 +1386,64 @@ export const ARTIFACT_CATALOGUE = [
       'ICA or regression-based EOG correction in post-processing',
     ],
     clinicalNote: 'REM sleep identification relies partly on recognising lateral eye movements on EEG. In polysomnography, the horizontal EOG channel is essential. Nystagmus produces characteristic repetitive slow/fast phase patterns visible on EEG.',
+  },
+
+  {
+    id:         'roving_eye',
+    label:      'Roving Eye Movement',
+    shortLabel: 'Roving Eye',
+    icon:       '🙄',
+    color:      '#7DD3FC',
+    frequency:  '0.05-0.5 Hz slow wandering ocular drift',
+    amplitude:  '50-250 uV, usually frontal/frontopolar maximum',
+    morphology: 'Broad, irregular, smooth slow waves from conjugate eye wandering; no sharp step, plateau, or fast corrective phase',
+    distribution: 'Maximal frontopolar and lateral frontal chains; horizontal component shows opposite polarity between sides, vertical component is more symmetric at Fp1/Fp2',
+    generator:  generateRovingEyeMovementArtifact,
+    mechanism:  'Slow conjugate eye movements move the corneoretinal dipole gradually across the frontal electrodes. In drowsiness, encephalopathy, or coma, the eyes may drift from side to side or roll slowly, producing large low-frequency potentials that project most strongly to frontopolar and lateral frontal leads.',
+    identification: [
+      'Very slow, smooth, wandering deflections rather than isolated saccadic steps',
+      'Frontopolar/lateral frontal maximum with changing left-right polarity as the eyes drift',
+      'Often accompanies drowsiness, encephalopathy, or reduced alertness',
+      'No evolving cerebral field, spike morphology, or organized ictal buildup',
+      'Video or EOG shows slow conjugate eye wandering time-locked to the EEG deflection',
+    ],
+    differentiation: 'Can mimic frontal rhythmic delta, FIRDA, or slow seizure onset. Roving eye movement artifact is largest near the eyes, changes with gaze position, and may show mixed symmetric vertical plus mirror-opposite horizontal components; cerebral slow activity has a more physiologic scalp field and is not locked to visible eye drift.',
+    reduction: [
+      'Check video or add EOG channels to confirm eye movement',
+      'Ask an awake patient to fixate or close eyes when appropriate',
+      'Document reduced-alertness eye movements in the EEG report when clinically relevant',
+      'Use EOG regression or ICA in offline processing if the slow drift obscures frontal EEG',
+    ],
+    clinicalNote: 'Roving eye movements are common in drowsiness and toxic-metabolic encephalopathy, and may be seen in coma with preserved brainstem ocular motor function. Recognising the artifact prevents mistaking ocular slow waves for frontal epileptiform or rhythmic delta activity.',
+  },
+
+  {
+    id:         'nystagmus',
+    label:      'Nystagmus Artifact',
+    shortLabel: 'Nystagmus',
+    icon:       '🌀',
+    color:      '#5ED9D1',
+    frequency:  '2-5 Hz repetitive ocular beats',
+    amplitude:  '50-250 uV, maximal frontotemporal/frontopolar',
+    morphology: 'Rhythmic sawtooth: slow ocular drift followed by a rapid corrective reset; mirror-opposite polarity over left vs right frontal chains',
+    distribution: 'Maximal: Fp1-F7/F7-T7 and Fp2-F8/F8-T8, with opposite polarity between sides; smaller spread to F3/F4 and temporal leads',
+    generator:  generateNystagmusArtifact,
+    mechanism:  'Nystagmus repeatedly moves the corneoretinal dipole. In jerk nystagmus, the eyes drift slowly in one direction and then snap back with a fast corrective phase. Scalp electrodes detect this as a rhythmic ocular artifact, strongest near the eyes and lateral frontal electrodes.',
+    identification: [
+      'Regular repetitive ocular beats, commonly 2-5 Hz',
+      'Sawtooth pattern: slow phase plus fast reset rather than isolated saccadic steps',
+      'Opposite polarity between left and right frontopolar/frontotemporal chains',
+      'Often changes with gaze direction and may lessen with fixation or eye closure depending on cause',
+      'Horizontal EOG or video shows synchronous eye oscillation',
+    ],
+    differentiation: 'Can mimic frontal rhythmic delta, ictal rhythmic activity, or periodic discharges. Nystagmus artifact is frontopolar/frontotemporal maximum, mirror-opposite between sides, and time-locked to eye oscillation; cerebral rhythms usually have a physiologic field and are not systematically opposite in the two ocular channels.',
+    reduction: [
+      'Ask patient to fixate, close eyes, or look in primary gaze when clinically appropriate',
+      'Record horizontal and vertical EOG channels for confirmation',
+      'Document gaze-evoked or vestibular nystagmus rather than filtering it away blindly',
+      'Use ICA or EOG regression in offline review when ocular artifact obscures EEG',
+    ],
+    clinicalNote: 'Nystagmus artifact may appear during vestibular disorders, medication toxicity, posterior fossa disease, or caloric/oculovestibular testing. Recognising the slow-fast ocular pattern prevents overcalling rhythmic frontal activity as seizure.',
   },
 
   {
@@ -1189,34 +1538,62 @@ export const ARTIFACT_CATALOGUE = [
   },
 
   {
+    id:         'tremor',
+    label:      'Tremor Artifact',
+    shortLabel: 'Tremor',
+    icon:       '🫨',
+    color:      '#A3E635',
+    frequency:  '4-6 Hz regular rhythmic movement with EMG texture',
+    amplitude:  '30-180 uV, variable with tremor amplitude and electrode proximity',
+    morphology: 'Regular tremor-frequency oscillation with small high-frequency EMG bursts riding on each cycle',
+    distribution: 'Often asymmetric and maximal over the side of head/neck/limb movement; temporal, frontal, and central chains may be most affected.',
+    generator:  generateTremorArtifact,
+    mechanism:  'Patient tremor mechanically moves electrode leads and activates scalp, facial, neck, or limb muscles. The result is a regular rhythmic artifact at the tremor frequency with superimposed motor-unit texture, especially in electrodes near moving muscle or poorly secured leads.',
+    identification: [
+      'Stable rhythmic frequency, commonly around 4-6 Hz in parkinsonian or medication-related tremor',
+      'Often asymmetric and maximal on the clinically tremulous side',
+      'Each cycle may contain fine EMG texture rather than a smooth cerebral waveform',
+      'Amplitude changes with posture, action, relaxation, medication state, or visible tremor',
+      'Video or bedside observation shows timing locked to tremulous movement',
+    ],
+    differentiation: 'Can mimic rhythmic theta, ictal activity, or periodic discharges. Tremor artifact is movement-locked, often side-predominant, and has EMG texture; cerebral rhythmic activity should show a physiologic field, evolution, and behavior not strictly tied to visible tremor.',
+    reduction: [
+      'Support the limb or head to reduce transmitted movement',
+      'Secure electrode leads and avoid cable loops that move with tremor',
+      'Ask the patient to relax, change posture, or rest the tremulous limb if possible',
+      'Use video correlation and mark tremor periods during acquisition',
+      'Low-pass filtering may reduce EMG texture but can make the rhythmic envelope look more cerebral',
+    ],
+    clinicalNote: 'Tremor artifact is common in Parkinson disease, essential tremor, medication toxicity, anxiety, and ICU patients. Because the frequency can overlap theta or rhythmic ictal patterns, video correlation and attention to field distribution are essential.',
+  },
+
+  {
     id:         'powerline',
-    label:      '50/60 Hz Powerline Artifact',
+    label:      '50 Hz Powerline Artifact',
     shortLabel: 'Powerline',
     icon:       '⚡',
     color:      '#FFD166',
-    frequency:  'Exactly 50 Hz (Europe/Asia) or 60 Hz (North America)',
-    amplitude:  'Variable; often 10–50 µV but can be much larger near high-impedance electrodes',
-    morphology: 'Perfectly regular sinusoidal oscillation at exactly 50 or 60 Hz, with faint 100/120 Hz harmonic',
-    distribution: 'Often diffuse but maximal at high-impedance electrodes. Can be focal if one electrode is affected.',
+    frequency:  'Exactly 50 Hz in this demo',
+    amplitude:  'Usually 15-70 uV diffusely; can reach 150+ uV in channels sharing a high-impedance electrode',
+    morphology: 'Perfectly regular narrow-band sinusoidal oscillation at 50 Hz, with a faint 100 Hz harmonic',
+    distribution: 'Maximal in channels sharing the high-impedance electrode, with lower-amplitude common-mode spread elsewhere.',
     generator:  generatePowerlineArtifact,
-    mechanism:  'Electrical equipment, lighting, and power cables create electromagnetic fields oscillating at mains frequency (50 Hz in Europe, 60 Hz in North America). These induce small currents in the electrode leads, detected as sinusoidal oscillation. High electrode impedance (>5 kΩ) dramatically worsens this artifact because the differential amplifier cannot effectively reject common-mode interference.',
+    mechanism:  'Electrical equipment, lighting, and power cables create electromagnetic fields at mains frequency. Poor electrode contact or high impedance reduces common-mode rejection, so one electrode can inject a strong local sinusoid into every bipolar channel that includes it.',
     identification: [
-      'Perfectly regular, monomorphic sinusoidal activity at exactly 50 or 60 Hz',
-      'Unchanged in amplitude/frequency by patient state or stimulation',
-      'Frequency analysis: sharp peak at exactly 50 or 60 Hz',
-      'Worsens when touching or moving a high-impedance electrode',
-      'Often focal initially but can spread to all channels with severe impedance problems',
+      'Perfectly regular, monomorphic sinusoidal activity at exactly 50 Hz',
+      'In this simulation the marker labels the 50 Hz contamination and highlights the affected lead region',
+      'Unchanged in amplitude or frequency by patient state, sleep, stimulation, or reactivity testing',
+      'Frequency analysis shows a needle-like peak at exactly 50 Hz, sometimes with a 100 Hz harmonic',
+      'Worsens when touching, moving, or leaving a high-impedance electrode poorly prepared',
     ],
-    differentiation: 'Easily identified by its perfectly sinusoidal morphology and exact frequency. Can be confused with high-frequency oscillations if the sweep speed is too fast. The standard 10 mm/µV, 30 mm/s display usually makes powerline artifact obvious as superimposed fine sinusoidal "fuzz".',
+    differentiation: 'Powerline artifact is continuous, perfectly sinusoidal, and locked to an exact electrical frequency. Genuine high-frequency cerebral activity is not a sustained monomorphic sine wave at exactly 50 Hz and should have physiologic spatial and temporal behavior.',
     reduction: [
-      'Check electrode impedance: keep all electrodes <5 kΩ (ideally <2 kΩ)',
-      'Re-apply conductive paste to high-impedance electrodes',
-      'Apply a 50/60 Hz notch filter (removes the artifact but also that frequency band)',
-      'Ensure good electrical shielding of the recording room (Faraday cage)',
-      'Use shielded electrode cables; keep leads away from power cables',
-      'Battery-powered amplifiers reduce powerline coupling',
+      'Check electrode impedance: keep all electrodes below 5 kOhm, ideally below 2 kOhm',
+      'Re-prep the scalp and re-apply conductive paste to the affected electrode',
+      'Move electrode leads away from power cables, chargers, beds, and pumps',
+      'Use shielding, grounded equipment, and battery power when available',
     ],
-    clinicalNote: 'Notch filters should be used cautiously — they introduce ringing artefacts on transient signals and can distort the morphology of genuine epileptiform discharges. The best approach is achieving low electrode impedance so a notch filter is not required.',
+    clinicalNote: 'The most realistic clue is not amplitude alone but spectral purity: a stable 50 Hz line that stays exactly fixed while the EEG background changes. Fix impedance and cabling first; filtering can be explored with the viewer controls when you want to demonstrate its effect.',
   },
 
   {
@@ -1343,27 +1720,28 @@ export const ARTIFACT_CATALOGUE = [
     shortLabel: 'Respiration',
     icon:       '🫁',
     color:      '#88DDAA',
-    frequency:  '0.15–0.35 Hz (12–22 breaths/min)',
-    amplitude:  '20–100 µV',
-    morphology: 'Regular slow undulation; inspiration faster (~40% cycle) than expiration — gentle asymmetry',
-    distribution: 'Diffuse or central-predominant. Can be asymmetric. Most visible in referential montages.',
+    frequency:  '0.15-0.35 Hz (12-22 breaths/min)',
+    amplitude:  '20-90 uV residual drift in affected bipolar channels; larger in referential recordings',
+    morphology: 'Smooth, low-frequency baseline drift at the breathing rate, with mild inspiration-expiration asymmetry and occasional small lead-motion deflection',
+    distribution: 'Often broad and partly common-mode; residual artifact is most visible where lead motion or reference shift is not fully cancelled, commonly central/parasagittal chains.',
     generator:  generateRespirationArtifact,
-    mechanism:  'Two sources: (1) Thoracic movement during breathing creates mechanical movement of electrode leads; (2) Changes in thoracic electrical impedance and body posture shift reference potentials. The result is a regular slow oscillation phase-locked to breathing, distinct from the irregular sweat artifact.',
+    mechanism:  'Thoracic movement during breathing can subtly move electrode leads and alter body/reference potentials. Much of this is common-mode and cancels in bipolar montage, leaving a low-amplitude residual slow drift that remains phase-locked to respiration.',
     identification: [
-      'Regular rate matching observed breathing (~0.2–0.3 Hz)',
-      'Inspiration-expiration asymmetry visible on close inspection',
-      'More regular than sweat drift; can be confirmed with respiratory monitoring',
-      'Increased depth with sighs visible as larger amplitude deflections',
-      'May be mistaken for cerebral slow activity in referential montages',
-      'Absent or markedly reduced in bipolar montages (common-mode rejection)',
+      'Markers label inspiration and expiration; the slow drift should keep the same timing relationship to them',
+      'Regular rate matching observed breathing (~0.2-0.3 Hz)',
+      'Smooth morphology without the sharp, stereotyped shape of ventilator artifact',
+      'More regular than sweat drift; confirm with respiratory belt, airflow, or bedside observation',
+      'Usually lower amplitude in bipolar montage because much of the respiratory signal is common-mode',
+      'Can be mistaken for cerebral slow activity when it is persistent and frontocentral',
     ],
-    differentiation: 'More regular than sweat artifact; less regular than cardiac artifact. Polysomnography or simultaneous respiratory monitoring is definitive. Cerebral slow activity (FIRDA, TIRDA) has different field distributions and is not phase-locked to respiration.',
+    differentiation: 'Respiration artifact is phase-locked to the marked breathing cycle and usually appears as smooth low-frequency drift. Cerebral slow activity (FIRDA, TIRDA, encephalopathic delta) has a physiologic field, may fluctuate independently of respiration, and should not stay consistently locked to inspiration/expiration markers.',
     reduction: [
-      'Use bipolar montages which better reject common-mode respiratory interference',
-      'Ensure electrode leads are well-secured and not moving with chest excursions',
-      'High-pass filter >0.5 Hz removes most of the artifact',
+      'Secure electrode leads so they do not move with chest excursions',
+      'Compare with respiratory belt, airflow, ventilator waveform, or bedside observation',
+      'Ask an awake patient to breathe quietly if clinically appropriate',
+      'High-pass filtering can reduce the slow component, but may also attenuate genuine cerebral delta',
     ],
-    clinicalNote: 'In polysomnography, distinguishing EEG slow waves from respiratory artifacts is essential for accurate sleep staging. Cheyne-Stokes breathing patterns create a characteristic waxing-and-waning respiratory artifact that mirrors the clinical breathing pattern.',
+    clinicalNote: 'The markers in this simulation identify the respiratory cycle rather than implying every breath must create a large deflection. In polysomnography and ICU EEG, matching subtle EEG drift to respiratory belt, airflow, ventilator, or bedside observation prevents overcalling breathing-linked artifact as cerebral slow activity.',
   },
 
   {

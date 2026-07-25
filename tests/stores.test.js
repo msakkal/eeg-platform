@@ -72,6 +72,23 @@ describe('eegStore', () => {
     expect(useEEGStore.getState().eyesClosed).toBe(false)
   })
 
+  it('selects an eyes-open average-reference view for lambda waves', () => {
+    useEEGStore.getState().setPattern('lambda_waves')
+    const state = useEEGStore.getState()
+    expect(state.pattern).toBe('lambda_waves')
+    expect(state.eyesClosed).toBe(false)
+    expect(state.montageId).toBe('average_reference')
+  })
+
+  it('selects an eyes-closed average-reference view for phantom spike-wave', () => {
+    useEEGStore.getState().setEyesClosed(false)
+    useEEGStore.getState().setPattern('phantom_spike_wave')
+    const state = useEEGStore.getState()
+    expect(state.pattern).toBe('phantom_spike_wave')
+    expect(state.eyesClosed).toBe(true)
+    expect(state.montageId).toBe('average_reference')
+  })
+
   it('sidebar defaults open', () => {
     expect(useEEGStore.getState().sidebarOpen).toBe(true)
   })

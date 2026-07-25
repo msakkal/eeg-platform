@@ -39,7 +39,9 @@ import {
   bifrontalGradient,
   leftHemisphereGradient,
   cardiacAmpForRegion,
+  muGradient,
 } from './electrodes.js'
+import { isActivationProcedureAllowed } from './patterns.js'
 
 export const SAMPLE_RATE = 256
 
@@ -116,6 +118,7 @@ function normMode(mode) {
   if (mode === 'drowsy') return 'normal_drowsy'
   if (mode === 'n2') return 'normal_sleep'
   if (mode === 'sws') return 'slow_wave_sleep'
+  if (mode === 'rem') return 'normal_rem'
   return mode
 }
 
@@ -141,11 +144,50 @@ function _computeAmps(mode, region, posterior, eyesOpen) {
       }
     case 'normal_drowsy':
       return {
-        A: isPosterior ? (eyesOpen ? 1.6 : 11.5) : 2.4,
-        B: region === 'frontal' ? 2.8 : 2.2,
-        T: isTemp ? 24 : isCentral ? 20 : region === 'parietal' ? 16 : region === 'frontal' ? 14.5 : 12.8,
-        D: region === 'frontal' ? 7.2 : isCentral ? 6.0 : 5.0,
-        noiseGain: 0.68,
+        A: isPosterior ? 1.6 : 0.9,
+        B: region === 'frontal' ? 1.9 : 1.5,
+        T: isTemp ? 16.5 : isCentral ? 15.0 : region === 'parietal' ? 12.5 : region === 'frontal' ? 12.0 : 10.5,
+        D: region === 'frontal' ? 4.8 : isCentral ? 4.2 : 3.6,
+        noiseGain: 0.50,
+      }
+    case 'fast_alpha_variant':
+      return {
+        A: region === 'occipital' ? (eyesOpen ? 4 : 28)
+         : region === 'parietal' ? (eyesOpen ? 3 : 15)
+         : region === 'central' ? 5 : 3.5,
+        B: isFrontal ? 8 : isCentral ? 6 : 4,
+        T: isTemp ? 4.5 : 3,
+        D: 2,
+        noiseGain: eyesOpen ? 0.76 : 0.66,
+      }
+    case 'mu_rhythm':
+      return {
+        A: isPosterior ? 3.5 : 2.5,
+        B: isFrontal ? 8 : isCentral ? 5 : 4,
+        T: isTemp ? 4.5 : 3,
+        D: 2,
+        noiseGain: 0.66,
+      }
+    case 'rmtd':
+      return {
+        // Light drowsiness: fragmented posterior alpha remains visible while
+        // low-amplitude mixed theta replaces the slower, theta-dominant N1
+        // background. This keeps the focal 5–7 Hz run distinct.
+        A: region === 'occipital' ? 10
+         : region === 'parietal' ? 6.5
+         : isCentral ? 3.0 : 2.0,
+        B: isFrontal ? 5.5 : isCentral ? 4.5 : 3.5,
+        T: isTemp ? 7.5 : isCentral ? 5.5 : region === 'parietal' ? 4.5 : 4.0,
+        D: isFrontal ? 2.8 : 2.2,
+        noiseGain: 0.60,
+      }
+    case 'wicket_rhythm':
+      return {
+        A: region === 'occipital' ? 8 : region === 'parietal' ? 5 : 2,
+        B: isFrontal ? 4.5 : isCentral ? 4 : 3,
+        T: isTemp ? 6.5 : isCentral ? 4.5 : 3.5,
+        D: isFrontal ? 2.5 : 2,
+        noiseGain: 0.58,
       }
     case 'normal_sleep':
       return {
@@ -154,6 +196,14 @@ function _computeAmps(mode, region, posterior, eyesOpen) {
         T: isCentral ? 14.0 : isTemp ? 12.4 : 10.5,
         D: region === 'frontal' ? 11.0 : isCentral ? 9.0 : region === 'parietal' ? 7.2 : 6.2,
         noiseGain: 0.62,
+      }
+    case 'normal_rem':
+      return {
+        A: isPosterior ? 1.2 : 0.8,
+        B: isFrontal ? 5.5 : isCentral ? 4.8 : 3.8,
+        T: isTemp ? 12.5 : isFrontal ? 10.5 : isCentral ? 9.5 : 8.5,
+        D: isFrontal ? 3.2 : 2.2,
+        noiseGain: 0.58,
       }
     case 'slow_wave_sleep':
       return {
@@ -197,7 +247,7 @@ function modeAmps(mode, region, posterior, eyesOpen) {
 // are dominated by the global driver → high coherence. Anterior sites mix
 // mostly their local oscillator → lower coherence.
 function alphaMixFor(mode, region, posterior, eyesOpen) {
-  if (mode === 'normal_awake' || mode === 'awake') {
+  if (mode === 'normal_awake' || mode === 'awake' || mode === 'fast_alpha_variant') {
     if (region === 'occipital') return eyesOpen ? 0.42 : 0.94
     if (region === 'parietal')  return eyesOpen ? 0.24 : 0.68
     if (region === 'central')   return 0.22
@@ -216,6 +266,20 @@ function betaThetaDeltaMix(region) {
   return 0.20
 }
 
+function muArciformCarrier(phase, harmonic = 0.24) {
+  // A smooth fundamental-plus-harmonics model produces the characteristic
+  // rounded positive arch and steeper negative vertex without the mechanical
+  // look (and excessive high-frequency energy) of a repeated Gaussian notch.
+  return Math.sin(phase) +
+    harmonic * Math.cos(2 * phase) +
+    0.035 * Math.sin(3 * phase + 0.35)
+}
+
+function smoothstep(edge0, edge1, value) {
+  const x = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)))
+  return x * x * (3 - 2 * x)
+}
+
 // ─── Channel ─────────────────────────────────────────────────────────────────
 
 class Channel {
@@ -228,7 +292,6 @@ class Channel {
     this.phBeta  = rng() * 2 * Math.PI
     this.phTheta = rng() * 2 * Math.PI
     this.phDelta = rng() * 2 * Math.PI
-    this.phMu    = rng() * 2 * Math.PI
     // Persistent random frequency offsets — produce inter-channel detuning
     this.alphaOffset = (rng() - 0.5) * 0.8     // ±0.4 Hz
     this.betaOffset  = (rng() - 0.5) * 5.0
@@ -260,9 +323,9 @@ class Channel {
     this.mainsAmp      = 0.7 + rng() * 1.1        // 0.7–1.8 µV
     this.mainsPhaseOff = rng() * 2 * Math.PI
     // Mu rhythm — central rolandic arched ~10 Hz oscillator.
-    this.muOffset      = (rng() - 0.5) * 0.6      // ±0.3 Hz detune
     this.fmMu          = rng() * 2 * Math.PI
-    this.muEnvPhase    = rng() * 2 * Math.PI
+    this.muShapePhase  = rng() * 2 * Math.PI
+    this.localMuEnv = new SlowEnvelope(rng, { floor: 0.28, ceil: 1.0, drive: 0.85 })
     // Frontotemporal EMG (muscle) haze — one-pole high-pass state.
     this.emgHP   = 0
     this.emgPrev = 0
@@ -280,17 +343,23 @@ class Channel {
       thetaSharedPhase,
       deltaSharedPhase,
       mainsPhase,
+      muLeftPhase,
+      muRightPhase,
       sampleRate,
       noiseScale = 1,
     } = opts
     const { region, posterior, name } = this
     // Advance the per-channel local alpha envelope every 4th sample (64 Hz
     // update rate matching the ~0.1–10 s time constants of the envelope).
-    if ((this.sampleCount++ & 3) === 0) this.localAlphaEnv.step()
+    if ((this.sampleCount++ & 3) === 0) {
+      this.localAlphaEnv.step()
+      this.localMuEnv.step()
+    }
     const { A, B, T, D, noiseGain } = modeAmps(mode, region, posterior, eyesOpen)
 
     // Base center frequencies + persistent offset + slow FM drift
-    const alphaCarrier = (mode === 'normal_awake' || mode === 'awake' ? 10 : 9.2)
+    const alphaCarrier = (mode === 'fast_alpha_variant' ? 16.8
+      : mode === 'normal_awake' || mode === 'awake' ? 10 : 9.2)
       + this.alphaOffset
       + 0.18 * Math.sin(2 * Math.PI * 0.08 * t + this.fmAlpha)
     const betaCarrier  = (mode === 'beta' ? 21.5 : 19.0)
@@ -306,7 +375,7 @@ class Channel {
       + 0.10 * Math.sin(2 * Math.PI * 0.05 * t + this.fmDelta)
 
     // Advance phase accumulators
-    const fA = Math.max(7.5, Math.min(12.5, alphaCarrier))
+    const fA = Math.max(7.5, Math.min(mode === 'fast_alpha_variant' ? 20 : 12.5, alphaCarrier))
     const fB = Math.max(13,  Math.min(30,   betaCarrier))
     const fT = Math.max(3.5, Math.min(7.0,  thetaCarrier))
     const fD = Math.max(0.5, Math.min(3.2,  deltaCarrier))
@@ -374,19 +443,15 @@ class Channel {
     // negative peaks are sharp and the positive peaks rounded. It fades out
     // in drowsy/sleep states (no central muscle/rolandic idling there).
     if (mode === 'normal_awake' || mode === 'awake') {
-      const muAmp = name === 'C3' || name === 'C4' ? 9.5
-                  : name === 'Cz'                  ? 5.5
-                  : region === 'central'           ? 6.0
-                  : region === 'frontal'           ? 2.2
-                  : 0
+      const muAmp = 9.5 * muGradient(name)
       if (muAmp > 0) {
-        const fMu = 9.8 + this.muOffset +
-                    0.15 * Math.sin(2 * Math.PI * 0.06 * t + this.fmMu)
-        this.phMu += 2 * Math.PI * fMu / sampleRate
-        const raw    = Math.sin(this.phMu)
-        const arched = raw > 0 ? raw : raw * 0.32        // flatten the troughs
-        const muEnv  = Math.max(0.2,
-          0.55 + 0.45 * Math.sin(2 * Math.PI * 0.13 * t + this.muEnvPhase))
+        const sharedPhase = /[2468]$/.test(name) ? muRightPhase : muLeftPhase
+        const phase = sharedPhase + this.alphaPosteriorLag * 0.16 +
+          0.10 * Math.sin(2 * Math.PI * 0.06 * t + this.fmMu)
+        const harmonic = 0.22 +
+          0.025 * Math.sin(2 * Math.PI * 0.17 * t + this.muShapePhase)
+        const arched = muArciformCarrier(phase, harmonic)
+        const muEnv = this.localMuEnv.value()
         y += muAmp * muEnv * arched
       }
 
@@ -554,6 +619,621 @@ class SaccadeOverlay {
       o += ev.peak * f * v
     }
     return { overlay: o, preserve: 1 }
+  }
+}
+
+class SlowRovingEyeMovementOverlay {
+  constructor(rng) {
+    this.freq = 0.18 + rng() * 0.10
+    this.phase = rng() * 2 * Math.PI
+    this.envFreq = 0.025 + rng() * 0.035
+    this.envPhase = rng() * 2 * Math.PI
+    this.amp = 55 + rng() * 28
+  }
+  advance(/* t */) {}
+  valueFor(label, t) {
+    const f = lateralEogField(label, 1)
+    if (Math.abs(f) < 0.05) return { overlay: 0, preserve: 1 }
+    const env = 0.65 + 0.35 * Math.sin(2 * Math.PI * this.envFreq * t + this.envPhase)
+    const slow =
+      Math.sin(2 * Math.PI * this.freq * t + this.phase) +
+      0.18 * Math.sin(2 * Math.PI * this.freq * 2 * t + this.phase * 0.7)
+    return { overlay: f * this.amp * env * slow, preserve: 1 }
+  }
+}
+
+class RapidEyeMovementOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.8 + rng() * 1.4
+    this.events = []
+    this.direction = rng() > 0.5 ? 1 : -1
+  }
+  advance(t, emitEvent = null) {
+    if (t >= this.nextT) {
+      this.direction *= -1
+      const event = {
+        t0: this.nextT,
+        direction: this.direction,
+        amp: 75 + this.rng() * 45,
+        durSec: 0.16 + this.rng() * 0.12,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'rapid_eye_movement',
+        label: event.direction > 0 ? 'Right gaze' : 'Left gaze',
+        detail: event.direction > 0 ? 'Conjugate rightward REM' : 'Conjugate leftward REM',
+      })
+      this.nextT += 0.35 + this.rng() * 1.15
+    }
+    while (this.events.length && this.events[0].t0 + this.events[0].durSec < t - 0.1) this.events.shift()
+  }
+  valueFor(label, t) {
+    let o = 0
+    for (const ev of this.events) {
+      const field = lateralEogField(label, ev.direction)
+      if (Math.abs(field) < 0.04) continue
+      const x = (t - ev.t0) / ev.durSec
+      if (x < 0 || x > 1) continue
+      const shape = x < 0.32
+        ? Math.sin((Math.PI / 2) * x / 0.32)
+        : Math.cos((Math.PI / 2) * (x - 0.32) / 0.68)
+      o += field * ev.amp * shape
+    }
+    return { overlay: o, preserve: 1 }
+  }
+}
+
+class MuRhythmEventOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.4 + this.rng() * 1.2
+    this.events = []
+  }
+  advance(t, emitEvent = null) {
+    if (t >= this.nextT) {
+      const event = {
+        t0: this.nextT,
+        durSec: 2.4 + this.rng() * 2.4,
+        ampJ: 0.84 + this.rng() * 0.22,
+        leftAmp: 0.88 + this.rng() * 0.22,
+        rightAmp: 0.88 + this.rng() * 0.22,
+        centerHz: 8.8 + this.rng() * 1.2,
+        sideDeltaHz: (this.rng() - 0.5) * 0.24,
+        phase0: this.rng() * 2 * Math.PI,
+        rightPhaseLag: (this.rng() - 0.5) * 0.20,
+        fmPhase: this.rng() * 2 * Math.PI,
+        shapePhase: this.rng() * 2 * Math.PI,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'mu_rhythm',
+        label: 'Mu rhythm',
+        detail: `Central 8–10 Hz arciform run (${event.durSec.toFixed(1)} s), maximal at C3/C4`,
+        durationS: event.durSec,
+      })
+      this.nextT += event.durSec + 1.5 + this.rng() * 3.0
+    }
+    while (this.events.length && this.events[0].t0 + this.events[0].durSec < t - 0.2) this.events.shift()
+  }
+  valueFor(label, t) {
+    const field = muGradient(label)
+    if (field <= 0) return { overlay: 0, preserve: 1 }
+    let overlay = 0
+    let visibleEnvelope = 0
+    for (const event of this.events) {
+      const x = (t - event.t0) / event.durSec
+      if (x < 0 || x > 1) continue
+      const elapsed = t - event.t0
+      const taperSec = Math.min(0.72, event.durSec * 0.25)
+      const attack = smoothstep(0, taperSec, elapsed)
+      const release = 1 - smoothstep(event.durSec - taperSec, event.durSec, elapsed)
+      const irregularEnvelope = 1 +
+        0.055 * Math.sin(2 * Math.PI * 0.71 * elapsed + event.fmPhase) +
+        0.025 * Math.sin(2 * Math.PI * 1.37 * elapsed + event.shapePhase)
+      const envelope = attack * release * irregularEnvelope
+      visibleEnvelope = Math.max(visibleEnvelope, Math.min(1, envelope))
+      const right = /[2468]$/.test(label)
+      const frequency = event.centerHz + (right ? event.sideDeltaHz : -event.sideDeltaHz)
+      // Integrate a slow sinusoidal frequency modulation analytically so phase
+      // remains continuous throughout a run.
+      const phase = event.phase0 + (right ? event.rightPhaseLag : 0) +
+        2 * Math.PI * frequency * elapsed +
+        (0.11 / 0.16) * (
+          Math.cos(event.fmPhase) - Math.cos(2 * Math.PI * 0.16 * elapsed + event.fmPhase)
+        )
+      const harmonic = 0.22 +
+        0.025 * Math.sin(2 * Math.PI * 0.21 * elapsed + event.shapePhase)
+      const sideAmp = right ? event.rightAmp : event.leftAmp
+      overlay += 38 * event.ampJ * sideAmp * field * envelope *
+        muArciformCarrier(phase, harmonic)
+    }
+    return { overlay, preserve: 1 - 0.06 * visibleEnvelope }
+  }
+}
+
+function lambdaField(label, side, oppositeScale = 0.20) {
+  const left = {
+    O1: 1.00, O2: oppositeScale,
+    P7: 0.38, P3: 0.32, Pz: 0.12,
+  }
+  const right = {
+    O2: 1.00, O1: oppositeScale,
+    P8: 0.38, P4: 0.32, Pz: 0.12,
+  }
+  return (side === 'right' ? right : left)[label] ?? 0
+}
+
+function lambdaTransient(dt, duration, amplitude) {
+  if (dt < 0 || dt > duration) return 0
+  const x = dt / duration
+  let value = 0
+
+  // Small leading and terminal opposite-polarity shoulders frame a steep,
+  // surface-positive occipital peak without turning it into an epileptiform
+  // spike-and-slow-wave complex.
+  if (x < 0.20) value -= amplitude * 0.10 * Math.sin(Math.PI * x / 0.20)
+  if (x >= 0.12 && x < 0.40) {
+    value += amplitude * Math.pow((x - 0.12) / 0.28, 0.72)
+  } else if (x >= 0.40 && x < 0.84) {
+    value += amplitude * Math.pow(1 - (x - 0.40) / 0.44, 1.18)
+  }
+  if (x >= 0.72) value -= amplitude * 0.08 * Math.sin(Math.PI * (x - 0.72) / 0.28)
+  return value
+}
+
+class LambdaWavesOverlay {
+  constructor(rng, enabled = true) {
+    this.rng = rng
+    this.enabled = enabled
+    this.nextT = 0.55 + rng() * 1.0
+    this.events = []
+  }
+  advance(t, emitEvent = null) {
+    if (!this.enabled) return
+    if (t >= this.nextT) {
+      const count = 2 + Math.floor(this.rng() * 4)
+      const waves = []
+      let offset = 0
+      const clusterMode = this.rng()
+      const dominantSide = this.rng() < 0.5 ? 'left' : 'right'
+      for (let i = 0; i < count; i++) {
+        const side = clusterMode < 0.42
+          ? dominantSide
+          : clusterMode < 0.72
+            ? (i % 2 === 0 ? dominantSide : (dominantSide === 'left' ? 'right' : 'left'))
+            : (this.rng() < 0.5 ? 'left' : 'right')
+        waves.push({
+          offset,
+          side,
+          emitted: false,
+          oppositeScale: clusterMode < 0.35 ? 0.12 + this.rng() * 0.12 : 0.30 + this.rng() * 0.25,
+          duration: 0.105 + this.rng() * 0.070,
+          amplitude: 32 + this.rng() * 20,
+        })
+        offset += 0.22 + this.rng() * 0.42
+      }
+      const event = {
+        t0: this.nextT,
+        waves,
+        durSec: offset + 0.18,
+      }
+      this.events.push(event)
+      this.nextT += event.durSec + 1.0 + this.rng() * 2.8
+    }
+
+    // Annotate each transient at its own onset instead of marking the whole
+    // cluster (including the quiet intervals between waves).
+    for (const event of this.events) {
+      for (const wave of event.waves) {
+        const waveT = event.t0 + wave.offset
+        if (wave.emitted || t < waveT) continue
+        wave.emitted = true
+        emitEvent?.({
+          t: waveT,
+          type: 'lambda_wave',
+          label: 'Lambda wave',
+          detail: `${wave.side === 'left' ? 'Left' : 'Right'} occipital-positive sharp during visual scanning`,
+          durationS: wave.duration,
+        })
+      }
+    }
+    while (this.events.length && this.events[0].t0 + this.events[0].durSec < t - 0.2) {
+      this.events.shift()
+    }
+  }
+  valueFor(label, t) {
+    let overlay = 0
+    let active = false
+    for (const event of this.events) {
+      for (const wave of event.waves) {
+        const field = lambdaField(label, wave.side, wave.oppositeScale)
+        if (field <= 0) continue
+        const dt = t - (event.t0 + wave.offset)
+        if (dt < 0 || dt > wave.duration) continue
+        active = true
+        overlay += field * lambdaTransient(dt, wave.duration, wave.amplitude)
+      }
+    }
+    return { overlay, preserve: active ? 0.97 : 1 }
+  }
+}
+
+function rmtdField(label, side) {
+  // Compact mid-temporal field. Small anterior/posterior projections retain
+  // a visible T7/T8 phase reversal in bipolar chains without making the run
+  // look hemispheric or parasagittal.
+  const left = { T7: 1.00, P7: 0.27, F7: 0.22, C3: 0.045, A1: 0.05 }
+  const right = { T8: 1.00, P8: 0.27, F8: 0.22, C4: 0.045, A2: 0.05 }
+  return (side === 'right' ? right : left)[label] ?? 0
+}
+
+function rmtdCarrier(phase, notchStrength = 0.22) {
+  return Math.sin(phase) +
+    notchStrength * Math.sin(2 * phase + 0.55) +
+    0.055 * Math.sin(3 * phase - 0.25)
+}
+
+class RhythmicMidtemporalThetaOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.55 + rng() * 1.1
+    this.events = []
+  }
+  advance(t, emitEvent = null) {
+    if (t >= this.nextT) {
+      const lateralityRoll = this.rng()
+      const laterality = lateralityRoll < 0.40 ? 'left'
+        : lateralityRoll < 0.80 ? 'right' : 'bilateral'
+      const event = {
+        t0: this.nextT,
+        durSec: 2.0 + this.rng() * 2.0,
+        laterality,
+        leftHz: 5.2 + this.rng() * 1.5,
+        rightHz: 5.2 + this.rng() * 1.5,
+        leftPhase: this.rng() * 2 * Math.PI,
+        rightPhase: this.rng() * 2 * Math.PI,
+        leftAmp: 27 + this.rng() * 14,
+        rightAmp: 27 + this.rng() * 14,
+        envPhase: this.rng() * 2 * Math.PI,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'rmtd',
+        label: 'Rhythmic mid-temporal theta',
+        detail: `${laterality === 'bilateral' ? 'Independent bilateral' : laterality[0].toUpperCase() + laterality.slice(1)} 5–7 Hz non-evolving temporal run`,
+        durationS: event.durSec,
+      })
+      this.nextT += event.durSec + 2.0 + this.rng() * 3.5
+    }
+    while (this.events.length && this.events[0].t0 + this.events[0].durSec < t - 0.2) {
+      this.events.shift()
+    }
+  }
+  valueFor(label, t) {
+    let overlay = 0
+    let visibleEnvelope = 0
+    for (const event of this.events) {
+      const elapsed = t - event.t0
+      if (elapsed < 0 || elapsed > event.durSec) continue
+      const taperSec = Math.min(0.65, event.durSec * 0.18)
+      const taper = smoothstep(0, taperSec, elapsed) *
+        (1 - smoothstep(event.durSec - taperSec, event.durSec, elapsed))
+      const envelope = taper * (0.92 +
+        0.08 * Math.sin(2 * Math.PI * 0.38 * elapsed + event.envPhase))
+      visibleEnvelope = Math.max(visibleEnvelope, envelope)
+
+      for (const side of ['left', 'right']) {
+        if (event.laterality !== 'bilateral' && event.laterality !== side) continue
+        const field = rmtdField(label, side)
+        if (field <= 0) continue
+        const frequency = side === 'left' ? event.leftHz : event.rightHz
+        const phase0 = side === 'left' ? event.leftPhase : event.rightPhase
+        const amplitude = side === 'left' ? event.leftAmp : event.rightAmp
+        // Tiny phase modulation prevents a synthetic clock-like trace while
+        // retaining the defining lack of ictal frequency evolution.
+        const phase = phase0 + 2 * Math.PI * frequency * elapsed +
+          0.045 * Math.sin(2 * Math.PI * 0.11 * elapsed + event.envPhase)
+        const notch = 0.21 + 0.025 * Math.sin(2 * Math.PI * 0.17 * elapsed + phase0)
+        overlay += amplitude * field * envelope * rmtdCarrier(phase, notch)
+      }
+    }
+    return { overlay, preserve: 1 - 0.04 * Math.min(1, visibleEnvelope) }
+  }
+}
+
+function wicketCarrier(phase) {
+  // A narrow crest and broad rounded return create the characteristic
+  // arciform "wicket" without an independent after-going slow wave.
+  return Math.sin(phase) + 0.34 * Math.sin(2 * phase + 0.48) +
+    0.10 * Math.sin(3 * phase + 0.18)
+}
+
+class WicketRhythmOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.45 + rng() * 0.8
+    this.events = []
+  }
+  advance(t, emitEvent = null) {
+    if (t >= this.nextT) {
+      const roll = this.rng()
+      const laterality = roll < 0.44 ? 'left' : roll < 0.88 ? 'right' : 'bilateral'
+      const event = {
+        t0: this.nextT,
+        durSec: 1.25 + this.rng() * 1.8,
+        laterality,
+        hz: 7.2 + this.rng() * 2.7,
+        phase: this.rng() * 2 * Math.PI,
+        amplitude: 32 + this.rng() * 18,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'wicket_rhythm',
+        label: 'Wicket rhythm',
+        detail: `${laterality === 'bilateral' ? 'Bilateral' : laterality[0].toUpperCase() + laterality.slice(1)} 6–11 Hz arciform temporal train`,
+        durationS: event.durSec,
+      })
+      this.nextT += event.durSec + 1.5 + this.rng() * 3.0
+    }
+    while (this.events.length && this.events[0].t0 + this.events[0].durSec < t - 0.2) {
+      this.events.shift()
+    }
+  }
+  valueFor(label, t) {
+    let overlay = 0
+    let active = 0
+    for (const event of this.events) {
+      const elapsed = t - event.t0
+      if (elapsed < 0 || elapsed > event.durSec) continue
+      const taperSec = Math.min(0.34, event.durSec * 0.18)
+      const envelope = smoothstep(0, taperSec, elapsed) *
+        (1 - smoothstep(event.durSec - taperSec, event.durSec, elapsed))
+      active = Math.max(active, envelope)
+      for (const side of ['left', 'right']) {
+        if (event.laterality !== 'bilateral' && event.laterality !== side) continue
+        const field = rmtdField(label, side)
+        if (field <= 0) continue
+        const sidePhase = side === 'right' ? 0.38 : 0
+        overlay += event.amplitude * field * envelope *
+          wicketCarrier(event.phase + sidePhase + 2 * Math.PI * event.hz * elapsed)
+      }
+    }
+    return { overlay, preserve: 1 - 0.06 * active }
+  }
+}
+
+function sredaField(label) {
+  // Broad, bilateral posterior temporoparietal field with a modest midline
+  // projection. SREDA is usually synchronous, though mild asymmetry is common.
+  const field = {
+    P7: 1.00, P8: 0.94, T7: 0.86, T8: 0.82,
+    P3: 0.78, P4: 0.74, Pz: 0.62,
+    O1: 0.48, O2: 0.46, C3: 0.30, C4: 0.28, Cz: 0.22,
+    F7: 0.14, F8: 0.13,
+  }
+  return field[label] ?? 0
+}
+
+function sredaCarrier(phase, onsetSharpness) {
+  return Math.sin(phase) +
+    (0.20 + 0.18 * onsetSharpness) * Math.sin(2 * phase + 0.42) +
+    0.07 * Math.sin(3 * phase - 0.18)
+}
+
+class SredaOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.55 + rng() * 0.35
+    this.events = []
+  }
+  advance(t, emitEvent = null) {
+    if (t >= this.nextT) {
+      const event = {
+        t0: this.nextT,
+        durSec: 7.5 + this.rng() * 4.0,
+        hz: 5.5 + this.rng() * 1.1,
+        phase: this.rng() * 2 * Math.PI,
+        amplitude: 48 + this.rng() * 18,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'sreda',
+        label: 'SREDA',
+        detail: `Bilateral posterior temporoparietal ${event.hz.toFixed(1)} Hz non-evolving theta run`,
+        durationS: event.durSec,
+      })
+      this.nextT += event.durSec + 4.0 + this.rng() * 5.0
+    }
+    while (this.events.length && this.events[0].t0 + this.events[0].durSec < t - 0.2) {
+      this.events.shift()
+    }
+  }
+  valueFor(label, t) {
+    const field = sredaField(label)
+    if (field <= 0) return { overlay: 0, preserve: 1 }
+    let overlay = 0
+    let active = 0
+    for (const event of this.events) {
+      const elapsed = t - event.t0
+      if (elapsed < 0 || elapsed > event.durSec) continue
+      // The short ramps create SREDA's characteristic relatively abrupt
+      // appearance without introducing seizure-like frequency evolution.
+      const envelope = smoothstep(0, 0.12, elapsed) *
+        (1 - smoothstep(event.durSec - 0.16, event.durSec, elapsed))
+      const onsetSharpness = Math.max(0, 1 - elapsed / 1.1)
+      const phase = event.phase + 2 * Math.PI * event.hz * elapsed
+      overlay += event.amplitude * field * envelope * sredaCarrier(phase, onsetSharpness)
+      active = Math.max(active, envelope)
+    }
+    return { overlay, preserve: 1 - 0.08 * active }
+  }
+}
+
+function betsField(label, side) {
+  const left = { T7: 1.00, F7: 0.62, P7: 0.54, C3: 0.22, A1: 0.16, F3: 0.12, P3: 0.10 }
+  const right = { T8: 1.00, F8: 0.62, P8: 0.54, C4: 0.22, A2: 0.16, F4: 0.12, P4: 0.10 }
+  return (side === 'right' ? right : left)[label] ?? 0
+}
+
+function betsTransient(dt, amplitude, polarity) {
+  if (dt < -0.025 || dt > 0.105) return 0
+  const sharp = Math.exp(-Math.pow((dt - 0.012) / 0.016, 2) * 5.5)
+  const returnPhase = Math.exp(-Math.pow((dt - 0.060) / 0.027, 2) * 4.5)
+  return polarity * amplitude * (sharp - 0.34 * returnPhase)
+}
+
+class SmallSharpSpikesOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.42 + rng() * 0.35
+    this.events = []
+  }
+  advance(t, emitEvent = null) {
+    if (t >= this.nextT) {
+      const side = this.rng() < 0.5 ? 'left' : 'right'
+      const event = {
+        t0: this.nextT,
+        side,
+        amplitude: 27 + this.rng() * 18,
+        polarity: this.rng() < 0.84 ? -1 : 1,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'small_sharp_spike',
+        label: 'Small sharp spike (BETS)',
+        detail: `${side[0].toUpperCase() + side.slice(1)} low-amplitude temporal sleep transient`,
+        durationS: 0.13,
+      })
+      this.nextT += 0.65 + this.rng() * 1.15
+    }
+    while (this.events.length && this.events[0].t0 < t - 0.16) this.events.shift()
+  }
+  valueFor(label, t) {
+    let overlay = 0
+    for (const event of this.events) {
+      const field = betsField(label, event.side)
+      if (field <= 0) continue
+      overlay += field * betsTransient(t - event.t0, event.amplitude, event.polarity)
+    }
+    // BETS do not attenuate or disrupt the drowsy background.
+    return { overlay, preserve: 1 }
+  }
+}
+
+function phantomSpikeWaveField(label) {
+  const field = {
+    // Steeper occipital-to-parietal gradient prevents bipolar cancellation
+    // while preserving the defining posterior maximum of the FOLD variant.
+    O1: 1.00, O2: 0.96, P7: 0.56, P8: 0.53,
+    P3: 0.50, P4: 0.47, Pz: 0.44,
+    T7: 0.20, T8: 0.19, C3: 0.09, C4: 0.08, Cz: 0.07,
+    F3: 0.03, F4: 0.03,
+  }
+  return field[label] ?? 0
+}
+
+function phantomSpikeWaveCycle(cycleTime, period, amplitude) {
+  const spike = -amplitude * 0.76 *
+    Math.exp(-Math.pow((cycleTime - 0.018) / 0.010, 2) * 5.5)
+  const wavePosition = (cycleTime - 0.040) / (period - 0.045)
+  const slowWave = wavePosition >= 0 && wavePosition <= 1
+    ? amplitude * Math.sin(Math.PI * wavePosition)
+    : 0
+  return spike + slowWave
+}
+
+class PhantomSpikeWaveOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextT = 0.32 + rng() * 0.28
+    this.events = []
+  }
+  advance(t, emitEvent = null) {
+    if (t >= this.nextT) {
+      const event = {
+        t0: this.nextT,
+        durSec: 1.0 + this.rng() * 1.0,
+        hz: 5.6 + this.rng() * 0.8,
+        amplitude: 48 + this.rng() * 16,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'phantom_spike_wave',
+        label: 'Phantom spike-wave',
+        detail: `Posterior low-amplitude ${event.hz.toFixed(1)} Hz FOLD-pattern burst`,
+        durationS: event.durSec,
+      })
+      this.nextT += event.durSec + 1.2 + this.rng() * 1.8
+    }
+    while (this.events.length && this.events[0].t0 + this.events[0].durSec < t - 0.2) {
+      this.events.shift()
+    }
+  }
+  valueFor(label, t) {
+    const field = phantomSpikeWaveField(label)
+    if (field <= 0) return { overlay: 0, preserve: 1 }
+    let overlay = 0
+    for (const event of this.events) {
+      const elapsed = t - event.t0
+      if (elapsed < 0 || elapsed > event.durSec) continue
+      const envelope = smoothstep(0, 0.12, elapsed) *
+        (1 - smoothstep(event.durSec - 0.16, event.durSec, elapsed))
+      const period = 1 / event.hz
+      overlay += field * envelope *
+        phantomSpikeWaveCycle(elapsed % period, period, event.amplitude)
+    }
+    return { overlay, preserve: 1 }
+  }
+}
+
+class ActivationProcedureOverlay {
+  constructor(kind, rng) {
+    this.kind = kind
+    this.rng = rng
+    this.nextEventT = 0.25
+    this.phase = rng() * 2 * Math.PI
+    this.flashHz = kind === 'photic_stimulation' ? 12 : 10
+  }
+  advance(t, emitEvent = null) {
+    if (t < this.nextEventT) return
+    const meta = {
+      hyperventilation: ['hyperventilation', 'Hyperventilation', 'Generalized rhythmic slowing during hyperventilation'],
+      photic_stimulation: ['photic_stimulation', 'Photic stimulation', `${this.flashHz} Hz posterior photic driving`],
+      photomyogenic_response: ['photomyogenic_response', 'Photomyogenic response', `${this.flashHz} Hz flash-locked frontal muscle response`],
+    }[this.kind]
+    if (meta) emitEvent?.({ t, type: meta[0], label: meta[1], detail: meta[2] })
+    this.nextEventT += 5
+  }
+  valueFor(label, t) {
+    if (this.kind === 'hyperventilation') {
+      const region = regionOf(label)
+      const field = region === 'frontal' || region === 'frontopolar' ? 1
+        : region === 'central' ? 0.78 : region === 'parietal' ? 0.52 : 0.35
+      const envelope = 0.62 + 0.38 * Math.sin(2 * Math.PI * 0.055 * t + this.phase)
+      return { overlay: field * 28 * envelope * Math.sin(2 * Math.PI * 2.6 * t + this.phase), preserve: 0.93 }
+    }
+    if (this.kind === 'photic_stimulation') {
+      const field = posteriorPhoticField(label)
+      return { overlay: field * 24 * Math.sin(2 * Math.PI * this.flashHz * t + this.phase), preserve: 1 }
+    }
+    if (this.kind === 'photomyogenic_response') {
+      const region = regionOf(label)
+      const field = region === 'frontopolar' ? 1 : region === 'frontal' ? 0.82 : region === 'midtemporal' ? 0.42 : 0.08
+      const flashPhase = ((t * this.flashHz) % 1 + 1) % 1
+      const burst = flashPhase < 0.18
+        ? Math.sin(Math.PI * flashPhase / 0.18) * Math.sin(2 * Math.PI * 55 * t + this.phase)
+        : 0
+      return { overlay: field * 52 * burst, preserve: 1 }
+    }
+    return { overlay: 0, preserve: 1 }
   }
 }
 
@@ -791,6 +1471,30 @@ function slowHalfSine(dt, start, durSec, amp) {
   return amp * Math.sin(Math.PI * (dt - start) / durSec)
 }
 
+function kComplexTransient(dt, amp = 240) {
+  let v = 0
+
+  if (dt >= -0.070 && dt < 0.010) {
+    const x = (dt + 0.070) / 0.080
+    v += amp * 0.10 * Math.sin(Math.PI * x)
+  }
+  if (dt >= 0 && dt <= 0.105) {
+    const x = dt / 0.105
+    const sharp = x < 0.45 ? x / 0.45 : (1 - x) / 0.55
+    v += -amp * 0.48 * Math.max(0, sharp)
+  }
+  if (dt >= 0.100 && dt <= 0.720) {
+    const x = (dt - 0.100) / 0.620
+    v += amp * Math.pow(Math.sin(Math.PI * x), 1.08)
+  }
+  if (dt >= 0.660 && dt <= 0.980) {
+    const x = (dt - 0.660) / 0.320
+    v += -amp * 0.16 * Math.sin(Math.PI * x)
+  }
+
+  return v
+}
+
 function sharpSlow(dt, {
   sharpAmp = -130,
   sharpCenter = 0.045,
@@ -885,6 +1589,71 @@ function kComplexField(label) {
   return map[label] ?? 0
 }
 
+function vertexWaveField(label) {
+  const map = {
+    Cz: 1.00, C3: 0.76, C4: 0.76,
+    Fz: 0.66, Pz: 0.54,
+    F3: 0.34, F4: 0.34, P3: 0.30, P4: 0.30,
+    T7: 0.14, T8: 0.14,
+  }
+  return map[label] ?? 0
+}
+
+function postsField(label) {
+  const map = {
+    O1: 1.00, O2: 1.00,
+    P3: 0.44, P4: 0.44, Pz: 0.36,
+    P7: 0.30, P8: 0.30,
+  }
+  return map[label] ?? 0
+}
+
+function smoothStep01(x) {
+  const u = Math.max(0, Math.min(1, x))
+  return u * u * (3 - 2 * u)
+}
+
+function vertexWaveTransient(dt, amp = 105) {
+  let v = 0
+  if (dt >= -0.12 && dt < -0.055) {
+    const x = (dt + 0.12) / 0.065
+    v += amp * 0.18 * Math.sin(Math.PI * x)
+  }
+  if (dt >= -0.06 && dt <= 0) {
+    v += -amp * smoothStep01((dt + 0.06) / 0.06)
+  } else if (dt > 0 && dt <= 0.13) {
+    v += -amp * (1 - smoothStep01(dt / 0.13))
+  }
+  if (dt > 0.075 && dt <= 0.22) {
+    const x = (dt - 0.075) / 0.145
+    v += amp * 0.28 * Math.sin(Math.PI * x)
+  }
+  return v
+}
+
+function postsTransient(dt, amp = 58) {
+  const preEnd = 0.025
+  const peakAt = 0.070
+  const returnAt = 0.175
+  const endAt = 0.205
+  if (dt < 0 || dt > endAt) return 0
+
+  if (dt < preEnd) {
+    return -amp * 0.10 * Math.sin(Math.PI * dt / preEnd)
+  }
+  if (dt < peakAt) {
+    const x = (dt - preEnd) / (peakAt - preEnd)
+    return amp * Math.pow(x, 0.78)
+  }
+  if (dt < returnAt) {
+    const x = (dt - peakAt) / (returnAt - peakAt)
+    return amp * Math.pow(1 - x, 1.18)
+  }
+
+  const x = (dt - returnAt) / (endAt - returnAt)
+  return -amp * 0.065 * Math.sin(Math.PI * x)
+}
+
 function regionLagSeconds(label) {
   switch (regionOf(label)) {
     case 'frontopolar': return 0.000
@@ -954,12 +1723,16 @@ class N2SleepGraphoelementsOverlay {
         label: 'K-complex',
         detail: 'N2 K-complex',
       })
+      if (this.rng() < 0.65) {
+        const linkedSpindleT = event.t0 + 0.58 + this.rng() * 0.20
+        this.nextSpindleT = Math.min(this.nextSpindleT, linkedSpindleT)
+      }
       this.nextKComplexT += 7.0 + this.rng() * 8.0
     }
 
     while (this.events.length) {
       const ev = this.events[0]
-      const tailSec = ev.kind === 'spindle' ? ev.durSec : 0.95
+      const tailSec = ev.kind === 'spindle' ? ev.durSec : 1.05
       if (ev.t0 + tailSec >= t - 0.2) break
       this.events.shift()
     }
@@ -977,17 +1750,98 @@ class N2SleepGraphoelementsOverlay {
         const env = Math.sin(Math.PI * dt / ev.durSec)
         o += w * ev.ampJ * 34 * env * Math.sin(2 * Math.PI * ev.freq * dt + ev.phase)
       } else if (ev.kind === 'k_complex') {
-        if (dt < -0.03 || dt > 0.82) continue
+        if (dt < -0.08 || dt > 1.02) continue
         const w = kComplexField(label)
         if (w < 0.05) continue
         active = true
-        o += w * ev.ampJ * (
-          gaussianPulse(dt, 0.075, 0.050, -82) +
-          slowHalfSine(dt, 0.14, 0.58, 210)
-        )
+        o += w * ev.ampJ * kComplexTransient(dt, 245)
       }
     }
     return { overlay: o, preserve: active ? 0.97 : 1 }
+  }
+}
+
+class N1SleepGraphoelementsOverlay {
+  constructor(rng) {
+    this.rng = rng
+    this.nextVertexT = 0.7 + rng() * 1.4
+    this.nextPostsT = 1.8 + rng() * 2.4
+    this.events = []
+  }
+
+  advance(t, emitEvent = null) {
+    if (t >= this.nextVertexT) {
+      const event = {
+        kind: 'vertex',
+        t0: this.nextVertexT,
+        ampJ: 0.86 + this.rng() * 0.32,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'vertex_wave',
+        label: 'Vertex wave',
+        detail: 'N1 vertex sharp wave',
+      })
+      this.nextVertexT += 2.2 + this.rng() * 3.4
+    }
+
+    if (t >= this.nextPostsT) {
+      const event = {
+        kind: 'posts',
+        t0: this.nextPostsT,
+        count: 3 + Math.floor(this.rng() * 3),
+        interval: 0.20 + this.rng() * 0.045,
+        ampJ: 0.82 + this.rng() * 0.30,
+      }
+      this.events.push(event)
+      emitEvent?.({
+        t: event.t0,
+        type: 'posts',
+        label: 'POSTS',
+        detail: 'Positive occipital sharp transients of sleep',
+      })
+      this.nextPostsT += 5.5 + this.rng() * 6.0
+    }
+
+    while (this.events.length) {
+      const ev = this.events[0]
+      const tailSec = ev.kind === 'posts'
+        ? (ev.count - 1) * ev.interval + 0.23
+        : 0.28
+      if (ev.t0 + tailSec >= t - 0.2) break
+      this.events.shift()
+    }
+  }
+
+  valueFor(label, t) {
+    let o = 0
+    let active = false
+    let preserve = 1
+
+    for (const ev of this.events) {
+      if (ev.kind === 'vertex') {
+        const w = vertexWaveField(label)
+        if (w < 0.05) continue
+        const dt = t - ev.t0
+        if (dt < -0.13 || dt > 0.23) continue
+        active = true
+        preserve = Math.min(preserve, 0.97)
+        o += w * ev.ampJ * vertexWaveTransient(dt, 104)
+      } else if (ev.kind === 'posts') {
+        const w = postsField(label)
+        if (w < 0.05) continue
+        for (let k = 0; k < ev.count; k++) {
+          const dt = t - (ev.t0 + k * ev.interval)
+          if (dt < 0 || dt > 0.205) continue
+          active = true
+          preserve = Math.min(preserve, 0.92)
+          o += w * ev.ampJ * postsTransient(dt, 58)
+        }
+      }
+    }
+
+    return { overlay: o, preserve: active ? preserve : 1 }
   }
 }
 
@@ -1378,6 +2232,8 @@ export class StreamingEEG {
     this.thetaPhase = this.rng() * 2 * Math.PI    // shared theta carrier
     this.deltaPhase = this.rng() * 2 * Math.PI    // shared delta carrier
     this.mainsPhase = this.rng() * 2 * Math.PI    // shared 50 Hz line noise
+    this.muLeftPhase = this.rng() * 2 * Math.PI
+    this.muRightPhase = this.rng() * 2 * Math.PI
     // Global stochastic envelope for the shared posterior-driver alpha.
     // Mean is centred at 1.0 (floor+ceil = 2.0), and the swing produces a
     // ~2.6× peak-to-trough ratio matching the irregular wax/wane of real
@@ -1411,6 +2267,7 @@ export class StreamingEEG {
       type: event.type ?? 'event',
       label: event.label ?? 'Event',
       detail: event.detail ?? '',
+      durationS: event.durationS ?? null,
     }
     this.eventLog.push(normalized)
     const cutoff = this.clock - 120
@@ -1434,7 +2291,7 @@ export class StreamingEEG {
     for (const e of elecs) out[e] = new Float32Array(N)
 
     // Carrier frequencies for the shared drivers
-    const pdrHz   = 10
+    const pdrHz   = this.mode === 'fast_alpha_variant' ? 16.8 : 10
     const betaHz  = 20
     const thetaHz = 5.5
     const deltaHz = 2.0
@@ -1449,6 +2306,8 @@ export class StreamingEEG {
       this.thetaPhase += 2 * Math.PI * thetaHz / fs
       this.deltaPhase += 2 * Math.PI * deltaHz / fs
       this.mainsPhase += 2 * Math.PI * mainsHz / fs
+      this.muLeftPhase += 2 * Math.PI * 9.8 / fs
+      this.muRightPhase += 2 * Math.PI * 10.1 / fs
 
       // Advance global alpha envelope (one step per timestep — shared
       // across all channels so O1 and O2 wax/wane together)
@@ -1467,6 +2326,8 @@ export class StreamingEEG {
         thetaSharedPhase: this.thetaPhase,
         deltaSharedPhase: this.deltaPhase,
         mainsPhase:       this.mainsPhase,
+        muLeftPhase:      this.muLeftPhase,
+        muRightPhase:     this.muRightPhase,
         sampleRate: fs,
         noiseScale: this.noiseScale,
       }
@@ -1515,6 +2376,7 @@ export function createEngineForPattern(pattern, options = {}) {
     blinksEnabled = true,
     noiseLevel = 0.25,
     seed = (Date.now() & 0xffffffff),
+    activationProcedure = 'none',
   } = options
   const engine = new StreamingEEG({ seed })
   engine.setEyesOpen(!eyesClosed)
@@ -1523,7 +2385,7 @@ export function createEngineForPattern(pattern, options = {}) {
   const eyesOpen = !eyesClosed
   const isEci = pattern === 'electrocerebral_silence'
   const awakePatterns = new Set([
-    'normal_awake', 'absence', 'temporal_sharps', 'polyspike_jme',
+    'normal_awake', 'fast_alpha_variant', 'mu_rhythm', 'lambda_waves', 'absence', 'temporal_sharps', 'polyspike_jme',
     'photoparoxysmal', 'centrotemporal_spikes', 'breach_rhythm',
   ])
   const ambientHr = 60 + Math.round(engine.rng() * 12)
@@ -1542,10 +2404,49 @@ export function createEngineForPattern(pattern, options = {}) {
   // Map pattern → base mode + optional overlays
   switch (pattern) {
     case 'normal_awake':         engine.setMode('normal_awake'); break
-    case 'normal_drowsy':        engine.setMode('normal_drowsy'); break
+    case 'fast_alpha_variant':   engine.setMode('fast_alpha_variant'); break
+    case 'mu_rhythm':
+      engine.setMode('mu_rhythm')
+      engine.addOverlay(new MuRhythmEventOverlay(engine.rng))
+      break
+    case 'lambda_waves':
+      engine.setMode('normal_awake')
+      engine.addOverlay(new LambdaWavesOverlay(engine.rng, eyesOpen))
+      break
+    case 'rmtd':
+      engine.setMode('rmtd')
+      engine.addOverlay(new RhythmicMidtemporalThetaOverlay(engine.rng))
+      break
+    case 'wicket_rhythm':
+      engine.setMode('wicket_rhythm')
+      engine.addOverlay(new WicketRhythmOverlay(engine.rng))
+      break
+    case 'sreda':
+      engine.setMode('normal_drowsy')
+      engine.addOverlay(new SredaOverlay(engine.rng))
+      break
+    case 'small_sharp_spikes':
+      engine.setMode('normal_drowsy')
+      engine.addOverlay(new SmallSharpSpikesOverlay(engine.rng))
+      break
+    case 'phantom_spike_wave':
+      engine.setMode('normal_drowsy')
+      engine.addOverlay(new PhantomSpikeWaveOverlay(engine.rng))
+      break
+    case 'normal_drowsy':
+      engine.setMode('normal_drowsy')
+      engine.addOverlay(new SlowRovingEyeMovementOverlay(engine.rng))
+      engine.addOverlay(new N1SleepGraphoelementsOverlay(engine.rng))
+      engine.addOverlay(new SmallSharpSpikesOverlay(engine.rng))
+      break
     case 'normal_sleep':
       engine.setMode('normal_sleep')
       engine.addOverlay(new N2SleepGraphoelementsOverlay(engine.rng))
+      engine.addOverlay(new SmallSharpSpikesOverlay(engine.rng))
+      break
+    case 'normal_rem':
+      engine.setMode('normal_rem')
+      engine.addOverlay(new RapidEyeMovementOverlay(engine.rng))
       break
     case 'slow_wave_sleep':      engine.setMode('slow_wave_sleep'); break
     case 'diffuse_slowing':      engine.setMode('diffuse_slowing'); break
@@ -1613,6 +2514,10 @@ export function createEngineForPattern(pattern, options = {}) {
       engine.setMode('normal_awake')
   }
 
+  if (activationProcedure !== 'none' && isActivationProcedureAllowed(activationProcedure, pattern)) {
+    engine.addOverlay(new ActivationProcedureOverlay(activationProcedure, engine.rng))
+  }
+
   return engine
 }
 
@@ -1622,11 +2527,16 @@ export {
   CardiacOverlay,
   BlinkOverlay,
   SaccadeOverlay,
+  LambdaWavesOverlay,
+  RhythmicMidtemporalThetaOverlay,
+  WicketRhythmOverlay,
+  SlowRovingEyeMovementOverlay,
   FirdaOverlay,
   GpdsOverlay,
   LpdsOverlay,
   AbsenceOverlay,
   BurstSuppressionOverlay,
+  N1SleepGraphoelementsOverlay,
   N2SleepGraphoelementsOverlay,
   FocalSlowingOverlay,
   SlowSpikeWaveOverlay,
