@@ -7,7 +7,9 @@
     "findings": "Klinische Befunde",
     "sandbox": "Sandkasten",
     "quiz": "Quiz",
-    "artifacts": "Artefakte"
+    "artifacts": "Artefakte",
+    "reading_algorithm": "EEG-Auswertung",
+    "report_builder": "EEG-Bericht"
   },
   "home": {
     "hero_tag": "Interaktive EEG-Ausbildung",
@@ -92,6 +94,14 @@
   },
   "quiz": {
     "subtitle": "Testen Sie Ihr Wissen über EEG-Muster, Montagen und klinische Befunde."
+  },
+  "reading_algorithm": {
+    "title": "Algorithmus zur EEG-Auswertung",
+    "subtitle": "Eine systematische Schritt-für-Schritt-Methode zur Auswertung und Befundung eines EEGs."
+  },
+  "report_builder": {
+    "title": "EEG-Berichtsgenerator",
+    "subtitle": "Beobachtete Befunde auswählen und einen strukturierten EEG-Berichtsentwurf erstellen."
   },
   "artifacts": {
     "subtitle": "Häufige EEG-Artefakte mit Mehrkanal-Beispielen und Identifikationsanleitungen.",

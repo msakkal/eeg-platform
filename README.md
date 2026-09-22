@@ -6,8 +6,8 @@ An interactive multilingual EEG education platform built with React + Vite.
 
 | Layer | Tool |
 |---|---|
-| UI framework | React 18 + React Router 6 |
-| Build tool | Vite 5 |
+| UI framework | React 18 + React Router 7 |
+| Build tool | Vite 8 |
 | Styling | Tailwind CSS 3 |
 | i18n | i18next + react-i18next |
 | State | Zustand |
@@ -84,6 +84,22 @@ npm run build
 # 4. Preview production build
 npm run preview
 ```
+
+## Static Deployment
+
+The application uses hash-based client routing, so nested screens continue to
+work when a static host does not provide SPA rewrite rules. Set
+`VITE_BASE_URL` to the public asset path used by the host:
+
+```bash
+# Root domain (default)
+VITE_BASE_URL=/ npm run build
+
+# Repository subpath, for example GitHub Pages
+VITE_BASE_URL=/eeg-platform/ npm run build
+```
+
+The base URL must begin and end with `/`.
 
 ## Supported Languages
 

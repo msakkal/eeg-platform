@@ -80,11 +80,37 @@ describe('eegStore', () => {
     expect(state.montageId).toBe('average_reference')
   })
 
+  it('selects average reference for central midline theta', () => {
+    useEEGStore.getState().setMontage('longitudinal_bipolar')
+    useEEGStore.getState().setPattern('central_midline_theta')
+    const state = useEEGStore.getState()
+    expect(state.pattern).toBe('central_midline_theta')
+    expect(state.montageId).toBe('average_reference')
+  })
+
   it('selects an eyes-closed average-reference view for phantom spike-wave', () => {
     useEEGStore.getState().setEyesClosed(false)
     useEEGStore.getState().setPattern('phantom_spike_wave')
     const state = useEEGStore.getState()
     expect(state.pattern).toBe('phantom_spike_wave')
+    expect(state.eyesClosed).toBe(true)
+    expect(state.montageId).toBe('average_reference')
+  })
+
+  it('selects an eyes-closed linked-ear view for 14 and 6 Hz positive spikes', () => {
+    useEEGStore.getState().setEyesClosed(false)
+    useEEGStore.getState().setPattern('positive_spikes_14_6')
+    const state = useEEGStore.getState()
+    expect(state.pattern).toBe('positive_spikes_14_6')
+    expect(state.eyesClosed).toBe(true)
+    expect(state.montageId).toBe('referential_ears')
+  })
+
+  it('selects an eyes-closed average-reference view for posterior slow waves of youth', () => {
+    useEEGStore.getState().setEyesClosed(false)
+    useEEGStore.getState().setPattern('posterior_slow_waves_youth')
+    const state = useEEGStore.getState()
+    expect(state.pattern).toBe('posterior_slow_waves_youth')
     expect(state.eyesClosed).toBe(true)
     expect(state.montageId).toBe('average_reference')
   })

@@ -8,6 +8,8 @@
     "sandbox": "Sandbox",
     "quiz": "Quiz",
     "artifacts": "Artifacts",
+    "reading_algorithm": "EEG Reading Algorithm",
+    "report_builder": "Report Builder",
     "sidebar": "Navigation sidebar",
     "main": "Main navigation"
   },
@@ -95,6 +97,14 @@
   },
   "quiz": {
     "subtitle": "Test your knowledge of EEG patterns, montages, and clinical findings."
+  },
+  "reading_algorithm": {
+    "title": "EEG Reading Algorithm",
+    "subtitle": "A systematic, step-by-step method for reading and reporting an EEG."
+  },
+  "report_builder": {
+    "title": "EEG Report Builder",
+    "subtitle": "Select observed findings and generate a structured EEG report draft."
   },
   "artifacts": {
     "subtitle": "Common EEG artifacts with multi-channel examples and identification guides.",

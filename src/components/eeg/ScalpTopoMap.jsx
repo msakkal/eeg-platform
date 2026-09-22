@@ -186,7 +186,10 @@ export default function ScalpTopoMap({ channels = [], colorMode = 'signal', size
   return (
     <div className="flex flex-col items-center gap-2">
       <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted">Scalp Topo</p>
-      <canvas ref={canvasRef} style={{ display: 'block', borderRadius: 8 }} />
+      <canvas ref={canvasRef} style={{ display: 'block', borderRadius: 8 }} role="img"
+        aria-label="Scalp topographic map of relative EEG amplitude from low to high">
+        Scalp topographic map showing relative EEG amplitude from low to high.
+      </canvas>
     </div>
   )
 }

@@ -5,13 +5,66 @@ import { applyMontage, MONTAGES } from '@/engine/montages'
 
 const FILTER_PREROLL_SECONDS = 10
 const DEFAULT_MAX_WINDOW_SECONDS = 60
+const HIGH_REFRESH_WINDOW_SECONDS = 15
+const HIGH_REFRESH_FPS = 120
+const STANDARD_REFRESH_FPS = 60
+
+function hasActiveFilterConfig(filterConfig) {
+  return Boolean(filterConfig?.hp || filterConfig?.lp || filterConfig?.notch)
+}
+
+function addRingToLinear(out, source, readIdx, ringLength) {
+  let outIdx = 0
+  let sourceIdx = readIdx
+  while (outIdx < out.length) {
+    const span = Math.min(out.length - outIdx, ringLength - sourceIdx)
+    for (let i = 0; i < span; i++) out[outIdx + i] += source[sourceIdx + i]
+    outIdx += span
+    sourceIdx = 0
+  }
+}
+
+function writeRingDifference(out, positive, negative, readIdx, ringLength, negativeIsLinear = false) {
+  let outIdx = 0
+  let sourceIdx = readIdx
+  while (outIdx < out.length) {
+    const span = Math.min(out.length - outIdx, ringLength - sourceIdx)
+    if (negativeIsLinear) {
+      for (let i = 0; i < span; i++) {
+        out[outIdx + i] = positive[sourceIdx + i] - negative[outIdx + i]
+      }
+    } else if (negative) {
+      for (let i = 0; i < span; i++) {
+        out[outIdx + i] = positive[sourceIdx + i] - negative[sourceIdx + i]
+      }
+    } else {
+      out.set(positive.subarray(sourceIdx, sourceIdx + span), outIdx)
+    }
+    outIdx += span
+    sourceIdx = 0
+  }
+}
+
+function writeRingAverage(out, first, second, readIdx, ringLength) {
+  let outIdx = 0
+  let sourceIdx = readIdx
+  while (outIdx < out.length) {
+    const span = Math.min(out.length - outIdx, ringLength - sourceIdx)
+    for (let i = 0; i < span; i++) {
+      out[outIdx + i] = (first[sourceIdx + i] + second[sourceIdx + i]) * 0.5
+    }
+    outIdx += span
+    sourceIdx = 0
+  }
+}
 
 /**
  * useEEGSignal
  * Drives a live streaming EEG display from `streaming.js`. Each animation
- * frame advances the engine clock by `stepSec` seconds, appends the new
- * samples to a per-channel ring buffer holding the visible window, applies
- * the active montage transform, and pushes the result to React state.
+ * frame advances the engine clock by `stepSec` seconds and appends the new
+ * samples to a per-channel ring buffer holding the visible window. At a
+ * display-friendly cadence it applies the active montage transform and
+ * publishes the signal plus its clock position as one React snapshot.
  *
  * Returns: { channels, timeAxis, isReady, windowStart }
  *
@@ -30,6 +83,7 @@ export function useEEGSignal({
   montageId,
   pattern,
   noiseLevel,
+  filterConfig = null,
   activationProcedure = 'none',
   isPlaying,
   pendingSpike,
@@ -37,12 +91,16 @@ export function useEEGSignal({
   onClearPending,
   eyesClosed    = true,
   blinksEnabled = true,
-  blinkRate     = 18, // eslint-disable-line no-unused-vars
+  blinkRate     = 18,
   windowSecs    = 10,
   maxWindowSecs = DEFAULT_MAX_WINDOW_SECONDS,
 }) {
-  const [derivedChannels, setDerivedChannels] = useState([])
-  const [timeAxis,        setTimeAxis]        = useState([])
+  const [signalFrame, setSignalFrame] = useState({
+    channels: [],
+    timeAxis: [],
+    windowStart: 0,
+    sampleOffset: 0,
+  })
   const [isReady,         setIsReady]         = useState(false)
   const [events,          setEvents]          = useState([])
 
@@ -53,32 +111,46 @@ export function useEEGSignal({
   const animFrameRef  = useRef(null)
   const cursorSecRef  = useRef(0)
   const lastFrameMsRef = useRef(0)
+  const lastRenderMsRef = useRef(0)
   const sampleRemainderRef = useRef(0)
+  const timeAxisRef = useRef([])
+  const eventsKeyRef = useRef(null)
+  const eventsPollKeyRef = useRef(null)
+  const incomingPoolRef = useRef(new Map())
 
   // Refs for values that change during playback without restarting loop
   const montageIdRef   = useRef(montageId)
   const isPlayingRef   = useRef(isPlaying)
+  const filterActiveRef = useRef(hasActiveFilterConfig(filterConfig))
   montageIdRef.current  = montageId
   isPlayingRef.current  = isPlaying
+  filterActiveRef.current = hasActiveFilterConfig(filterConfig)
 
-  const publishEvents = useCallback((visibleSecs) => {
+  const publishEvents = useCallback((visibleSecs, force = false) => {
     const engine = engineRef.current
     if (!engine?.getEventsSince) return
+    const pollKey = `${Math.floor(cursorSecRef.current * 10)}:${visibleSecs}`
+    if (!force && eventsPollKeyRef.current === pollKey) return
+    eventsPollKeyRef.current = pollKey
     const start = Math.max(0, cursorSecRef.current - visibleSecs)
-    setEvents(engine.getEventsSince(start))
+    const nextEvents = engine.getEventsSince(start)
+    const nextKey = nextEvents.map(event => event.id).join('|')
+    if (eventsKeyRef.current === nextKey) return
+    eventsKeyRef.current = nextKey
+    setEvents(nextEvents)
   }, [])
 
   const materialiseMontage = useCallback((rawChannels, montageIdValue, readIdx, outputLength = null, visibleStartIndex = 0) => {
     const montage = MONTAGES[montageIdValue]
     if (!montage) return applyMontage(rawChannels, montageIdValue, readIdx)
 
-    const firstLabel = Object.keys(rawChannels).filter(label => !['A1', 'A2'].includes(label))[0]
-    const ringLength = rawChannels[firstLabel]?.length ?? 0
+    const ringLength = rawChannels.Fp1?.length ?? Object.values(rawChannels)[0]?.length ?? 0
     const length = outputLength ?? ringLength
     const cacheKey = `${montageIdValue}:${length}:${visibleStartIndex}`
     let cache = derivedBuffersRef.current
 
     if (!cache || cache.key !== cacheKey) {
+      const scalpLabels = Object.keys(rawChannels).filter(label => !['A1', 'A2'].includes(label))
       cache = {
         key: cacheKey,
         channels: montage.channels.map(({ label }) => ({
@@ -88,6 +160,7 @@ export function useEEGSignal({
         })),
         avgRef: new Float32Array(length),
         earRef: new Float32Array(length),
+        scalpLabels,
       }
       derivedBuffersRef.current = cache
     }
@@ -96,25 +169,18 @@ export function useEEGSignal({
     const needsEars = montage.channels.some(ch => ch.neg === 'ears')
 
     if (needsAverage) {
-      const labels = Object.keys(rawChannels).filter(label => !['A1', 'A2'].includes(label))
-      for (let i = 0; i < length; i++) {
-        const ringIdx = (readIdx + i) % ringLength
-        let sum = 0
-        for (let j = 0; j < labels.length; j++) {
-          const buf = rawChannels[labels[j]]
-          sum += buf[ringIdx]
-        }
-        cache.avgRef[i] = sum / labels.length
+      cache.avgRef.fill(0)
+      for (let j = 0; j < cache.scalpLabels.length; j++) {
+        addRingToLinear(cache.avgRef, rawChannels[cache.scalpLabels[j]], readIdx, ringLength)
       }
+      const inverseCount = 1 / cache.scalpLabels.length
+      for (let i = 0; i < length; i++) cache.avgRef[i] *= inverseCount
     }
 
     if (needsEars) {
       const a1 = rawChannels.A1
       const a2 = rawChannels.A2
-      for (let i = 0; i < length; i++) {
-        const ringIdx = (readIdx + i) % ringLength
-        cache.earRef[i] = ((a1?.[ringIdx] ?? 0) + (a2?.[ringIdx] ?? 0)) / 2
-      }
+      writeRingAverage(cache.earRef, a1, a2, readIdx, ringLength)
     }
 
     for (let chIdx = 0; chIdx < montage.channels.length; chIdx++) {
@@ -131,13 +197,17 @@ export function useEEGSignal({
         continue
       }
 
-      for (let i = 0; i < length; i++) {
-        const ringIdx = (readIdx + i) % ringLength
-        out[i] = posBuf[ringIdx] - (negBuf ? negBuf[neg === 'average' || neg === 'ears' ? i : ringIdx] : 0)
-      }
+      writeRingDifference(
+        out,
+        posBuf,
+        negBuf,
+        readIdx,
+        ringLength,
+        neg === 'average' || neg === 'ears'
+      )
     }
 
-    return cache.channels.map(({ label, data, visibleStartIndex }) => ({ label, data, visibleStartIndex }))
+    return cache.channels.slice()
   }, [])
 
     // ── Build / rebuild engine when pattern or eye-state changes ────────────
@@ -146,6 +216,7 @@ export function useEEGSignal({
     const engine = createEngineForPattern(pattern, {
       eyesClosed,
       blinksEnabled,
+      blinkRate,
       noiseLevel,
       activationProcedure,
     })
@@ -175,18 +246,27 @@ export function useEEGSignal({
     derivedBuffersRef.current = null
     cursorSecRef.current = maxWindowSecs + FILTER_PREROLL_SECONDS
     sampleRemainderRef.current = 0
+    eventsPollKeyRef.current = null
+    incomingPoolRef.current.clear()
 
     // Publish the initial window immediately so the trace is visible the
     // instant the panel mounts — without waiting for the first animation
     // frame (and so a paused viewer still shows a populated trace).
     // Use writeIdx=0 since the buffer was just filled linearly.
-    const outputLength = historyN + visibleN
+    const outputHistoryN = filterActiveRef.current ? historyN : 0
+    const outputLength = outputHistoryN + visibleN
     const readIdx = (ring.writeIdx + ring.length - outputLength) % ring.length
-    setDerivedChannels(materialiseMontage(ring.channels, montageIdRef.current, readIdx, outputLength, historyN))
-    setTimeAxis(makeTimeAxis(visibleN, SAMPLE_RATE))
-    publishEvents(windowSecs)
+    const nextTimeAxis = makeTimeAxis(visibleN, SAMPLE_RATE)
+    timeAxisRef.current = nextTimeAxis
+    setSignalFrame({
+      channels: materialiseMontage(ring.channels, montageIdRef.current, readIdx, outputLength, outputHistoryN),
+      timeAxis: nextTimeAxis,
+      windowStart: cursorSecRef.current - visibleN / SAMPLE_RATE,
+      sampleOffset: 0,
+    })
+    publishEvents(windowSecs, true)
     setIsReady(true)
-  }, [pattern, eyesClosed, blinksEnabled, noiseLevel, activationProcedure, maxWindowSecs, materialiseMontage, publishEvents])
+  }, [pattern, eyesClosed, blinksEnabled, blinkRate, noiseLevel, activationProcedure, maxWindowSecs, materialiseMontage, publishEvents])
 
   // Montage and sweep-window changes should rematerialise immediately. The
   // animation loop also does this while playing, but this keeps controls
@@ -204,12 +284,19 @@ export function useEEGSignal({
       cursorSecRef.current = visibleSecs
     }
     ring.visibleLength = visibleN
-    const outputLength = ring.historyLength + visibleN
+    const outputHistoryN = hasActiveFilterConfig(filterConfig) ? ring.historyLength : 0
+    const outputLength = outputHistoryN + visibleN
     const readIdx = (ring.writeIdx + ring.length - outputLength) % ring.length
-    setDerivedChannels(materialiseMontage(ring.channels, montageId, readIdx, outputLength, ring.historyLength))
-    setTimeAxis(makeTimeAxis(visibleN, SAMPLE_RATE))
-    publishEvents(visibleSecs)
-  }, [montageId, windowSecs, isReady, materialiseMontage, publishEvents])
+    const nextTimeAxis = makeTimeAxis(visibleN, SAMPLE_RATE)
+    timeAxisRef.current = nextTimeAxis
+    setSignalFrame({
+      channels: materialiseMontage(ring.channels, montageId, readIdx, outputLength, outputHistoryN),
+      timeAxis: nextTimeAxis,
+      windowStart: cursorSecRef.current - visibleSecs,
+      sampleOffset: 0,
+    })
+    publishEvents(visibleSecs, true)
+  }, [montageId, windowSecs, filterConfig, isReady, materialiseMontage, publishEvents])
 
   // ── Pending transient injection (spike / muscle artifact) ───────────────
   // For the streaming engine these are stamped into the ring buffer at the
@@ -261,7 +348,7 @@ export function useEEGSignal({
       }
       onClearPending?.()
     }
-    publishEvents(windowSecs)
+    publishEvents(windowSecs, true)
   }, [pendingSpike, pendingArtifact, onClearPending, publishEvents, windowSecs])
 
   // ── Animation loop ───────────────────────────────────────────────────────
@@ -271,6 +358,7 @@ export function useEEGSignal({
     function frame(now = performance.now()) {
       if (!isPlayingRef.current) {
         lastFrameMsRef.current = now
+        lastRenderMsRef.current = now
         animFrameRef.current = requestAnimationFrame(frame)
         return
       }
@@ -300,7 +388,9 @@ export function useEEGSignal({
       }
 
       const stepSec = step / SAMPLE_RATE
-      const incoming = engine.fillWindow(stepSec)
+      const reusableIncoming = incomingPoolRef.current.get(step) ?? null
+      const incoming = engine.fillWindow(stepSec, reusableIncoming)
+      if (!reusableIncoming) incomingPoolRef.current.set(step, incoming)
       cursorSecRef.current += stepSec
 
       // Append incoming samples into the ring buffer.
@@ -308,19 +398,43 @@ export function useEEGSignal({
         const src = incoming[label]
         const buf = ring.channels[label]
         if (!src || !buf) continue
-        for (let i = 0; i < src.length; i++) {
-          buf[(ring.writeIdx + i) % ring.length] = src[i]
+        const firstSpan = Math.min(src.length, ring.length - ring.writeIdx)
+        if (firstSpan === src.length) {
+          buf.set(src, ring.writeIdx)
+        } else {
+          buf.set(src.subarray(0, firstSpan), ring.writeIdx)
+          buf.set(src.subarray(firstSpan), 0)
         }
       }
       ring.writeIdx = (ring.writeIdx + step) % ring.length
 
+      // Use the display's refresh cadence for normal windows. Long windows
+      // retain a lower cap because their montage/filter pass is much larger.
+      const visibleSecs = ring.visibleLength / SAMPLE_RATE
+      const renderFps = visibleSecs <= HIGH_REFRESH_WINDOW_SECONDS
+        ? HIGH_REFRESH_FPS
+        : STANDARD_REFRESH_FPS
+      const renderIntervalMs = 1000 / renderFps
+      const sinceLastRenderMs = now - lastRenderMsRef.current
+      if (sinceLastRenderMs < renderIntervalMs - 0.75) {
+        animFrameRef.current = requestAnimationFrame(frame)
+        return
+      }
+      lastRenderMsRef.current += Math.max(1, Math.floor(sinceLastRenderMs / renderIntervalMs)) * renderIntervalMs
+
       // Materialise the visible window chronologically (oldest → newest)
       // via direct ring-buffer montage — avoids a full-window copy per channel.
-      const outputLength = ring.historyLength + ring.visibleLength
+      const outputHistoryN = filterActiveRef.current ? ring.historyLength : 0
+      const outputLength = outputHistoryN + ring.visibleLength
       const readIdx = (ring.writeIdx + ring.length - outputLength) % ring.length
-      const derived = materialiseMontage(ring.channels, montageIdRef.current, readIdx, outputLength, ring.historyLength)
-      setDerivedChannels(derived)
-      publishEvents(ring.visibleLength / SAMPLE_RATE)
+      const derived = materialiseMontage(ring.channels, montageIdRef.current, readIdx, outputLength, outputHistoryN)
+      setSignalFrame({
+        channels: derived,
+        timeAxis: timeAxisRef.current,
+        windowStart: cursorSecRef.current + sampleRemainderRef.current / SAMPLE_RATE - visibleSecs,
+        sampleOffset: sampleRemainderRef.current,
+      })
+      publishEvents(visibleSecs)
 
       animFrameRef.current = requestAnimationFrame(frame)
     }
@@ -330,10 +444,11 @@ export function useEEGSignal({
   }, [isReady, materialiseMontage])
 
   return {
-    channels: derivedChannels,
-    timeAxis,
+    channels: signalFrame.channels,
+    timeAxis: signalFrame.timeAxis,
     isReady,
     events,
-    windowStart: cursorSecRef.current - windowSecs,
+    windowStart: signalFrame.windowStart,
+    sampleOffset: signalFrame.sampleOffset,
   }
 }

@@ -13,6 +13,8 @@ const FindingsPage   = React.lazy(() => import('@/pages/FindingsPage'))
 const SandboxPage    = React.lazy(() => import('@/pages/SandboxPage'))
 const QuizPage       = React.lazy(() => import('@/pages/QuizPage'))
 const ArtifactsPage  = React.lazy(() => import('@/pages/ArtifactsPage'))
+const ReadingAlgorithmPage = React.lazy(() => import('@/pages/ReadingAlgorithmPage'))
+const ReportBuilderPage = React.lazy(() => import('@/pages/ReportBuilderPage'))
 
 export default function App() {
   return (
@@ -25,9 +27,11 @@ export default function App() {
             <Route path="/montages"   element={<MontagesPage />} />
             <Route path="/waveforms"  element={<WaveformsPage />} />
             <Route path="/findings"   element={<FindingsPage />} />
+            <Route path="/artifacts"  element={<ArtifactsPage />} />
+            <Route path="/reading-algorithm" element={<ReadingAlgorithmPage />} />
+            <Route path="/report-builder" element={<ReportBuilderPage />} />
             <Route path="/sandbox"    element={<SandboxPage />} />
             <Route path="/quiz"       element={<QuizPage />} />
-            <Route path="/artifacts"  element={<ArtifactsPage />} />
           </Routes>
         </Suspense>
       </ErrorBoundary>

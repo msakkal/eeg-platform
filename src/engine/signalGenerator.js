@@ -1248,12 +1248,14 @@ export function generateMultiChannelEEG(options = {}) {
       case 'normal_drowsy':           sig = drowsyChannel(label);           break
       case 'fast_alpha_variant':      sig = awakeChannel(label);            break
       case 'mu_rhythm':               sig = awakeChannel(label);            break
+      case 'central_midline_theta':    sig = awakeChannel(label);            break
       case 'lambda_waves':            sig = awakeChannel(label);            break
       case 'rmtd':                    sig = drowsyChannel(label);           break
       case 'wicket_rhythm':           sig = drowsyChannel(label);           break
       case 'sreda':                   sig = drowsyChannel(label);           break
       case 'small_sharp_spikes':      sig = drowsyChannel(label);           break
       case 'phantom_spike_wave':      sig = drowsyChannel(label);           break
+      case 'positive_spikes_14_6':    sig = drowsyChannel(label);           break
       case 'normal_rem':              sig = drowsyChannel(label);           break
       case 'slow_wave_sleep':         sig = deltaSleepChannel(label);       break
       case 'focal_slowing':           sig = focalSlowingChannel(label);     break
@@ -1268,6 +1270,7 @@ export function generateMultiChannelEEG(options = {}) {
       case 'triphasic_waves':         sig = encephalopathyChannel(label);   break
       case 'lpds':                    sig = lpdsBackgroundChannel(label);   break
       case 'slow_spike_wave':
+      case 'birds':
       case 'centrotemporal_spikes':   sig = drowsyChannel(label);           break
       case 'temporal_sharps':
       case 'polyspike_jme':
@@ -1295,6 +1298,29 @@ export function generateMultiChannelEEG(options = {}) {
 
     channels[label] = sig
   })
+
+  if (pattern === 'central_midline_theta') {
+    const field = {
+      Cz: 1.00, Pz: 0.68, Fz: 0.52,
+      C3: 0.22, C4: 0.22, P3: 0.14, P4: 0.14, F3: 0.08, F4: 0.08,
+    }
+    const startSec = 0.45
+    const durationSec = Math.max(0, Math.min(5.0, duration - startSec))
+    const start = Math.round(startSec * sampleRate)
+    const end = Math.min(nSamples, Math.round((startSec + durationSec) * sampleRate))
+    const frequency = 5.7
+    Object.entries(field).forEach(([label, weight]) => {
+      for (let i = start; i < end; i++) {
+        const elapsed = (i - start) / sampleRate
+        const remaining = (end - i) / sampleRate
+        const taper = Math.min(1, elapsed / 0.7, remaining / 0.7)
+        const phase = 2 * Math.PI * frequency * elapsed
+        channels[label][i] += 72 * weight * Math.max(0, taper) * (
+          Math.sin(phase) + 0.10 * Math.sin(2 * phase + 0.35)
+        )
+      }
+    })
+  }
 
   if (pattern === 'wicket_rhythm') {
     const fields = {
@@ -1413,6 +1439,34 @@ export function generateMultiChannelEEG(options = {}) {
     })
   }
 
+  if (pattern === 'positive_spikes_14_6') {
+    const fields = {
+      left: { T7: 1.00, P7: 0.84, O1: 0.58, P3: 0.42, C3: 0.18, T8: 0.10, P8: 0.08, A1: 0.04 },
+      right: { T8: 1.00, P8: 0.84, O2: 0.58, P4: 0.42, C4: 0.18, T7: 0.10, P7: 0.08, A2: 0.04 },
+    }
+    const runs = [
+      { start: 0.55, duration: 0.72, side: 'left', hz: 14.0, amp: 52 },
+      { start: 2.15, duration: 0.82, side: 'right', hz: 6.0, amp: 56 },
+      { start: 4.05, duration: 0.64, side: 'right', hz: 14.2, amp: 48 },
+    ]
+    runs.filter(run => run.start < duration).forEach(run => {
+      const start = Math.round(run.start * sampleRate)
+      const end = Math.min(nSamples, Math.round((run.start + run.duration) * sampleRate))
+      const period = 1 / run.hz
+      Object.entries(fields[run.side]).forEach(([label, gain]) => {
+        for (let i = start; i < end; i++) {
+          const elapsed = (i - start) / sampleRate
+          const remaining = (end - i) / sampleRate
+          const envelope = Math.min(1, elapsed / 0.08, remaining / 0.10)
+          const phase = (elapsed % period) / period
+          const arch = -0.38 * run.amp * Math.sin(Math.PI * phase)
+          const spike = run.amp * Math.exp(-Math.pow((phase - 0.72) / 0.075, 2) * 4.2)
+          channels[label][i] += gain * Math.max(0, envelope) * (arch + spike)
+        }
+      })
+    })
+  }
+
   // ?? Spontaneous eye blinks ??????????????????????????????????????????????
   // Blinks only occur when the subject is awake with open eyes.
   const NO_BLINK_PATTERNS = new Set([
@@ -1420,6 +1474,7 @@ export function generateMultiChannelEEG(options = {}) {
     'burst_suppression', 'alpha_coma', 'electrocerebral_silence',
     'hypsarrhythmia', 'gpds', 'triphasic_waves', 'diffuse_slowing',
     'firda', 'centrotemporal_spikes', 'slow_spike_wave',
+    'positive_spikes_14_6',
   ])
   const awakeWithOpenEyes = !eyesClosed && !NO_BLINK_PATTERNS.has(pattern)
   const showBlinks = blinksEnabled && awakeWithOpenEyes
@@ -1799,6 +1854,32 @@ export function generateMultiChannelEEG(options = {}) {
           const idx = s0 + i
           if (idx >= nSamples) break
           channels[label][idx] += scratch[i] * scale
+        }
+      })
+    })
+  }
+
+  if (pattern === 'birds') {
+    const field = {
+      T7: 1.00, F7: 0.82, P7: 0.72, C3: 0.48,
+      F3: 0.32, P3: 0.28, Cz: 0.12, T8: 0.08,
+    }
+    const runs = [
+      { start: 0.8, duration: 2.1, hz: 6.2, amp: 82, phase: 0.4 },
+      { start: 6.2, duration: 1.5, hz: 5.7, amp: 74, phase: 1.1 },
+    ]
+    runs.filter(run => run.start < duration).forEach(run => {
+      const start = Math.round(run.start * sampleRate)
+      const end = Math.min(nSamples, Math.round((run.start + run.duration) * sampleRate))
+      Object.entries(field).forEach(([label, gain]) => {
+        for (let i = start; i < end; i++) {
+          const elapsed = (i - start) / sampleRate
+          const remaining = (end - i) / sampleRate
+          const envelope = Math.min(1, elapsed / 0.07, remaining / 0.09)
+          const phase = run.phase + 2 * Math.PI * run.hz * elapsed
+          channels[label][i] += run.amp * gain * Math.max(0, envelope) * (
+            Math.sin(phase) + 0.38 * Math.sin(2 * phase + 0.35) + 0.12 * Math.sin(3 * phase - 0.2)
+          )
         }
       })
     })

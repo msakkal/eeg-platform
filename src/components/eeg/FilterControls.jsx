@@ -18,7 +18,15 @@ export default function FilterControls({ config, onChange }) {
   }
 
   function set(key, value) {
-    onChange({ ...config, [key]: value === '' ? null : Number(value) })
+    if (value === '') {
+      onChange({ ...config, [key]: null })
+      return
+    }
+    const frequency = Number(value)
+    if (!Number.isFinite(frequency) || frequency <= 0 || frequency >= 128) return
+    const next = { ...config, [key]: frequency }
+    if (next.hp !== null && next.lp !== null && next.hp >= next.lp) return
+    onChange(next)
   }
 
   const activePreset = Object.entries(FILTER_PRESETS).find(([, p]) =>
@@ -83,6 +91,9 @@ function FilterInput({ label, value, onChange, placeholder }) {
       <span className="text-xs font-mono text-eeg-muted w-14 flex-shrink-0">{label}</span>
       <input
         type="number"
+        min="0.1"
+        max="127.9"
+        step="0.1"
         value={value ?? ''}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}

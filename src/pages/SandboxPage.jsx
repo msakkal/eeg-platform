@@ -39,6 +39,10 @@ const PATTERN_ANALYSIS = {
     spectrum: 'Central average-reference channels C3–avg/C4–avg should show a dominant 8–10 Hz peak with much less corresponding posterior power.',
     spectrogram: 'Expect a clearly visible waxing and waning central alpha-range band with arciform cycles rather than a posterior eye-reactive rhythm.',
   },
+  central_midline_theta: {
+    spectrum: 'Cz and adjacent midline derivations should show a stable 4–7 Hz peak, with substantially less theta over lateral temporal and occipital channels.',
+    spectrogram: 'Expect a non-evolving theta band in runs lasting several seconds, maximal at the central/parietal vertex and tapering toward Fz/Pz and lateral central leads.',
+  },
   lambda_waves: {
     spectrum: 'The eyes-open background should remain low voltage; individual lambda waves are transient and should not create a sustained rhythmic spectral peak.',
     spectrogram: 'Look for irregular, sharply contoured positive transients over O1/O2 during visual scanning, often asymmetric or unilateral, with little central spread.',
@@ -62,6 +66,14 @@ const PATTERN_ANALYSIS = {
   phantom_spike_wave: {
     spectrum: 'Posterior derivations should show brief bursts of approximately 6 Hz activity; the very small spikes add limited broadband power compared with true epileptiform spike-wave.',
     spectrogram: 'Expect clearly visible, short, non-evolving 5–7 Hz posterior bursts during drowsiness with small spikes riding on rounded slow waves. Average reference is selected automatically to display their low amplitude.',
+  },
+  positive_spikes_14_6: {
+    spectrum: 'Posterior-temporal derivations should show intermittent peaks near 14 Hz and 6 Hz during the short bursts, rather than sustained evolving rhythmic activity.',
+    spectrogram: 'Expect brief 0.5–1 second unilateral or independently bilateral comb-shaped bursts during drowsiness, maximal posterior-temporally and clearest in the automatically selected linked-ear reference.',
+  },
+  posterior_slow_waves_youth: {
+    spectrum: 'Occipital derivations should retain an age-appropriate alpha peak while intermittent 2–4 Hz power rises sharply over O1/O2 and falls off anteriorly.',
+    spectrogram: 'Expect brief, bilateral synchronous posterior delta runs intermixed with preserved alpha, without evolution or background disruption. Average reference is selected automatically to show the posterior field.',
   },
   normal_drowsy: {
     spectrum: 'Posterior alpha/PDR should be largely absent; low-voltage theta and mixed frequencies dominate with slow horizontal roving eye movements frontotemporally.',
@@ -98,6 +110,10 @@ const PATTERN_ANALYSIS = {
   temporal_sharps: {
     spectrum: 'Temporal sharp waves create intermittent broadband power over a slower drowsy background.',
     spectrogram: 'Events should appear as isolated broadband transients, best seen in left temporal channels.',
+  },
+  birds: {
+    spectrum: 'During each brief run, focal temporal power should rise above 4 Hz, here centered near 6 Hz, with harmonic energy from the sharply contoured waveform.',
+    spectrogram: 'Look for abrupt, 1–3 second focal rhythmic bands over the left temporal region. Each run is shorter than the 10-second electrographic-seizure threshold.',
   },
   hypsarrhythmia: {
     spectrum: 'Expect broad, disorganized power across slow and faster frequencies from chaotic high-amplitude activity.',
@@ -187,10 +203,6 @@ export default function SandboxPage() {
     () => viewerTheme === 'custom' ? buildViewerThemeOverrides(viewerStyle) : {},
     [viewerStyle, viewerTheme]
   )
-  const effectiveTheme = useMemo(
-    () => ({ ...theme, ...viewerThemeOverrides }),
-    [theme, viewerThemeOverrides]
-  )
   const sweepWindowSecs = STANDARD_WINDOW_SECONDS * STANDARD_SWEEP_SPEED / sweepSpeed
   const effectiveBlinksEnabled = !eyesClosed && blinksEnabled
 
@@ -198,8 +210,8 @@ export default function SandboxPage() {
   const { annotations, addAnnotation, removeAnnotation, clearAnnotations } = useAnnotationStore()
 
   // ── Signal ──────────────────────────────────────────────────────────────
-  const { channels, timeAxis, isReady, events, windowStart } = useEEGSignal({
-    montageId, pattern, noiseLevel, activationProcedure,
+  const { channels, timeAxis, isReady, events, windowStart, sampleOffset } = useEEGSignal({
+    montageId, pattern, noiseLevel, activationProcedure, filterConfig,
     isPlaying, pendingSpike, pendingArtifact,
     onClearPending: clearPending,
     eyesClosed, blinksEnabled: effectiveBlinksEnabled, blinkRate,
@@ -210,7 +222,8 @@ export default function SandboxPage() {
   const specSignal = useMemo(() => {
     const ch = channels.find(c => c.label.startsWith(specChannel))
       ?? channels[Math.floor(channels.length / 2)]
-    return ch?.data ?? null
+    if (!ch?.data) return null
+    return ch.visibleStartIndex > 0 ? ch.data.subarray(ch.visibleStartIndex) : ch.data
   }, [channels, specChannel])
   const analysisRevision = Math.floor(windowStart * analysisRateHz)
 
@@ -368,6 +381,7 @@ export default function SandboxPage() {
                   annotations={annotations}
                   events={events}
                   windowStart={windowStart}
+                  sampleOffset={sampleOffset}
                   annotateMode={annotateMode}
                   onAnnotate={handleAnnotate}
                   hoveredTraceChannel={hoveredTraceChannel}
@@ -394,7 +408,6 @@ export default function SandboxPage() {
                   viewerTheme={viewerTheme}
                   onViewerThemeChange={setViewerTheme}
                   theme={theme}
-                  effectiveTheme={effectiveTheme}
                   viewerThemeOverrides={viewerThemeOverrides}
                   viewerStyle={viewerStyle}
                   onViewerStyleChange={setViewerStyle}
@@ -490,6 +503,7 @@ const TracePanel = memo(function TracePanel({
   annotations,
   events,
   windowStart,
+  sampleOffset,
   annotateMode,
   onAnnotate,
   hoveredTraceChannel,
@@ -511,7 +525,6 @@ const TracePanel = memo(function TracePanel({
   viewerTheme,
   onViewerThemeChange,
   theme,
-  effectiveTheme,
   viewerThemeOverrides,
   viewerStyle,
   onViewerStyleChange,
@@ -523,7 +536,7 @@ const TracePanel = memo(function TracePanel({
   const [hoveredEvent, setHoveredEvent] = useState(null)
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-full" style={{ background: effectiveTheme.pageBg }}>
+    <div className="flex flex-col lg:flex-row min-h-full bg-eeg-bg">
       <div className="relative flex-1 min-w-0 overflow-hidden">
         <ViewerTopBar
           montageId={montageId}
@@ -559,13 +572,15 @@ const TracePanel = memo(function TracePanel({
           annotations={annotations}
           eventHighlight={hoveredEvent}
           windowStart={windowStart}
+          sampleOffset={sampleOffset}
           onAnnotate={annotateMode ? onAnnotate : null}
           onHoverChannel={onHoverChannel}
           theme={viewerTheme}
           themeOverrides={viewerThemeOverrides}
           curveWidth={viewerTheme === 'custom' ? viewerStyle.curveWidth : DEFAULT_VIEWER_STYLE.curveWidth}
           polarity={viewerTheme === 'custom' ? viewerStyle.polarity : DEFAULT_VIEWER_STYLE.polarity}
-          chainGap={montageId?.includes('bipolar') ? 18 : 0}
+          channelHeight={40}
+          chainGap={montageId?.includes('bipolar') ? 12 : 0}
           className="w-full"
         />
       </div>
@@ -614,6 +629,7 @@ const TracePanel = memo(function TracePanel({
   prev.annotations === next.annotations &&
   prev.events === next.events &&
   prev.windowStart === next.windowStart &&
+  prev.sampleOffset === next.sampleOffset &&
   prev.annotateMode === next.annotateMode &&
   prev.hoveredTraceChannel === next.hoveredTraceChannel &&
   prev.montageId === next.montageId &&
@@ -624,7 +640,6 @@ const TracePanel = memo(function TracePanel({
   prev.blinkRate === next.blinkRate &&
   prev.viewerTheme === next.viewerTheme &&
   prev.theme === next.theme &&
-  prev.effectiveTheme === next.effectiveTheme &&
   prev.viewerThemeOverrides === next.viewerThemeOverrides &&
   prev.viewerStyle === next.viewerStyle
 ))
@@ -689,6 +704,7 @@ function SandboxEventList({ events = [], windowStart = 0, duration = 10, onHover
     if (type === 'saccade') return '#88CCFF'
     if (type === 'rapid_eye_movement') return '#C084FC'
     if (type === 'mu_rhythm') return '#7FFFD4'
+    if (type === 'central_midline_theta') return '#60A5FA'
     if (type === 'lambda_wave') return '#A7F3D0'
     if (type === 'rmtd') return '#67E8F9'
     if (type === 'hyperventilation') return '#67E8F9'
@@ -711,6 +727,7 @@ function SandboxEventList({ events = [], windowStart = 0, duration = 10, onHover
     if (type === 'saccade') return 0.16
     if (type === 'rapid_eye_movement') return 0.28
     if (type === 'mu_rhythm') return 3.0
+    if (type === 'central_midline_theta') return 4.0
     if (type === 'lambda_wave') return 0.15
     if (type === 'rmtd') return 3.0
     if (type === 'hyperventilation') return 5.0

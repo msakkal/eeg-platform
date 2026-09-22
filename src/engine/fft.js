@@ -61,6 +61,10 @@ export function fft(re, im) {
 export function hannWindow(signal) {
   const n      = signal.length
   const result = new Float64Array(n)
+  if (n === 1) {
+    result[0] = signal[0]
+    return result
+  }
   for (let i = 0; i < n; i++) {
     result[i] = signal[i] * 0.5 * (1 - Math.cos((2 * Math.PI * i) / (n - 1)))
   }
@@ -90,17 +94,27 @@ export function computePSD(signal, sampleRate = 256, opts = {}) {
     dbScale = true,
   } = opts
 
-  // Zero-pad to nfft
+  // Zero-pad or truncate to nfft
   const re = new Float64Array(nfft)
   const im = new Float64Array(nfft)
-  for (let i = 0; i < Math.min(signal.length, nfft); i++) {
+  const usedLength = Math.min(signal.length, nfft)
+  for (let i = 0; i < usedLength; i++) {
     re[i] = signal[i]
   }
 
-  // Apply window
+  // Apply window and retain its energy for density normalization. FFT zero
+  // padding improves frequency sampling but must not change total power.
+  let windowEnergy = usedLength
   if (window === 'hann') {
-    const w = hannWindow(re.slice(0, signal.length))
-    for (let i = 0; i < signal.length; i++) re[i] = w[i]
+    const w = hannWindow(re.slice(0, usedLength))
+    windowEnergy = 0
+    for (let i = 0; i < usedLength; i++) {
+      re[i] = w[i]
+      const coefficient = usedLength > 1
+        ? 0.5 * (1 - Math.cos((2 * Math.PI * i) / (usedLength - 1)))
+        : 1
+      windowEnergy += coefficient * coefficient
+    }
   }
 
   // FFT
@@ -111,7 +125,7 @@ export function computePSD(signal, sampleRate = 256, opts = {}) {
   const freqs = new Float64Array(nBins)
   const psd   = new Float64Array(nBins)
 
-  const normFactor = sampleRate * nfft
+  const normFactor = sampleRate * Math.max(windowEnergy, Number.EPSILON)
 
   for (let k = 0; k < nBins; k++) {
     freqs[k] = (k * sampleRate) / nfft
@@ -135,17 +149,25 @@ export const EEG_BANDS = {
 }
 
 /**
- * Integrate PSD over a frequency band.
- * Returns mean power in that band (µV² or dB).
+ * Integrate a linear PSD over a frequency band using trapezoidal integration.
+ * Returns total power in that band (µV²).
  */
 export function bandPower(freqs, psd, fMin, fMax) {
-  let sum = 0, count = 0
-  for (let i = 0; i < freqs.length; i++) {
-    if (freqs[i] >= fMin && freqs[i] <= fMax) {
-      sum += psd[i]; count++
-    }
+  if (freqs.length < 2 || psd.length !== freqs.length || fMax <= fMin) return 0
+  let power = 0
+  for (let i = 0; i < freqs.length - 1; i++) {
+    const f0 = freqs[i]
+    const f1 = freqs[i + 1]
+    if (f1 <= fMin || f0 >= fMax || f1 <= f0) continue
+    const left = Math.max(f0, fMin)
+    const right = Math.min(f1, fMax)
+    if (right <= left) continue
+    const span = f1 - f0
+    const pLeft = psd[i] + (psd[i + 1] - psd[i]) * ((left - f0) / span)
+    const pRight = psd[i] + (psd[i + 1] - psd[i]) * ((right - f0) / span)
+    power += ((pLeft + pRight) / 2) * (right - left)
   }
-  return count > 0 ? sum / count : 0
+  return power
 }
 
 /**

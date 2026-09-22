@@ -45,6 +45,22 @@ const MODULES = [
     color:   '#FF6B35',
   },
   {
+    path:    '/reading-algorithm',
+    titleKey:'nav.reading_algorithm',
+    descKey: 'reading_algorithm.subtitle',
+    icon:    '01→10',
+    tag:     'Workflow',
+    color:   '#00D4FF',
+  },
+  {
+    path:    '/report-builder',
+    titleKey:'nav.report_builder',
+    descKey: 'report_builder.subtitle',
+    icon:    '▤',
+    tag:     'Interactive',
+    color:   '#00FFB0',
+  },
+  {
     path:    '/sandbox',
     titleKey:'nav.sandbox',
     descKey: 'sandbox.subtitle',

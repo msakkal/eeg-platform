@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useMemo } from 'react'
+import { useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react'
 import { applyFilterChain } from '@/engine/filters'
 import { SAMPLE_RATE } from '@/engine/signalGenerator'
 import { getViewerTheme, DEFAULT_SENSITIVITY } from '@/engine/viewerThemes'
@@ -30,75 +30,86 @@ function cancelDrawFrame(id) {
   }
 }
 
-function interpolatedValueAt(data, index) {
-  const i0 = Math.floor(index)
-  const i1 = Math.min(data.length - 1, i0 + 1)
-  const frac = index - i0
-  return data[i0] + (data[i1] - data[i0]) * frac
+function averagedValueAt(data, index, halfFootprint) {
+  if (halfFootprint < 0.5) {
+    const i0 = Math.floor(index)
+    const i1 = Math.min(data.length - 1, i0 + 1)
+    const frac = index - i0
+    return data[i0] + (data[i1] - data[i0]) * frac
+  }
+
+  // Integrate the complete source-sample footprint represented by this
+  // screen point. Fractional edge weights keep the result continuous when a
+  // moving window crosses a sample boundary and prevent temporal aliasing.
+  const left = Math.max(-0.5, index - halfFootprint)
+  const right = Math.min(data.length - 0.5, index + halfFootprint)
+  const first = Math.max(0, Math.floor(left + 0.5))
+  const last = Math.min(data.length - 1, Math.ceil(right - 0.5))
+  let weightedSum = 0
+  let totalWeight = 0
+
+  for (let i = first; i <= last; i++) {
+    const weight = Math.max(0, Math.min(right, i + 0.5) - Math.max(left, i - 0.5))
+    weightedSum += data[i] * weight
+    totalWeight += weight
+  }
+
+  return totalWeight > 0 ? weightedSum / totalWeight : data[Math.round(index)]
 }
 
-function displayFilteredValueAt(data, index, halfFootprint) {
-  if (halfFootprint < 0.5) return interpolatedValueAt(data, index)
-
-  const left = Math.max(0, index - halfFootprint)
-  const right = Math.min(data.length - 1, index + halfFootprint)
-  return (
-    interpolatedValueAt(data, left) * 0.25 +
-    interpolatedValueAt(data, index) * 0.5 +
-    interpolatedValueAt(data, right) * 0.25
-  )
-}
-
-function drawSmoothedSamplePath(ctx, data, labelW, plotW, cy, pxPerUv) {
+function drawSmoothedSamplePath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX = 0) {
   const nPts = data.length
   const lastIdx = nPts - 1
   const step = Math.max(1, Math.floor((lastIdx * MIN_TRACE_POINT_SPACING_PX) / Math.max(1, plotW)))
-  let prevX = labelW
+  let prevX = labelW - offsetX
   let prevY = cy - data[0] * pxPerUv
 
   ctx.moveTo(prevX, prevY)
 
   for (let i = step; i < lastIdx; i += step) {
-    const x = labelW + (i / lastIdx) * plotW
+    const x = labelW + (i / lastIdx) * plotW - offsetX
     const y = cy - data[i] * pxPerUv
     ctx.quadraticCurveTo(prevX, prevY, (prevX + x) / 2, (prevY + y) / 2)
     prevX = x
     prevY = y
   }
 
-  const endX = labelW + plotW
+  const endX = labelW + plotW - offsetX
   const endY = cy - data[lastIdx] * pxPerUv
   ctx.quadraticCurveTo(prevX, prevY, (prevX + endX) / 2, (prevY + endY) / 2)
   ctx.lineTo(endX, endY)
 }
 
-function drawPixelSampledPath(ctx, data, labelW, plotW, cy, pxPerUv) {
+function drawPixelSampledPath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX = 0) {
   const nPts = data.length
   const lastIdx = nPts - 1
-  const columns = Math.max(2, Math.ceil(plotW))
+  const columns = Math.max(2, Math.ceil(plotW * SMOOTH_TRACE_SAMPLE_RATIO))
   const samplesPerPixel = lastIdx / Math.max(1, columns - 1)
-  const halfFootprint = Math.min(4, samplesPerPixel * 0.5)
-  let prevX = labelW
+  const halfFootprint = samplesPerPixel * 0.5
+  let prevX = labelW - offsetX
   let prevY = cy - data[0] * pxPerUv
 
   ctx.moveTo(prevX, prevY)
 
   for (let col = 1; col < columns; col++) {
     const ratio = col / (columns - 1)
-    const x = labelW + ratio * plotW
-    const y = cy - displayFilteredValueAt(data, ratio * lastIdx, halfFootprint) * pxPerUv
+    const x = labelW + ratio * plotW - offsetX
+    const y = cy - averagedValueAt(data, ratio * lastIdx, halfFootprint) * pxPerUv
+    // A midpoint quadratic keeps adjacent resampled points tangent to one
+    // another. Straight segments make tiny bucket changes look like a jiggle
+    // while the live window advances.
     ctx.quadraticCurveTo(prevX, prevY, (prevX + x) / 2, (prevY + y) / 2)
     prevX = x
     prevY = y
   }
 
-  const endX = labelW + plotW
+  const endX = labelW + plotW - offsetX
   const endY = cy - data[lastIdx] * pxPerUv
   ctx.quadraticCurveTo(prevX, prevY, (prevX + endX) / 2, (prevY + endY) / 2)
   ctx.lineTo(endX, endY)
 }
 
-function drawSignalPathFast(ctx, data, labelW, plotW, cy, pxPerUv) {
+function drawSignalPathFast(ctx, data, labelW, plotW, cy, pxPerUv, offsetX = 0) {
   const nPts = data.length
 
   ctx.beginPath()
@@ -107,18 +118,18 @@ function drawSignalPathFast(ctx, data, labelW, plotW, cy, pxPerUv) {
 
   if (nPts <= plotW * SMOOTH_TRACE_SAMPLE_RATIO) {
     if (nPts === 1) {
-      ctx.moveTo(labelW, cy - data[0] * pxPerUv)
+      ctx.moveTo(labelW - offsetX, cy - data[0] * pxPerUv)
       return
     }
 
-    drawSmoothedSamplePath(ctx, data, labelW, plotW, cy, pxPerUv)
+    drawSmoothedSamplePath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX)
     return
   }
 
   // Dense live traces shimmer if each frame re-buckets moving samples into
   // min/max columns. Sampling one interpolated point per CSS pixel keeps the
   // path stable while capping work to the visible canvas width.
-  drawPixelSampledPath(ctx, data, labelW, plotW, cy, pxPerUv)
+  drawPixelSampledPath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX)
 }
 
 function hasActiveFilter(filterConfig) {
@@ -131,10 +142,10 @@ function visibleData(ch) {
   return start > 0 ? data?.subarray(start) : data
 }
 
-function filteredVisibleData(ch, filterConfig) {
+function filteredVisibleData(ch, filterConfig, workspace) {
   if (!ch.data?.length) return ch.data
 
-  const filtered = applyFilterChain(ch.data, SAMPLE_RATE, filterConfig)
+  const filtered = applyFilterChain(ch.data, SAMPLE_RATE, filterConfig, workspace)
   const start = ch.visibleStartIndex ?? 0
   return start > 0 ? filtered.subarray(start) : filtered
 }
@@ -209,6 +220,7 @@ export default function EEGViewer({
   annotations = EMPTY_ARRAY,
   eventHighlight = null,
   windowStart = 0,
+  sampleOffset = 0,
   onAnnotate = null,
   onHoverChannel = null,
   theme = 'midnight',
@@ -233,11 +245,13 @@ export default function EEGViewer({
   chainGap = 0,
   verticalPadding = 0,
 }) {
+  const accessibilityDescriptionId = useId()
   const canvasRef = useRef(null)
   const dprRef = useRef(Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DPR))
   const hoverRef = useRef({ x: null, ch: null })
   const rafRef = useRef(null)
   const lastReportedHoverRef = useRef(null)
+  const filterWorkspacesRef = useRef([])
 
   const th = useMemo(
     () => ({ ...getViewerTheme(theme), ...(themeOverrides ?? {}) }),
@@ -246,18 +260,25 @@ export default function EEGViewer({
 
   const filteredChannels = useMemo(() => {
     if (!hasActiveFilter(filterConfig)) {
-      return channels.map(ch => ({
-        ...ch,
-        data: visibleData(ch),
-      }))
+      const alreadyVisible = channels.every(ch => !ch.visibleStartIndex)
+      if (alreadyVisible) return channels
+      return channels.map(ch => ({ ...ch, data: visibleData(ch) }))
     }
-    return channels.map(ch => ({
+    return channels.map((ch, idx) => ({
       ...ch,
-      data: filteredVisibleData(ch, filterConfig),
+      data: filteredVisibleData(
+        ch,
+        filterConfig,
+        filterWorkspacesRef.current[idx] ??= {}
+      ),
     }))
   }, [channels, filterConfig])
 
   const channelStats = useMemo(() => {
+    if (scaleMode === 'sensitivity' && !showChannelAmplitudes) {
+      return { channelMax: EMPTY_ARRAY, globalMax: 1 }
+    }
+
     const channelMax = filteredChannels.map(ch => {
       if (!ch.data?.length) return 1
       let max = 0
@@ -272,7 +293,7 @@ export default function EEGViewer({
       channelMax,
       globalMax: channelMax.reduce((max, value) => Math.max(max, value), 1),
     }
-  }, [filteredChannels])
+  }, [filteredChannels, scaleMode, showChannelAmplitudes])
 
   const highlightedSet = useMemo(
     () => new Set(highlightedChannels ?? EMPTY_ARRAY),
@@ -536,7 +557,16 @@ export default function EEGViewer({
         ctx.shadowColor = isHovered ? th.glowHover : traceColor
         ctx.shadowBlur = isHovered ? th.glowBlur * 1.4 : isHighlighted ? th.glowBlur : th.glowBlur * 0.7
       }
-      drawSignalPathFast(ctx, data, labelW, plotW, cy, pxPerUvFor(idx) * displayPolarity)
+      const offsetX = sampleOffset * plotW / Math.max(1, data.length - 1)
+      drawSignalPathFast(
+        ctx,
+        data,
+        labelW,
+        plotW,
+        cy,
+        pxPerUvFor(idx) * displayPolarity,
+        offsetX
+      )
       ctx.stroke()
       ctx.shadowBlur = 0
     })
@@ -612,6 +642,7 @@ export default function EEGViewer({
     leftLabelWidth,
     polarity,
     scaleMode,
+    sampleOffset,
     sensitivity,
     showCalibration,
     showChannelAmplitudes,
@@ -632,7 +663,7 @@ export default function EEGViewer({
     })
   }, [draw])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     draw()
   }, [draw])
 
@@ -700,16 +731,39 @@ export default function EEGViewer({
     onAnnotate(windowStart + relTime, filteredChannels[chIdx]?.label ?? '')
   }
 
+  function handleKeyDown(e) {
+    if (!onAnnotate || (e.key !== 'Enter' && e.key !== ' ')) return
+    e.preventDefault()
+    const duration = timeAxis[timeAxis.length - 1] || 10
+    const middleChannel = filteredChannels[Math.floor(filteredChannels.length / 2)]
+    onAnnotate(windowStart + duration / 2, middleChannel?.label ?? '')
+  }
+
+  const accessibilityLabel = onAnnotate
+    ? `EEG trace with ${filteredChannels.length} channels. Press Enter or Space to annotate the centre of the visible trace.`
+    : `EEG trace with ${filteredChannels.length} channels.`
+
   return (
     <div className={`relative overflow-hidden ${className}`}>
+      <p id={accessibilityDescriptionId} className="sr-only">
+        Synthetic educational EEG display. Channel labels: {filteredChannels.map(channel => channel.label).join(', ') || 'none'}.
+      </p>
       <canvas
         ref={canvasRef}
+        role={onAnnotate ? 'button' : 'img'}
+        aria-label={accessibilityLabel}
+        aria-describedby={accessibilityDescriptionId}
+        tabIndex={onAnnotate ? 0 : undefined}
+        aria-keyshortcuts={onAnnotate ? 'Enter Space' : undefined}
         className="w-full block"
         style={{ imageRendering: 'auto', cursor: onAnnotate ? 'crosshair' : 'default' }}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         onClick={handleClick}
-      />
+        onKeyDown={handleKeyDown}
+      >
+        {accessibilityLabel}
+      </canvas>
     </div>
   )
 }

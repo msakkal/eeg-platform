@@ -9,6 +9,7 @@ import {
 } from '../src/engine/signalGenerator.js'
 import { createEngineForPattern } from '../src/engine/streaming.js'
 import { computePSD, computeSpectrogram, bandPower, computeBandPowers, EEG_BANDS } from '../src/engine/fft.js'
+import { applyFilterChain, getCachedFilterSOS } from '../src/engine/filters.js'
 import { SANDBOX_PATTERN_IDS } from '../src/engine/patterns.js'
 import { generateDemoTrace, WAVEFORM_PATTERNS } from '../src/engine/waveforms.js'
 
@@ -46,6 +47,24 @@ describe('generateMultiChannelEEG', () => {
         }
       }
     }
+  }, 10000)
+
+  it('renders BIRDs as a brief focal temporal rhythmic run', () => {
+    const eeg = generateMultiChannelEEG({
+      duration: 4,
+      pattern: 'birds',
+      eyesClosed: true,
+      noiseLevel: 0.05,
+      seed: 2026,
+    })
+    const start = Math.round(0.9 * eeg.sampleRate)
+    const end = Math.round(2.8 * eeg.sampleRate)
+    const rms = values => Math.sqrt(values.reduce((sum, value) => sum + value * value, 0) / values.length)
+    const temporalRms = rms(Array.from(eeg.channels.T7.slice(start, end)))
+    const occipitalRms = rms(Array.from(eeg.channels.O2.slice(start, end)))
+
+    expect(temporalRms).toBeGreaterThan(occipitalRms * 1.35)
+    expect(WAVEFORM_PATTERNS.birds.duration).toContain('< 10 s')
   })
 
   it('is reproducible when a seed is supplied', () => {
@@ -369,12 +388,15 @@ describe('createEngineForPattern', () => {
     normal_awake: { mode: 'normal_awake', overlays: [] },
     fast_alpha_variant: { mode: 'fast_alpha_variant', overlays: [] },
     mu_rhythm: { mode: 'mu_rhythm', overlays: ['MuRhythmEventOverlay'] },
+    central_midline_theta: { mode: 'normal_awake', overlays: ['CentralMidlineThetaOverlay'] },
     lambda_waves: { mode: 'normal_awake', overlays: ['LambdaWavesOverlay'] },
     rmtd: { mode: 'rmtd', overlays: ['RhythmicMidtemporalThetaOverlay'] },
     wicket_rhythm: { mode: 'wicket_rhythm', overlays: ['WicketRhythmOverlay'] },
     sreda: { mode: 'normal_drowsy', overlays: ['SredaOverlay'] },
     small_sharp_spikes: { mode: 'normal_drowsy', overlays: ['SmallSharpSpikesOverlay'] },
     phantom_spike_wave: { mode: 'normal_drowsy', overlays: ['PhantomSpikeWaveOverlay'] },
+    positive_spikes_14_6: { mode: 'normal_drowsy', overlays: ['PositiveSpikes146Overlay'] },
+    posterior_slow_waves_youth: { mode: 'normal_awake', overlays: ['PosteriorSlowWavesYouthOverlay'] },
     normal_drowsy: { mode: 'normal_drowsy', overlays: ['SlowRovingEyeMovementOverlay', 'N1SleepGraphoelementsOverlay', 'SmallSharpSpikesOverlay'] },
     normal_sleep: { mode: 'normal_sleep', overlays: ['N2SleepGraphoelementsOverlay', 'SmallSharpSpikesOverlay'] },
     normal_rem: { mode: 'normal_rem', overlays: ['RapidEyeMovementOverlay'] },
@@ -384,6 +406,7 @@ describe('createEngineForPattern', () => {
     polyspike_jme: { mode: 'normal_awake', overlays: ['PolyspikeJmeOverlay'] },
     centrotemporal_spikes: { mode: 'normal_drowsy', overlays: ['CentrotemporalSpikesOverlay'] },
     temporal_sharps: { mode: 'normal_drowsy', overlays: ['TemporalSharpsOverlay'] },
+    birds: { mode: 'normal_drowsy', overlays: ['BirdsOverlay'] },
     hypsarrhythmia: { mode: 'normal_sleep', overlays: ['HypsarrhythmiaOverlay'] },
     photoparoxysmal: { mode: 'normal_awake', overlays: ['PhotoparoxysmalOverlay'] },
     gpds: { mode: 'diffuse_slowing', overlays: ['GpdsOverlay'] },
@@ -701,6 +724,35 @@ describe('createEngineForPattern', () => {
     expect(posteriorPeak).toBeLessThanOrEqual(11)
   })
 
+  it('renders central midline theta as a Cz-maximal 4–7 Hz run', () => {
+    const engine = createEngineForPattern('central_midline_theta', {
+      eyesClosed: true,
+      blinksEnabled: false,
+      noiseLevel: 0,
+      seed: 727,
+    })
+    const window = engine.fillWindow(9)
+    const event = engine.getEventsSince(0).find(({ type }) => type === 'central_midline_theta')
+    expect(event).toBeTruthy()
+    expect(event.durationS).toBeGreaterThanOrEqual(3.2)
+    expect(event.durationS).toBeLessThanOrEqual(5.5)
+
+    const powerAt = label => {
+      const { freqs, psd } = computePSD(window[label], SAMPLE_RATE, { dbScale: false })
+      return bandPower(freqs, psd, 4, 7.2)
+    }
+    const czPower = powerAt('Cz')
+    const adjacentPower = Math.max(powerAt('Fz'), powerAt('Pz'))
+    const lateralPower = Math.max(powerAt('T7'), powerAt('T8'), powerAt('C3'), powerAt('C4'))
+    expect(czPower).toBeGreaterThan(adjacentPower * 1.35)
+    expect(czPower).toBeGreaterThan(lateralPower * 3)
+
+    const demo = generateDemoTrace('central_midline_theta')
+    expect(demo).toHaveLength(3 * SAMPLE_RATE)
+    expect(WAVEFORM_PATTERNS.central_midline_theta.location).toContain('Cz')
+    expect(WAVEFORM_PATTERNS.central_midline_theta.pathological).toBe(false)
+  })
+
   it('renders wicket rhythm as a benign arciform temporal run', () => {
     const engine = createEngineForPattern('wicket_rhythm', {
       eyesClosed: true,
@@ -897,6 +949,138 @@ describe('makeTimeAxis', () => {
   })
 })
 
+describe('filter validation', () => {
+  const signal = Float32Array.from({ length: 512 }, (_, i) =>
+    Math.sin((2 * Math.PI * 10 * i) / SAMPLE_RATE),
+  )
+
+  it('reuses caller-provided filter buffers without changing the result', () => {
+    const config = { hp: 0.5, lp: 70, notch: 50 }
+    const expected = applyFilterChain(signal, SAMPLE_RATE, config)
+    const workspace = {}
+    const first = applyFilterChain(signal, SAMPLE_RATE, config, workspace)
+    const firstBufferA = workspace.bufA
+    const second = applyFilterChain(signal, SAMPLE_RATE, config, workspace)
+
+    expect(workspace.bufA).toBe(firstBufferA)
+    expect(second).toBe(first)
+    expect(Array.from(second)).toEqual(Array.from(expected))
+  })
+
+  it('can reuse caller-provided streaming output buffers', () => {
+    const engine = createEngineForPattern('normal_awake', { seed: 1234 })
+    const target = engine.fillWindow(4 / SAMPLE_RATE)
+    const fp1Buffer = target.Fp1
+    const reused = engine.fillWindow(4 / SAMPLE_RATE, target)
+
+    expect(reused).toBe(target)
+    expect(reused.Fp1).toBe(fp1Buffer)
+    expect(reused.Fp1).toHaveLength(4)
+    expect(Array.from(reused.Fp1).every(Number.isFinite)).toBe(true)
+  })
+
+  it('fails safely when a cutoff reaches or exceeds Nyquist', () => {
+    for (const config of [{ lp: 128 }, { hp: 200 }, { notch: 128 }]) {
+      const filtered = applyFilterChain(signal, SAMPLE_RATE, config)
+      expect(filtered).toBe(signal)
+      expect(Array.from(filtered).every(Number.isFinite)).toBe(true)
+    }
+  }, 10000)
+
+  it('renders 14 and 6 Hz positive spikes as brief posterior-temporal drowsy bursts', () => {
+    const engine = createEngineForPattern('positive_spikes_14_6', {
+      eyesClosed: true,
+      blinksEnabled: false,
+      noiseLevel: 0,
+      seed: 146,
+    })
+    const window = engine.fillWindow(10)
+    const events = engine.getEventsSince(0).filter(({ type }) => type === 'positive_spikes_14_6')
+
+    expect(events.length).toBeGreaterThanOrEqual(4)
+    expect(events.some(({ detail }) => detail.includes('14.'))).toBe(true)
+    expect(events.some(({ detail }) => detail.includes('6.'))).toBe(true)
+    expect(events.every(({ durationS }) => durationS >= 0.5 && durationS <= 1)).toBe(true)
+
+    const posteriorTemporal = computePSD(window.T7, SAMPLE_RATE, { dbScale: false })
+    const frontal = computePSD(window.Fz, SAMPLE_RATE, { dbScale: false })
+    expect(bandPower(posteriorTemporal.freqs, posteriorTemporal.psd, 5.5, 6.7) +
+      bandPower(posteriorTemporal.freqs, posteriorTemporal.psd, 13.2, 14.8))
+      .toBeGreaterThan(
+        bandPower(frontal.freqs, frontal.psd, 5.5, 6.7) +
+        bandPower(frontal.freqs, frontal.psd, 13.2, 14.8),
+      )
+    expect(WAVEFORM_PATTERNS.positive_spikes_14_6.pathological).toBe(false)
+    expect(WAVEFORM_PATTERNS.positive_spikes_14_6.location).toContain('Posterior temporal')
+  })
+
+  it('renders posterior slow waves of youth as benign bilateral occipital delta with preserved alpha', () => {
+    const engine = createEngineForPattern('posterior_slow_waves_youth', {
+      eyesClosed: true,
+      blinksEnabled: false,
+      noiseLevel: 0,
+      seed: 202608,
+    })
+    const window = engine.fillWindow(10)
+    const events = engine.getEventsSince(0).filter(({ type }) => type === 'posterior_slow_waves_youth')
+
+    expect(events.length).toBeGreaterThanOrEqual(3)
+    expect(events.every(({ durationS }) => durationS >= 0.78 && durationS <= 1.5)).toBe(true)
+
+    const occipital = computePSD(window.O1, SAMPLE_RATE, { dbScale: false })
+    const frontal = computePSD(window.Fz, SAMPLE_RATE, { dbScale: false })
+    expect(bandPower(occipital.freqs, occipital.psd, 2, 4))
+      .toBeGreaterThan(bandPower(frontal.freqs, frontal.psd, 2, 4) * 5)
+    expect(bandPower(occipital.freqs, occipital.psd, 8, 13)).toBeGreaterThan(0)
+    const rightOccipital = computePSD(window.O2, SAMPLE_RATE, { dbScale: false })
+    const leftDelta = bandPower(occipital.freqs, occipital.psd, 2, 4)
+    const rightDelta = bandPower(rightOccipital.freqs, rightOccipital.psd, 2, 4)
+    expect(rightDelta / leftDelta).toBeGreaterThan(0.6)
+    expect(rightDelta / leftDelta).toBeLessThan(1.4)
+    expect(WAVEFORM_PATTERNS.posterior_slow_waves_youth.pathological).toBe(false)
+    expect(WAVEFORM_PATTERNS.posterior_slow_waves_youth.location).toContain('O1/O2')
+  })
+
+  it('attenuates posterior slow waves of youth with eye opening', () => {
+    const options = { blinksEnabled: false, noiseLevel: 0, seed: 202608 }
+    const closed = createEngineForPattern('posterior_slow_waves_youth', { ...options, eyesClosed: true }).fillWindow(10)
+    const open = createEngineForPattern('posterior_slow_waves_youth', { ...options, eyesClosed: false }).fillWindow(10)
+    const closedPsd = computePSD(closed.O1, SAMPLE_RATE, { dbScale: false })
+    const openPsd = computePSD(open.O1, SAMPLE_RATE, { dbScale: false })
+    expect(bandPower(closedPsd.freqs, closedPsd.psd, 2, 4))
+      .toBeGreaterThan(bandPower(openPsd.freqs, openPsd.psd, 2, 4) * 3)
+  })
+
+  it('fails safely when the high-pass cutoff is not below the low-pass cutoff', () => {
+    expect(applyFilterChain(signal, SAMPLE_RATE, { hp: 70, lp: 35 })).toBe(signal)
+  })
+
+  it('does not design a section from an invalid cutoff', () => {
+    expect(getCachedFilterSOS('lp', 200, SAMPLE_RATE)).toEqual([])
+  })
+})
+
+describe('streaming blink rate', () => {
+  function blinkCount(rate) {
+    const engine = createEngineForPattern('normal_awake', {
+      eyesClosed: false,
+      blinksEnabled: true,
+      blinkRate: rate,
+      seed: 2026,
+    })
+    engine.fillWindow(30)
+    return engine.getEventsSince(0).filter(event => event.type === 'blink').length
+  }
+
+  it('disables spontaneous blinks at zero blinks per minute', () => {
+    expect(blinkCount(0)).toBe(0)
+  })
+
+  it('uses the configured blink rate', () => {
+    expect(blinkCount(30)).toBeGreaterThan(blinkCount(6))
+  })
+})
+
 describe('computePSD', () => {
   it('detects the dominant frequency of a clean sine wave', () => {
     const sampleRate = 256
@@ -938,6 +1122,15 @@ describe('computePSD', () => {
     const offPeakIdx = psd.findIndex((_, i) => i > 20 && i !== peakIdx)
     expect(psd[offPeakIdx]).toBeLessThan(psd[peakIdx])
   })
+
+  it('preserves sine-wave power after Hann window normalization', () => {
+    const sr = 256
+    const signal = Float32Array.from({ length: sr * 2 }, (_, i) =>
+      Math.sin((2 * Math.PI * 10 * i) / sr),
+    )
+    const { freqs, psd } = computePSD(signal, sr, { nfft: 512, dbScale: false })
+    expect(bandPower(freqs, psd, 0, sr / 2)).toBeCloseTo(0.5, 2)
+  })
 })
 
 describe('bandPower', () => {
@@ -970,6 +1163,12 @@ describe('bandPower', () => {
     const { freqs, psd } = computePSD(signal, sr, { nfft: 512, window: 'rect', dbScale: false })
     const bands = computeBandPowers(freqs, psd)
     expect(bands.alpha).toBeGreaterThan(0.95)
+  })
+
+  it('integrates power rather than averaging bins', () => {
+    const freqs = Float64Array.from([0, 1, 2, 3, 4])
+    const psd = Float64Array.from([2, 2, 2, 2, 2])
+    expect(bandPower(freqs, psd, 1, 4)).toBeCloseTo(6)
   })
 })
 

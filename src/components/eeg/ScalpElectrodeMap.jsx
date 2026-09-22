@@ -54,6 +54,8 @@ export default function ScalpElectrodeMap({
       height={S}
       className={className}
       style={{ display: 'block' }}
+      role="img"
+      aria-label="Top-down 10-20 scalp electrode map"
     >
       <defs>
         {/* Glow filter for highlighted electrodes */}

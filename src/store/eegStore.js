@@ -32,10 +32,12 @@ export const useEEGStore = create((set, _get) => ({
   setPattern:      (p)       => set(s => ({
     pattern: p,
     activationProcedure: isActivationProcedureAllowed(s.activationProcedure, p) ? s.activationProcedure : 'none',
-    ...(['mu_rhythm', 'lambda_waves', 'phantom_spike_wave'].includes(p) ? { montageId: 'average_reference' } : {}),
+    ...(['mu_rhythm', 'central_midline_theta', 'lambda_waves', 'phantom_spike_wave', 'posterior_slow_waves_youth'].includes(p) ? { montageId: 'average_reference' } : {}),
+    ...(p === 'positive_spikes_14_6' ? { montageId: 'referential_ears', eyesClosed: true } : {}),
     ...(p === 'lambda_waves' ? { eyesClosed: false } : {}),
     ...(['rmtd', 'wicket_rhythm'].includes(p) ? { montageId: 'longitudinal_bipolar', eyesClosed: true } : {}),
     ...(p === 'phantom_spike_wave' ? { eyesClosed: true } : {}),
+    ...(p === 'posterior_slow_waves_youth' ? { eyesClosed: true } : {}),
     ...(p === 'normal_rem' ? { eyesClosed: true } : {}),
   })),
   setAmplitude:    (v)       => set(s => ({ amplitude: resolveValue(v, s.amplitude) })),

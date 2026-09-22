@@ -475,6 +475,21 @@ export const WAVEFORM_PATTERNS = {
     color:       '#7FFFD4',
   },
 
+  central_midline_theta: {
+    id:          'central_midline_theta',
+    group:       'background',
+    label:       'Central Midline Theta Rhythm',
+    freq:        '4–7 Hz',
+    duration:    'Runs usually lasting at least 3 seconds',
+    amplitude:   'Often >50 µV at the vertex',
+    morphology:  'Monomorphic, rhythmic theta in smooth or mildly arciform spindle-like runs without ictal evolution',
+    location:    'Midline central/parietal vertex, usually maximal at Cz with spread to Pz and Fz',
+    reactivity:  'May occur during wakefulness or drowsiness; no consistent clinical correlate',
+    clinical:    'Uncommon midline theta pattern also called the Ciganek rhythm; interpret in clinical context and distinguish from evolving ictal theta',
+    pathological: false,
+    color:       '#60A5FA',
+  },
+
   wicket_rhythm: {
     id:          'wicket_rhythm',
     group:       'background',
@@ -535,6 +550,36 @@ export const WAVEFORM_PATTERNS = {
     color:       '#B7E4C7',
   },
 
+  positive_spikes_14_6: {
+    id:          'positive_spikes_14_6',
+    group:       'background',
+    label:       '14 & 6 Hz Positive Spikes',
+    freq:        '14 Hz or 6 Hz',
+    duration:    'Brief bursts lasting approximately 0.5–1 s',
+    amplitude:   'Usually < 75 µV',
+    morphology:  'Arciform or comb-shaped trains with pointed surface-positive peaks',
+    location:    'Posterior temporal maximum, unilateral or independently bilateral, with parietal and occipital spread',
+    reactivity:  'Occurs during drowsiness and light sleep; best seen with long interelectrode distances or an ear reference',
+    clinical:    'Benign age-related variant seen predominantly in children and adolescents; it has no epileptogenic significance.',
+    pathological: false,
+    color:       '#A8E6CF',
+  },
+
+  posterior_slow_waves_youth: {
+    id:          'posterior_slow_waves_youth',
+    group:       'background',
+    label:       'Posterior Slow Waves of Youth',
+    freq:        '2–4 Hz slow waves, intermixed with an age-appropriate posterior dominant rhythm',
+    duration:    'Isolated waves or brief, non-evolving runs',
+    amplitude:   'Usually 50–150 µV; may exceed the surrounding posterior rhythm',
+    morphology:  'Bilateral synchronous, rounded delta waves that may be notched by superimposed posterior alpha',
+    location:    'Occipital maximum at O1/O2 with parietal spread and a steep posterior-to-anterior gradient',
+    reactivity:  'Seen during relaxed wakefulness with eyes closed and attenuates with eye opening along with the posterior rhythm',
+    clinical:    'Benign age-related variant of childhood and adolescence; symmetry, posterior restriction, preserved background, and lack of evolution distinguish it from pathologic slowing.',
+    pathological: false,
+    color:       '#74D3AE',
+  },
+
   // ── Sleep features ───────────────────────────────────────────────────────
   vertex_sharp_wave: {
     id:          'vertex_sharp_wave',
@@ -576,7 +621,7 @@ export const WAVEFORM_PATTERNS = {
     morphology:  'High-voltage biphasic complex: a well-delineated steep surface-negative sharp wave followed immediately by a broad positive slow component; may be followed by a spindle',
     location:    'Frontocentral maximum, usually Fz/Cz, with symmetric parasagittal spread',
     reactivity:  'Spontaneous or evoked by stimuli during N2',
-    clinical:    'Defining graphoelement of N2 sleep. Periodic K-complexes can resemble generalised periodic discharges if taken out of context.',
+    clinical:    'Defining graphoelement of N2 sleep. A benign mitten wave can arise when a spindle-related sharp component merges with a same-polarity slow wave. In contrast, dyshormia is an abnormal epileptiform spike or spike-wave discharge superimposed on or coupled to a K-complex. Periodic K-complexes can resemble generalised periodic discharges if taken out of context.',
     pathological: false,
     color:       '#9CC9FF',
   },
@@ -657,6 +702,21 @@ export const WAVEFORM_PATTERNS = {
     color:       '#FF4466',
   },
 
+  birds: {
+    id:          'birds',
+    group:       'epileptiform',
+    label:       'BIRDs',
+    freq:        '> 4 Hz (6 Hz shown)',
+    duration:    '0.5 to < 10 s',
+    amplitude:   'Variable',
+    morphology:  'Abrupt, sharply contoured rhythmic run with at least six cycles (possible BIRDs example)',
+    location:    'Focal or generalised (left temporal example shown)',
+    reactivity:  'No definite clinical correlate by definition',
+    clinical:    'Strong marker of electrographic seizure risk; prompts careful review and continued monitoring',
+    pathological: true,
+    color:       '#FF3D71',
+  },
+
   hypsarrhythmia: {
     id:          'hypsarrhythmia',
     group:       'epileptiform',
@@ -681,7 +741,7 @@ export const WAVEFORM_PATTERNS = {
     morphology:  'Three phases: small positive → large negative → large positive; blunt, not spiky',
     location:    'Generalised, bifrontal or bioccipital maximum; anterior-to-posterior (or reverse) lag',
     reactivity:  'Reactive to stimulation (may briefly attenuate or enhance)',
-    clinical:    'Classic for hepatic / uraemic / metabolic encephalopathy; also seen post-anoxic, septic, and CJD-related states',
+    clinical:    'Historically associated with toxic-metabolic encephalopathy, but not specific for a metabolic cause and not sufficient by itself to exclude seizure risk',
     pathological: true,
     color:       '#FFB347',
   },
@@ -986,6 +1046,78 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       }
       return sig
     }
+    case 'central_midline_theta': {
+      const sig = new Float32Array(nSamples)
+      addNoise(sig, 3)
+      addRhythm(sig, sampleRate, {
+        centerFreq: 10, bandwidthHz: 1.8, amplitude: 7, nComp: 2,
+        envFreq: 0.18, envFloor: 0.3,
+      })
+      const start = Math.round(0.10 * sampleRate)
+      const end = Math.round(2.95 * sampleRate)
+      const frequency = 5.7
+      for (let i = start; i < end; i++) {
+        const elapsed = (i - start) / sampleRate
+        const remaining = (end - i) / sampleRate
+        const envelope = Math.min(1, elapsed / 0.42, remaining / 0.42)
+        const phase = 2 * Math.PI * frequency * elapsed
+        sig[i] += 68 * Math.max(0, envelope) * (
+          Math.sin(phase) + 0.10 * Math.sin(2 * phase + 0.35)
+        )
+      }
+      return sig
+    }
+    case 'positive_spikes_14_6': {
+      const sig = new Float32Array(nSamples)
+      addNoise(sig, 3)
+      addRhythm(sig, sampleRate, {
+        centerFreq: 5.4, bandwidthHz: 1.8, amplitude: 12, nComp: 3,
+        envFreq: 0.12, envFloor: 0.4,
+      })
+      ;[
+        { start: 0.35, duration: 0.68, hz: 14.1, amp: 48 },
+        { start: 1.62, duration: 0.82, hz: 6.05, amp: 54 },
+      ].forEach(run => {
+        const start = Math.round(run.start * sampleRate)
+        const end = Math.min(nSamples, Math.round((run.start + run.duration) * sampleRate))
+        const period = 1 / run.hz
+        for (let i = start; i < end; i++) {
+          const elapsed = (i - start) / sampleRate
+          const remaining = (end - i) / sampleRate
+          const envelope = Math.min(1, elapsed / 0.08, remaining / 0.10)
+          const phase = (elapsed % period) / period
+          const arch = -0.38 * run.amp * Math.sin(Math.PI * phase)
+          const positiveSpike = run.amp * Math.exp(-Math.pow((phase - 0.72) / 0.075, 2) * 4.2)
+          sig[i] += Math.max(0, envelope) * (arch + positiveSpike)
+        }
+      })
+      return sig
+    }
+    case 'posterior_slow_waves_youth': {
+      const sig = new Float32Array(nSamples)
+      addNoise(sig, 3)
+      addRhythm(sig, sampleRate, {
+        centerFreq: 9.4, bandwidthHz: 1.2, amplitude: 42, nComp: 3,
+        envFreq: 0.2, envFloor: 0.42,
+      })
+      ;[
+        { start: 0.34, duration: 0.92, hz: 2.7, amp: 102 },
+        { start: 1.65, duration: 1.02, hz: 3.1, amp: 118 },
+      ].forEach(run => {
+        const start = Math.round(run.start * sampleRate)
+        const end = Math.min(nSamples, Math.round((run.start + run.duration) * sampleRate))
+        for (let i = start; i < end; i++) {
+          const elapsed = (i - start) / sampleRate
+          const remaining = (end - i) / sampleRate
+          const envelope = Math.min(1, elapsed / 0.16, remaining / 0.20)
+          const phase = 2 * Math.PI * run.hz * elapsed
+          const roundedDelta = Math.sin(phase) + 0.12 * Math.sin(2 * phase + 0.35)
+          const alphaNotch = 0.16 * Math.sin(2 * Math.PI * 9.4 * elapsed + 0.5)
+          sig[i] += Math.max(0, envelope) * run.amp * (roundedDelta + alphaNotch)
+        }
+      })
+      return sig
+    }
 
     // ── Sleep features ───────────────────────────────────────────────────
     case 'vertex_sharp_wave': {
@@ -1126,6 +1258,24 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
           slowDuration: Math.min(0.28, 0.65 / freq),
         })
         t += (1 / freq) * (0.94 + random() * 0.12)
+      }
+      return sig
+    }
+    case 'birds': {
+      const sig = new Float32Array(nSamples)
+      addNoise(sig, 3)
+      addRhythm(sig, sampleRate, { centerFreq: 7, amplitude: 12, nComp: 2, envFloor: 0.45 })
+      const startSec = 0.55
+      const endSec = 2.35
+      const hz = 6.2
+      for (let i = Math.round(startSec * sampleRate); i < Math.round(endSec * sampleRate); i++) {
+        const elapsed = i / sampleRate - startSec
+        const remaining = endSec - i / sampleRate
+        const env = Math.min(1, elapsed / 0.08, remaining / 0.10)
+        const phase = TWO_PI * hz * elapsed
+        sig[i] += 72 * Math.max(0, env) * (
+          Math.sin(phase) + 0.38 * Math.sin(2 * phase + 0.35) + 0.12 * Math.sin(3 * phase - 0.2)
+        )
       }
       return sig
     }

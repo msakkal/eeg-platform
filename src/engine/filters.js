@@ -19,13 +19,19 @@
  * @param {number[][]}   sos     - array of [b0,b1,b2,a1,a2]
  * @returns {Float32Array}       - filtered signal (new array)
  */
-export function applyBiquadSOS(signal, sos) {
+export function applyBiquadSOS(signal, sos, workspace = null) {
   const len = signal.length
   if (!sos.length) return signal
-  // Double-buffer: use two pre-allocated arrays swapped between sections
-  // to avoid one Float32Array allocation per biquad stage.
-  const bufA = new Float32Array(len)
-  const bufB = new Float32Array(len)
+  // Callers processing live frames can retain this workspace and avoid two
+  // large typed-array allocations per channel on every repaint.
+  let bufA = workspace?.bufA
+  let bufB = workspace?.bufB
+  if (!bufA || bufA.length !== len) bufA = new Float32Array(len)
+  if (!bufB || bufB.length !== len) bufB = new Float32Array(len)
+  if (workspace) {
+    workspace.bufA = bufA
+    workspace.bufB = bufB
+  }
   let src = signal
   let dst = bufA
   for (const [b0, b1, b2, a1, a2] of sos) {
@@ -37,12 +43,10 @@ export function applyBiquadSOS(signal, sos) {
       z2 = b2 * xn - a2 * yn
       dst[n] = yn
     }
-    // Swap buffers for next section
     src = dst
     dst = src === bufA ? bufB : bufA
   }
-  // Return the buffer that holds the final output
-  return src === signal ? bufA : src
+  return src
 }
 
 // ─── Coefficient Design ───────────────────────────────────────────────────────
@@ -103,6 +107,10 @@ export function notchFilter(fn, fs, Q = 30) {
 
 // ─── Filter Chain ─────────────────────────────────────────────────────────────
 
+function cutoffIsInvalid(value, nyquist) {
+  return value !== null && (!Number.isFinite(value) || value <= 0 || value >= nyquist)
+}
+
 /**
  * Preset filter configurations used in the UI.
  */
@@ -125,23 +133,40 @@ export const FILTER_PRESETS = {
  *   notch:    notch frequency Hz (null = skip)
  * @returns {Float32Array} filtered signal
  */
-export function applyFilterChain(signal, fs = 256, cfg = {}) {
+export function applyFilterChain(signal, fs = 256, cfg = {}, workspace = null) {
   const { hp = null, lp = null, notch = null } = cfg
-  const sos = []
 
-  if (hp   !== null && hp   > 0)     sos.push(...getCachedFilterSOS('hp',    hp,    fs))
-  if (lp   !== null && lp   > 0)     sos.push(...getCachedFilterSOS('lp',    lp,    fs))
-  if (notch !== null && notch > 0)   sos.push(...getCachedFilterSOS('notch', notch, fs))
+  if (!Number.isFinite(fs) || fs <= 0) return signal
+  const nyquist = fs / 2
+  const hasInvalidCutoff = cutoffIsInvalid(hp, nyquist) ||
+    cutoffIsInvalid(lp, nyquist) ||
+    cutoffIsInvalid(notch, nyquist)
+  if (hasInvalidCutoff || (hp !== null && lp !== null && hp >= lp)) return signal
 
-  return sos.length > 0 ? applyBiquadSOS(signal, sos) : signal
+  let cachedChain = _chainCache.get(cfg)
+  if (!cachedChain || cachedChain.fs !== fs || cachedChain.hp !== hp || cachedChain.lp !== lp || cachedChain.notch !== notch) {
+    const sections = []
+    if (hp   !== null && hp   > 0)   sections.push(...getCachedFilterSOS('hp',    hp,    fs))
+    if (lp   !== null && lp   > 0)   sections.push(...getCachedFilterSOS('lp',    lp,    fs))
+    if (notch !== null && notch > 0) sections.push(...getCachedFilterSOS('notch', notch, fs))
+    cachedChain = { fs, hp, lp, notch, sections }
+    _chainCache.set(cfg, cachedChain)
+  }
+  const sos = cachedChain.sections
+
+  return sos.length > 0 ? applyBiquadSOS(signal, sos, workspace) : signal
 }
 
 // ─── Coefficient Cache ────────────────────────────────────────────────────────
 // Pre-compute SOS for common settings to avoid recalculating every frame.
 
 const _cache = new Map()
+const _chainCache = new WeakMap()
 
 export function getCachedFilterSOS(type, freq, fs) {
+  if (!Number.isFinite(fs) || fs <= 0 || !Number.isFinite(freq) || freq <= 0 || freq >= fs / 2) {
+    return []
+  }
   const key = `${type}:${freq}:${fs}`
   if (_cache.has(key)) return _cache.get(key)
   let sos

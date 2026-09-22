@@ -11,20 +11,22 @@ const NAV_ITEMS = [
   { path: '/waveforms',  key: 'waveforms', icon: WaveIcon   },
   { path: '/findings',   key: 'findings',  icon: ScopeIcon  },
   { path: '/artifacts',  key: 'artifacts', icon: ArtifactIcon },
+  { path: '/reading-algorithm', key: 'reading_algorithm', icon: AlgorithmIcon },
+  { path: '/report-builder', key: 'report_builder', icon: ReportIcon },
   { path: '/sandbox',    key: 'sandbox',   icon: BeakerIcon },
   { path: '/quiz',       key: 'quiz',      icon: QuizIcon   },
 ]
 
 export default function Layout({ children }) {
-  const { t }    = useTranslation()
+  const { t, i18n } = useTranslation()
   const { dir }  = useI18n()
   const location = useLocation()
 
   // Apply RTL direction to the document
   useEffect(() => {
     document.documentElement.dir  = dir
-    document.documentElement.lang = document.documentElement.lang || 'en'
-  }, [dir])
+    document.documentElement.lang = i18n.language?.split('-')[0] || 'en'
+  }, [dir, i18n.language])
 
   return (
     <div className="flex h-screen overflow-hidden bg-eeg-bg" dir={dir}>
@@ -168,6 +170,24 @@ function ArtifactIcon({ className }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path d="M2 12h3l2-7 3 14 3-10 2 5 2-3 2 3h3"/>
       <circle cx="18" cy="6" r="2" fill="currentColor" opacity="0.6"/>
+    </svg>
+  )
+}
+
+function AlgorithmIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="5" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="5" cy="19" r="2"/>
+      <path d="M9 5h10M9 12h10M9 19h10"/>
+    </svg>
+  )
+}
+
+function ReportIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4M9 12h7M9 16h7"/>
+      <path d="M9 8h2"/>
     </svg>
   )
 }

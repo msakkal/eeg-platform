@@ -7,7 +7,9 @@
     "findings": "Hallazgos clínicos",
     "sandbox": "Laboratorio",
     "quiz": "Quiz",
-    "artifacts": "Artefactos"
+    "artifacts": "Artefactos",
+    "reading_algorithm": "Lectura del EEG",
+    "report_builder": "Informe EEG"
   },
   "home": {
     "hero_tag": "Educación EEG Interactiva",
@@ -92,6 +94,14 @@
   },
   "quiz": {
     "subtitle": "Pon a prueba tus conocimientos sobre patrones EEG, montajes y hallazgos clínicos."
+  },
+  "reading_algorithm": {
+    "title": "Algoritmo de lectura del EEG",
+    "subtitle": "Un método sistemático paso a paso para leer e informar un EEG."
+  },
+  "report_builder": {
+    "title": "Generador de informes EEG",
+    "subtitle": "Selecciona los hallazgos observados y genera un borrador estructurado del informe EEG."
   },
   "artifacts": {
     "subtitle": "Artefactos EEG comunes con ejemplos multicanal y guías de identificación.",

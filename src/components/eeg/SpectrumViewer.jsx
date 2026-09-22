@@ -220,11 +220,17 @@ export default function SpectrumViewer({
         <span className="text-xs font-mono text-eeg-muted uppercase tracking-widest">Power Spectrum</span>
         <span className="text-xs font-mono" style={{ color }}>0–{maxFreq} Hz</span>
       </div>
-      <canvas ref={psdCanvasRef} className="w-full block rounded" />
+      <canvas ref={psdCanvasRef} className="w-full block rounded" role="img"
+        aria-label={`EEG power spectrum from 0 to ${maxFreq} hertz`}>
+        EEG power spectrum from 0 to {maxFreq} hertz.
+      </canvas>
       <div className="flex items-center justify-between px-1 mt-1">
         <span className="text-xs font-mono text-eeg-muted uppercase tracking-widest">Band Power</span>
       </div>
-      <canvas ref={barCanvasRef} className="w-full block rounded" />
+      <canvas ref={barCanvasRef} className="w-full block rounded" role="img"
+        aria-label="Relative EEG band power for delta, theta, alpha, beta, and gamma bands">
+        Relative EEG band power for delta, theta, alpha, beta, and gamma bands.
+      </canvas>
     </div>
   )
 }

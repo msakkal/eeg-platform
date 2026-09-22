@@ -1253,6 +1253,17 @@ export function generateVentilatorArtifact() {
   const channels = DEMO_CHANNELS.map(label => {
     const data = bgChannel(N, ['delta', 'theta'], 28, 0.18, label)     // ICU background
     addElectrodeFieldToChannel(data, label, electrodeArtifacts)
+
+    // Ventilator movement may also shift the reference/body potential or move
+    // cable bundles together. Model that after montage subtraction so the
+    // synchronous component remains visible throughout a bipolar montage.
+    // Modest channel-to-channel variation avoids an implausible exact copy.
+    const isMidline = label.includes('z')
+    const isCentral = hasRegion(label, 'central')
+    const diffuseGain = (isMidline ? 1.12 : isCentral ? 1.04 : 0.88)
+      * (0.92 + Math.random() * 0.16)
+    addSlowCycle(data, period, 42 * diffuseGain, 0, 'ventilator')
+
     return { label, data }
   })
 
@@ -1753,17 +1764,17 @@ export const ARTIFACT_CATALOGUE = [
     frequency:  '0.15–0.35 Hz (ventilator rate)',
     amplitude:  '30–150 µV',
     morphology: 'Stereotyped cycle: fast inspiratory rise → plateau → linear expiratory fall — repeated identically',
-    distribution: 'Generalised and diffuse. Often identical across all channels — this generalised uniformity is a clue.',
+    distribution: 'Generalised and diffuse, with synchronous deflections across most channels. Amplitude and polarity may vary with the reference, montage, and which leads move.',
     generator:  generateVentilatorArtifact,
     mechanism:  'Mechanical ventilators physically inflate and deflate the thorax, creating rhythmic changes in: (1) electrode lead tension via body movement; (2) thoracic impedance affecting reference electrode potentials; (3) direct EMG activation of respiratory muscles. All produce stereotyped deflections exactly synchronous with the ventilator cycle.',
     identification: [
       'Regular rate matching the ventilator rate (check ventilator settings)',
       'Stereotyped and identical waveform in every cycle',
-      'Often identical morphology across ALL channels simultaneously',
+      'Synchronous morphology across most channels, with modest amplitude or polarity differences',
       'Disappears when ventilator is briefly disconnected (if safe to do so)',
       'Can be confirmed against ventilator waveform or bedside monitor',
     ],
-    differentiation: 'Critical to distinguish from generalised periodic discharges (GPDs), which are one of the most important patterns in ICU EEG. GPDs can occur at similar rates. GPDs show more variable inter-discharge intervals and evolve in morphology; ventilator artifact is perfectly regular and stereotyped.',
+    differentiation: 'Critical to distinguish from generalised periodic discharges (GPDs), which are one of the most important patterns in ICU EEG. GPDs can occur at similar rates. Ventilator artifact remains precisely time-locked to the respiratory cycle and is highly stereotyped; GPDs have a physiologic scalp field and may vary or evolve independently of ventilation.',
     reduction: [
       'Annotate ventilator rate in the EEG report header',
       'Briefly disconnect ventilator (only if clinically safe) to confirm artifact vs cerebral',

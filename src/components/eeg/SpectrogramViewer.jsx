@@ -143,7 +143,10 @@ export default function SpectrogramViewer({
         <span className="text-xs font-mono text-eeg-muted uppercase tracking-widest">Spectrogram</span>
         <span className="text-xs font-mono text-eeg-muted">{label}</span>
       </div>
-      <canvas ref={canvasRef} className="w-full block rounded" />
+      <canvas ref={canvasRef} className="w-full block rounded" role="img"
+        aria-label={`EEG spectrogram for ${label || 'selected channel'}`}>
+        Time-frequency spectrogram for {label || 'the selected EEG channel'}.
+      </canvas>
     </div>
   )
 }

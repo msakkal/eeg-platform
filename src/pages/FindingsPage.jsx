@@ -84,13 +84,14 @@ const FINDINGS = [
     title: 'Stage N2 Sleep',
     sandboxPattern: 'normal_sleep',
     waveformId: 'sleep_spindle',
-    tags: ['Spindles', 'K-complexes', 'N2'],
+    tags: ['Spindles', 'K-complexes', 'Mitten waves', 'N2'],
     color: '#00D4FF',
     description:
       'The defining features of N2 sleep are sleep spindles (12–14 Hz, 0.5–2 s, waxing/waning) and K-complexes (sharp negative followed by a broad positive slow wave, often followed by a spindle). Background is mixed theta/delta.',
     keyFeatures: [
       'Sleep spindles 12–14 Hz, maximal Cz/Fz, 0.5–2 s duration',
       'K-complexes: biphasic ≥ 500 ms, Fz/Cz maximum, often evoked by arousing stimuli',
+      'Mitten waves: benign frontocentral NREM variants in which a spindle-related sharp component merges with a same-polarity slow wave, creating a mitten-like outline',
       'Vertex sharp waves may persist from N1',
       'Background slowed into theta–delta',
       'POSTS often present posteriorly',
@@ -101,10 +102,12 @@ const FINDINGS = [
     ],
     differential: [
       'Periodic K-complexes can mimic generalised periodic discharges (GPDs) when viewed out of context',
+      'Dyshormia (an epileptiform K-complex): a spike or spike-wave discharge superimposed on or coupled to a K-complex; classically associated with genetic generalised epilepsy, although focal spikes may rarely couple to K-complexes',
       'Sleep spindles vs beta activity: spindles are state-dependent and waxing/waning',
     ],
     pitfalls: [
       'Spindle coma can occur after brainstem injury — morphologically similar but continuous and non-reactive',
+      'Do not mistake a benign mitten wave for dyshormia: mitten components share the same polarity and are less sharply contoured, whereas dyshormia contains a distinct epileptiform spike or spike-wave discharge',
     ],
   },
 
@@ -235,6 +238,35 @@ const FINDINGS = [
     ],
     pitfalls: [
       'Easily mistaken for sharp waves due to the arched morphology — the reactivity test is key',
+    ],
+  },
+
+  {
+    id: 'central_midline_theta',
+    category: 'benign_variant',
+    title: 'Central Midline Theta Rhythm (Ciganek Rhythm)',
+    sandboxPattern: 'central_midline_theta',
+    waveformId: 'central_midline_theta',
+    tags: ['Cz maximum', '4–7 Hz', 'Midline', 'Non-evolving'],
+    color: '#60A5FA',
+    description:
+      'Central midline theta is an uncommon rhythmic 4–7 Hz pattern occurring in runs over the central and parietal vertex, usually maximal at Cz. It may appear during wakefulness or drowsiness and should remain stable in frequency and field rather than evolving like an ictal discharge.',
+    keyFeatures: [
+      'Rhythmic, relatively monomorphic 4–7 Hz activity lasting at least several seconds',
+      'Maximum at Cz, commonly extending to Pz and Fz with weaker lateral central spread',
+      'Smooth or mildly arciform spindle-like morphology',
+      'No progressive frequency change, spatial spread, or clinical correlate',
+    ],
+    etiology: [
+      'Uncommon midline theta pattern historically called the Ciganek rhythm; clinical significance depends on context',
+    ],
+    differential: [
+      'RMTD — maximal at T7/T8 rather than the vertex and associated with drowsiness',
+      'Frontal midline theta during cognitive effort — frontocentral and task-related',
+      'Ictal theta — shows evolution in frequency, morphology, amplitude, or spatial distribution',
+    ],
+    pitfalls: [
+      'Do not confuse a stable Cz-maximal run with RMTD or diagnose seizure activity from rhythmicity alone',
     ],
   },
 
@@ -424,28 +456,68 @@ const FINDINGS = [
   },
 
   {
-    id: 'benign_variants_misc',
+    id: 'positive_spikes_14_6',
     category: 'benign_variant',
-    title: 'Miscellaneous Benign Variants',
-    waveformId: 'sharp_wave',
-    tags: ['14&6', 'Not epileptiform'],
-    color: '#B0E0FF',
+    title: '14 & 6 Hz Positive Spikes',
+    sandboxPattern: 'positive_spikes_14_6',
+    waveformId: 'positive_spikes_14_6',
+    tags: ['14 Hz', '6 Hz', 'Positive spikes', 'Benign variant'],
+    color: '#A8E6CF',
     description:
-      'Several benign variants are important primarily because they are commonly misread as epileptiform. The 14-and-6 positive-spike pattern is summarized here; wicket rhythms, SREDA, and small sharp spikes of sleep are covered separately in this section.',
+      '14- and 6-Hz positive spikes are brief, comb-shaped bursts seen mainly during drowsiness and light sleep in children and adolescents. Despite their pointed components, they are a benign age-related variant without epileptogenic significance.',
     keyFeatures: [
-      'Wicket: 6–11 Hz arciform temporal waves; single wave can look sharp but has no after-going slow wave',
-      '14-and-6 Hz positive spikes: posterior-temporal, pediatric, drowsiness',
+      'Arciform or comb-shaped trains at approximately 14 Hz or 6 Hz, usually lasting 0.5–1 second',
+      'Pointed component is surface-positive, unlike the usual surface-negative interictal epileptiform spike',
+      'Maximal over the posterior temporal regions, often with shifting unilateral or bilateral predominance',
+      'Best demonstrated with long interelectrode distances or an ipsilateral/linked-ear reference',
     ],
-    etiology: ['All are normal variants; no treatment indicated'],
+    etiology: ['Normal age-related EEG variant, most prevalent in childhood and adolescence; no treatment indicated'],
     differential: [
-      'Temporal interictal epileptiform discharges (true sharps have after-going slow wave and a plausible field)',
+      'Temporal interictal epileptiform discharges — usually surface-negative, less regularly repetitive, and may have an after-going slow wave',
+      'Wicket rhythm — broader 6–11 Hz arciform temporal waves without the characteristic alternating pointed positive components',
     ],
     pitfalls: [
-      'These variants collectively drive a large fraction of EEG false-positive reports — always require a clear field and after-going slow wave before calling a discharge epileptiform',
+      'Polarity can be misread if the montage and display convention are not checked',
+      'Do not diagnose epilepsy from this pattern in isolation; correlate any separate abnormal discharges independently',
     ],
   },
 
   // ══════════════ EPILEPTIFORM ════════════════════════════════════════════
+  // Benign developmental variant
+  {
+    id: 'posterior_slow_waves_youth',
+    category: 'benign_variant',
+    title: 'Posterior Slow Waves of Youth',
+    sandboxPattern: 'posterior_slow_waves_youth',
+    waveformId: 'posterior_slow_waves_youth',
+    tags: ['PSWY', 'Childhood', 'Posterior delta', 'Benign variant'],
+    color: '#74D3AE',
+    description:
+      'Posterior slow waves of youth (PSWY) are a benign developmental EEG pattern seen in healthy children and adolescents during relaxed wakefulness. They consist of intermittent high-amplitude delta waves intermixed with the posterior dominant rhythm, with a symmetric occipital maximum and preserved background organization.',
+    keyFeatures: [
+      'Rounded 2–4 Hz slow waves occurring singly or in brief, non-evolving runs',
+      'Bilateral synchronous and broadly symmetric, maximal at O1/O2 with parietal spread',
+      'Intermixed with an age-appropriate posterior dominant rhythm; superimposed alpha may notch the slow waves',
+      'Most apparent during relaxed eyes-closed wakefulness and attenuates with eye opening',
+      'Normal anterior–posterior organization remains preserved without persistent focal or generalized slowing',
+    ],
+    etiology: [
+      'Normal maturational variant of childhood and adolescence that typically disappears with increasing age',
+      'No treatment or additional investigation is indicated when the morphology, field, background, and clinical context are typical',
+    ],
+    differential: [
+      'Occipital intermittent rhythmic delta activity (OIRDA) — usually more sustained, monomorphic, and rhythmic, and may be associated with generalized epilepsy',
+      'Focal posterior slowing — commonly persistent or irregular, asymmetric, and associated with disruption of the local background',
+      'Generalized slowing — lacks the steep posterior maximum and is accompanied by impaired background organization',
+      'Occipital epileptiform discharges — sharper, usually surface-negative, and may have a clearer spike field or after-going slow wave',
+    ],
+    pitfalls: [
+      'Do not label all posterior delta in a young patient as benign; confirm symmetry, intermittency, preserved posterior rhythm, and eye-opening attenuation',
+      'Marked asymmetry, persistence with eyes open, background disruption, evolution, or an abnormal neurologic context should prompt consideration of pathologic slowing',
+    ],
+  },
+
+  // EPILEPTIFORM
   {
     id: 'spike_wave_3hz',
     category: 'epileptiform',
@@ -579,6 +651,39 @@ const FINDINGS = [
   },
 
   {
+    id: 'birds',
+    category: 'epileptiform',
+    title: 'Brief Potentially Ictal Rhythmic Discharges (BIRDs)',
+    sandboxPattern: 'birds',
+    waveformId: 'birds',
+    tags: ['BIRDs', 'Critical care EEG', 'Seizure risk', '> 4 Hz'],
+    color: '#FF3D71',
+    description:
+      'BIRDs are focal or generalised rhythmic EEG activity above 4 Hz that lasts from 0.5 to less than 10 seconds, is not a known normal or benign variant, is not part of burst-suppression or burst-attenuation, and has no definite clinical correlate. The pattern must evolve, match the morphology and location of the patient’s interictal discharges or seizures, or be sharply contoured. This simulation shows the sharply contoured “possible BIRDs” form.',
+    keyFeatures: [
+      'Rhythmic activity > 4 Hz with at least six consecutive cycles',
+      'Duration 0.5 to < 10 seconds',
+      'May be focal or generalised; this simulation uses a left temporal maximum',
+      'Definite BIRDs evolve or match the patient’s interictal discharges/seizures; sharply contoured runs without either feature are possible BIRDs',
+      'No definite time-locked clinical correlate',
+    ],
+    etiology: [
+      'Acute structural brain injury, including stroke, haemorrhage, tumour, or encephalitis',
+      'Epilepsy and recent or impending electrographic seizures',
+      'Critical illness with an increased seizure burden',
+    ],
+    differential: [
+      'Electrographic seizure — lasts at least 10 seconds under ACNS duration criteria or has a qualifying clinical correlate',
+      'Brief rhythmic artefact — lacks a physiologic field and may be time-locked to movement, muscle, pulse, or equipment',
+      'Benign rhythmic variants such as RMTD or wicket rhythm — characteristic morphology, state dependence, and lack of ictal significance',
+    ],
+    pitfalls: [
+      'BIRDs are a risk marker, not automatically an electrographic seizure; review the full recording for seizures and evolution',
+      'Confirm a cerebral field and exclude artefact before reporting the pattern',
+    ],
+  },
+
+  {
     id: 'hypsarrhythmia',
     category: 'epileptiform',
     title: 'Hypsarrhythmia (West Syndrome)',
@@ -644,7 +749,7 @@ const FINDINGS = [
     tags: ['ICU', 'Encephalopathy', 'Ictal-interictal continuum'],
     color: '#FFA552',
     description:
-      'Bilaterally synchronous periodic sharp-wave or sharp-and-slow-wave complexes at regular 0.5–2 Hz intervals. Non-specific but always pathological. In the ICU setting they sit on the ictal-interictal continuum and may warrant treatment depending on background, evolution, and clinical context.',
+      'Bilaterally synchronous periodic sharp-wave or sharp-and-slow-wave complexes at regular 0.5–2 Hz intervals. They are non-specific and usually occur with acute or diffuse cerebral dysfunction. Whether GPDs qualify for the ictal-interictal continuum depends on frequency, duration, fluctuation, plus modifiers, and clinical context.',
     keyFeatures: [
       'Regular inter-discharge interval 0.5–2 s',
       'Stereotyped sharp-and-slow-wave morphology',
@@ -663,7 +768,7 @@ const FINDINGS = [
       'Generalised periodic K-complexes in sleep (context-dependent)',
     ],
     prognosis:
-      'Post-anoxic GPDs on a suppressed background carry poor neurologic prognosis. Evolution, frequency increase, or clinical change → treat as NCSE.',
+      'Post-anoxic GPDs on a suppressed background can carry poor neurologic prognosis. Definite evolution lasting at least 10 seconds, or epileptiform discharges averaging above 2.5 Hz for at least 10 seconds, may meet ACNS electrographic-seizure criteria; management still requires the full EEG and clinical context.',
   },
 
   {
@@ -705,12 +810,12 @@ const FINDINGS = [
     tags: ['Metabolic', 'Hepatic', 'Uremic'],
     color: '#FFB347',
     description:
-      'A specific morphology within the GPD family: three phases (small positive → large negative → large positive), blunt rather than spiky, at 1–2 Hz. Classically described in hepatic and uraemic encephalopathy but also seen post-anoxic, septic, and in CJD. Anterior-to-posterior (or reverse) propagation lag is characteristic.',
+      '“Triphasic morphology” is an ACNS modifier that may be applied to periodic discharges or spike-and-wave patterns. It is often seen near 1–2 Hz and has historical associations with toxic-metabolic encephalopathy, but neither the morphology nor an anterior-posterior lag is specific for a metabolic cause or excludes seizure risk.',
     keyFeatures: [
-      'Three-phase morphology, blunt (non-sharp)',
+      'Typically three phases, with polarity determined in a referential montage',
       'Frequency 1–2 Hz, generalised',
       'Bifrontal or bioccipital maximum',
-      'Short anterior-posterior phase lag across the scalp',
+      'An anterior-posterior or posterior-anterior lag may be present',
       'Reactive: may briefly attenuate or enhance with stimulation',
     ],
     etiology: [
@@ -721,8 +826,8 @@ const FINDINGS = [
       'CJD (with other periodic features)',
     ],
     differential: [
-      'Non-convulsive status epilepticus — triphasic waves can evolve into NCSE; a benzodiazepine challenge (with EEG) can help differentiate',
-      'Other GPDs — triphasics have distinctive blunt 3-phase morphology',
+      'Other GPDs or an electrographic seizure — morphology alone does not decide; assess frequency, evolution, modifiers, clinical correlation, and response when treatment is clinically indicated',
+      'Other GPDs without triphasic morphology',
     ],
     pitfalls: [
       'Overdiagnosis of NCSE when triphasics are the true pattern can lead to unnecessary anaesthetic coma',

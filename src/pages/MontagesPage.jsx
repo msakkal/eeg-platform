@@ -262,6 +262,7 @@ export default function MontagesPage() {
     montageId: selectedId,
     pattern: 'normal_awake',
     noiseLevel: 0.15,
+    filterConfig,
     isPlaying: false,
     eyesClosed: true,
     blinksEnabled: true,

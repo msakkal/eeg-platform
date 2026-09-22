@@ -7,7 +7,9 @@
     "findings": "Résultats cliniques",
     "sandbox": "Bac à sable",
     "quiz": "Quiz",
-    "artifacts": "Artefacts"
+    "artifacts": "Artefacts",
+    "reading_algorithm": "Lecture de l’EEG",
+    "report_builder": "Rapport EEG"
   },
   "home": {
     "hero_tag": "Éducation EEG Interactive",
@@ -92,6 +94,14 @@
   },
   "quiz": {
     "subtitle": "Testez vos connaissances sur les patterns EEG, montages et résultats cliniques."
+  },
+  "reading_algorithm": {
+    "title": "Algorithme de lecture de l’EEG",
+    "subtitle": "Une méthode systématique, étape par étape, pour lire et interpréter un EEG."
+  },
+  "report_builder": {
+    "title": "Générateur de rapport EEG",
+    "subtitle": "Sélectionnez les observations et générez un projet de rapport EEG structuré."
   },
   "artifacts": {
     "subtitle": "Artefacts EEG courants avec exemples multicanaux et guides d'identification.",
