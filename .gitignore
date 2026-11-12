@@ -10,4 +10,13 @@ coverage/
 *.log
 
 .claude/worktrees/
+.claude/
+.kilo/
+.agents/
+.codex/
+.aws/
+.vscode/
+*.code-workspace
+scripts/out/
 .DS_Store
+Thumbs.db

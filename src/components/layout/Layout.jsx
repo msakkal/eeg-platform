@@ -1,6 +1,6 @@
 import { translateDisplay as localize, useLocale } from '@/i18n/localize'
 import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
-import React, { useEffect, startTransition } from 'react'
+import { useEffect, startTransition } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useI18n } from '@/hooks/useI18n'

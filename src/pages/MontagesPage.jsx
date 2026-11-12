@@ -1,6 +1,6 @@
 import { translateDisplay as localize, useLocale } from '@/i18n/localize'
 import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
-import React, { useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useTranslation }        from 'react-i18next'
 import { MONTAGES, MONTAGE_LIST } from '@/engine/montages'
 import { useEEGSignal }           from '@/hooks/useEEGSignal'

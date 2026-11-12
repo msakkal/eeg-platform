@@ -11,7 +11,6 @@
     "build": "vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:old": "vitest run tests/engine.test.js",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
     "check:translations": "node scripts/check-translations.mjs",

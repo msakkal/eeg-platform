@@ -1077,7 +1077,7 @@ export function generateMultiChannelEEG(options = {}) {
     for (const { start, len } of burstSchedule) burstMask.fill(1, start, Math.min(nSamples, start + len))
   }
 
-  function burstSuppressionChannel(label) {
+  function burstSuppressionChannel(_label) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude * 0.15, noiseLevel)     // suppression floor
     const ampJitter = 0.92 + random() * 0.16        // ±8% per channel
@@ -1181,7 +1181,7 @@ export function generateMultiChannelEEG(options = {}) {
   }
 
   // Electrocerebral inactivity — near-flat, residual technical noise only.
-  function ecsChannel(label) {
+  function ecsChannel(_label) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude * 0.04, noiseLevel * 0.3)
     return sig
@@ -1221,7 +1221,7 @@ export function generateMultiChannelEEG(options = {}) {
   // Hypsarrhythmia: chaotic very-high-amplitude disorganized slowing with
   // asynchronous multifocal sharp waves. Each channel gets its own random
   // morphology — that's the whole point (asynchrony).
-  function hypsarrhythmiaChannel(label) {
+  function hypsarrhythmiaChannel(_label) {
     const sig = new Float32Array(nSamples)
     addPinkNoiseTo(sig, amplitude * 2.0, noiseLevel * 1.3)
     addModulatedBand(sig, sampleRate, {

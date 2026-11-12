@@ -1151,7 +1151,6 @@ function FrequencyBandsDiagram() {
       {/* Sample waveforms below each band */}
       {localize(bands.map((b, i) => {
         const x = padX + i * bandWidth
-        const cx = x + bandWidth / 2
         // Sample waveform: a short snippet of sine at b.freq over a fixed time window
         const waveW = bandWidth - 16
         const waveCenterY = 180

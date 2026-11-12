@@ -1,6 +1,6 @@
 import { translateDisplay as localize, useLocale } from '@/i18n/localize'
 import { getChannelThemeColor, getViewerTheme } from '@/engine/viewerThemes'
-import React, { useMemo } from 'react'
+import { useMemo } from 'react'
 
 /**
  * ScalpElectrodeMap

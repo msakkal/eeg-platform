@@ -1,5 +1,4 @@
 import { translateDisplay as localize, useLocale } from '@/i18n/localize'
-import React from 'react'
 import { SANDBOX_SHORTCUTS } from '@/hooks/useKeyboardShortcuts'
 
 export default function KeyboardHelpOverlay({ onClose }) {

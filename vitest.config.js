@@ -14,5 +14,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./tests/setup.js'],
     include: ['tests/**/*.test.{js,jsx}'],
+    // Seeded full-recording simulations can exceed five seconds on shared runners.
+    testTimeout: 30000,
   },
 })

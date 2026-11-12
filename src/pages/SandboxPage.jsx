@@ -2,7 +2,7 @@ import { translateDisplay as localize, useLocale } from '@/i18n/localize'
 import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
 import { DEFAULT_FOCAL_SEIZURE_OPTIONS, DEFAULT_SEIZURE_DURATION, fitFocalOptionsToDuration } from '@/engine/seizures'
 import { ADDITIONAL_PATTERN_ANALYSIS } from '@/content/additionalFindings'
-import React, { memo, useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { memo, useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ATLAS_BY_ID, atlasPath } from '@/content/atlas'
 import { useTranslation }         from 'react-i18next'
@@ -225,7 +225,7 @@ export default function SandboxPage() {
   const effectiveBlinksEnabled = !eyesClosed && blinksEnabled
 
   // ── Annotations ─────────────────────────────────────────────────────────
-  const { annotations, addAnnotation, removeAnnotation, clearAnnotations } = useAnnotationStore()
+  const { annotations, addAnnotation, clearAnnotations } = useAnnotationStore()
 
   // ── Signal ──────────────────────────────────────────────────────────────
   const { channels, timeAxis, isReady, isUpdating, events, windowStart, sampleOffset, activeSeizure, startSeizure, stopSeizure } = useEEGSignal({

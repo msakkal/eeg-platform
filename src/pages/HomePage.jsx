@@ -1,5 +1,4 @@
 import { translateDisplay as localize, useLocale } from '@/i18n/localize'
-import React from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import AnimatedTrace from '@/components/ui/AnimatedTrace'

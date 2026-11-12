@@ -1,5 +1,4 @@
 import { useLocale } from '@/i18n/localize'
-import React from 'react'
 import { useTranslation } from 'react-i18next'
 
 export default function LoadingScreen() {

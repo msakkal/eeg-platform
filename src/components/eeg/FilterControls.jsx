@@ -1,5 +1,5 @@
 import { translateDisplay as localize, useLocale } from '@/i18n/localize'
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { FILTER_PRESETS } from '@/engine/filters'
 
 /**

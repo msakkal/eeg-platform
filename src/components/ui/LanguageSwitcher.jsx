@@ -1,5 +1,5 @@
 import { translateDisplay as localize, useLocale } from '@/i18n/localize'
-import React, { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SUPPORTED_LANGUAGES } from '@/i18n/i18n'
 
