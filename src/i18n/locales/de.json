@@ -1,5 +1,6 @@
 {
   "nav": {
+    "atlas": "EEG-Atlas",
     "home": "Startseite",
     "concepts": "EEG-Konzepte",
     "montages": "Montagen",
@@ -9,11 +10,16 @@
     "quiz": "Quiz",
     "artifacts": "Artefakte",
     "reading_algorithm": "EEG-Auswertung",
-    "report_builder": "EEG-Bericht"
+    "report_builder": "EEG-Bericht",
+    "sidebar": "Navigationsleiste",
+    "main": "Hauptnavigation"
+  },
+  "atlas": {
+    "subtitle": "Wellenformen, Muster der gesamten Ableitung, klinischer Kontext und ähnliche Befunde in einem verknüpften Nachschlagewerk."
   },
   "home": {
     "hero_tag": "Interaktive EEG-Ausbildung",
-    "hero_title": "EEG-Interpretation Meistern",
+    "hero_title": "EEG-Interpretation meistern",
     "hero_subtitle": "Von den Grundlagen bis zu klinischen Befunden — lernen, interagieren und testen Sie Ihr Wissen mit einer vollständig interaktiven EEG-Simulationsplattform.",
     "cta_start": "Lernen beginnen",
     "cta_sandbox": "Sandkasten öffnen",
@@ -90,7 +96,8 @@
     "learn_more": "Mehr erfahren",
     "interactive": "Interaktiv",
     "loading": "Lädt…",
-    "language": "Sprache"
+    "language": "Sprache",
+    "skip_to_content": "Zum Hauptinhalt springen"
   },
   "quiz": {
     "subtitle": "Testen Sie Ihr Wissen über EEG-Muster, Montagen und klinische Befunde."

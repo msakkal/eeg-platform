@@ -1,3 +1,4 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
 import { useMemo, useState } from 'react'
 import {
   getQuizQuestions,
@@ -11,6 +12,7 @@ import { ELECTRODE_POSITIONS_2D, SELECTABLE_ELECTRODES } from '@/engine/propagat
 const PHASE = { SELECT: 'select', QUIZ: 'quiz', RESULTS: 'results' }
 
 export default function QuizPage() {
+  useLocale()
   const [phase,      setPhase]      = useState(PHASE.SELECT)
   const [section,    setSection]    = useState('mcq')
   const [moduleId,   setModuleId]   = useState('all')
@@ -85,12 +87,11 @@ export default function QuizPage() {
           />
         </div>
         <div className="px-8 py-3 flex items-center justify-between border-b border-eeg-border">
-          <span className="text-xs font-mono text-eeg-muted">
-            Question {current + 1} / {questions.length}
+          <span className="text-xs font-mono text-eeg-muted">{localize("Question ")}{localize(current + 1)} / {localize(questions.length)}
           </span>
           <div className="flex items-center gap-3">
             <DifficultyBadge level={q.difficulty} />
-            <span className="text-xs font-mono text-eeg-muted capitalize">{q.module}</span>
+            <span className="text-xs font-mono text-eeg-muted capitalize">{localize(q.module)}</span>
           </div>
         </div>
       </div>
@@ -103,10 +104,9 @@ export default function QuizPage() {
           {q.patternId && (
             <div className="card mb-6 overflow-hidden">
               <div className="px-4 py-2 border-b border-eeg-border flex items-center justify-between">
-                <span className="text-xs font-mono text-eeg-muted">EEG Trace — Identify this pattern</span>
+                <span className="text-xs font-mono text-eeg-muted">{localize("EEG Trace — Identify this pattern")}</span>
                 {revealed && (
-                  <span className="text-xs font-mono" style={{ color: '#00FFB0' }}>
-                    Pattern: {q.options.find(o => o.correct)?.text}
+                  <span className="text-xs font-mono" style={{ color: '#00FFB0' }}>{localize("Pattern: ")}{localize(q.options.find(o => o.correct)?.text)}
                   </span>
                 )}
               </div>
@@ -124,12 +124,12 @@ export default function QuizPage() {
 
           {/* Question text */}
           <p className="font-body text-eeg-text text-base leading-relaxed mb-6">
-            {q.question}
+            {localize(q.question)}
           </p>
 
           {/* Options */}
           <div className="space-y-2.5">
-            {q.options.map(opt => {
+            {localize(q.options.map(opt => {
               const isSelected = selectedOpt === opt.id
               const isCorrect  = opt.correct
               let style = 'border-eeg-border text-eeg-muted hover:border-eeg-muted hover:text-eeg-text'
@@ -142,7 +142,7 @@ export default function QuizPage() {
                   key={opt.id}
                   onClick={() => selectAnswer(q.id, opt.id)}
                   disabled={revealed}
-                  className={`w-full text-left flex items-start gap-3 px-4 py-3.5 rounded-xl border
+                  className={`w-full text-start flex items-start gap-3 px-4 py-3.5 rounded-xl border
                               transition-all duration-150 font-body text-sm ${style}
                               ${revealed ? 'cursor-default' : 'cursor-pointer'}`}
                 >
@@ -151,24 +151,24 @@ export default function QuizPage() {
                       borderColor: revealed ? (isCorrect ? '#22c55e' : isSelected ? '#ef4444' : '#1E2A40') : undefined,
                       background:  revealed && isCorrect ? '#22c55e22' : undefined,
                     }}>
-                    {opt.id.toUpperCase()}
+                    {localize(opt.id.toUpperCase())}
                   </span>
-                  <span className="flex-1">{opt.text}</span>
+                  <span className="flex-1">{localize(opt.text)}</span>
                   {revealed && isCorrect  && <span className="text-green-400 text-lg">✓</span>}
                   {revealed && isSelected && !isCorrect && <span className="text-red-400 text-lg">✗</span>}
                 </button>
               )
-            })}
+            }))}
           </div>
 
           {/* Explanation (revealed) */}
           {revealed && (
             <div className="mt-6 card p-5 border-l-4 animate-slide-up"
               style={{ borderLeftColor: answers[q.id] && q.options.find(o => o.id === answers[q.id])?.correct ? '#00FFB0' : '#FF6B35' }}>
-              <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">Explanation</p>
-              <p className="font-body text-sm text-eeg-text leading-relaxed">{q.explanation}</p>
+              <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">{localize("Explanation")}</p>
+              <p className="font-body text-sm text-eeg-text leading-relaxed">{localize(q.explanation)}</p>
               {q.reference && (
-                <p className="mt-2 text-xs font-mono text-eeg-muted">Ref: {q.reference}</p>
+                <p className="mt-2 text-xs font-mono text-eeg-muted">{localize("Ref: ")}{q.referenceUrl ? <a className="underline hover:text-eeg-accent" href={q.referenceUrl} target="_blank" rel="noreferrer">{localize(q.reference)}</a> : localize(q.reference)}</p>
               )}
             </div>
           )}
@@ -180,17 +180,13 @@ export default function QuizPage() {
                 onClick={confirmAnswer}
                 disabled={!selectedOpt}
                 className={`btn-primary disabled:opacity-40 disabled:cursor-not-allowed`}
-              >
-                Confirm Answer
-              </button>
+              >{localize("Confirm Answer")}</button>
             ) : (
               <button onClick={nextQuestion} className="btn-primary">
-                {current < questions.length - 1 ? 'Next Question →' : 'See Results'}
+                {localize(current < questions.length - 1 ? 'Next Question →' : 'See Results')}
               </button>
             )}
-            <button onClick={restartQuiz} className="btn-ghost text-xs">
-              Quit Quiz
-            </button>
+            <button onClick={restartQuiz} className="btn-ghost text-xs">{localize("Quit Quiz")}</button>
           </div>
 
         </div>
@@ -202,13 +198,12 @@ export default function QuizPage() {
 // ─── Quiz Selector ────────────────────────────────────────────────────────────
 
 function QuizSelector({ section, onSectionChange, moduleId, onModuleChange, onStart }) {
+  useLocale()
   return (
     <div className="flex-1 overflow-y-auto px-12 py-10">
-      <span className="label-tag mb-4 inline-block">Self Assessment</span>
-      <h1 className="section-title mb-2">EEG Quiz</h1>
-      <p className="font-body text-sm text-eeg-muted mb-8 max-w-lg">
-        Test your knowledge of EEG patterns, montages, and clinical findings. Questions include waveform identification from live-generated traces and clinical scenario reasoning.
-      </p>
+      <span className="label-tag mb-4 inline-block">{localize("Self Assessment")}</span>
+      <h1 className="section-title mb-2">{localize("EEG Quiz")}</h1>
+      <p className="font-body text-sm text-eeg-muted mb-8 max-w-lg">{localize("Test your knowledge of EEG patterns, montages, and clinical findings. Questions include waveform identification from live-generated traces and clinical scenario reasoning.")}</p>
 
       <div className="flex gap-2 mb-8 border-b border-eeg-border">
         {[
@@ -225,29 +220,29 @@ function QuizSelector({ section, onSectionChange, moduleId, onModuleChange, onSt
                 : 'border-transparent text-eeg-muted hover:text-eeg-text'
               }`}
           >
-            {tab.label}
+            {localize(tab.label)}
           </button>
         ))}
       </div>
 
       {section === 'mcq' && (
         <div className="max-w-lg">
-          <span className="label-tag mb-4 inline-block">MCQ Section</span>
-          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">Select Module</p>
+          <span className="label-tag mb-4 inline-block">{localize("MCQ Section")}</span>
+          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">{localize("Select Module")}</p>
           <div className="grid grid-cols-2 gap-2 mb-8">
             {Object.entries(QUIZ_MODULES).map(([id, mod]) => (
               <button
                 key={id}
                 onClick={() => onModuleChange(id)}
-                className={`text-left px-4 py-3.5 rounded-xl border transition-all text-sm
+                className={`text-start px-4 py-3.5 rounded-xl border transition-all text-sm
                   ${moduleId === id
                     ? 'border-eeg-accent bg-eeg-accent bg-opacity-10 text-eeg-text'
                     : 'border-eeg-border text-eeg-muted hover:border-eeg-muted hover:text-eeg-text'
                   }`}
               >
-                <span className="font-display font-semibold block">{mod.label}</span>
+                <span className="font-display font-semibold block">{localize(mod.label)}</span>
                 <span className="font-mono text-xs opacity-60">
-                  {mod.questions.length} question{mod.questions.length !== 1 ? 's' : ''}
+                  {localize(mod.questions.length)}{localize(" question")}{localize(mod.questions.length !== 1 ? 's' : '')}
                 </span>
               </button>
             ))}
@@ -258,14 +253,12 @@ function QuizSelector({ section, onSectionChange, moduleId, onModuleChange, onSt
               <span key={level} className="flex items-center gap-1.5 text-xs font-mono"
                 style={{ color }}>
                 <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-                {label}
+                {localize(label)}
               </span>
             ))}
           </div>
 
-          <button onClick={onStart} className="btn-primary text-base px-8 py-3">
-            Start Quiz →
-          </button>
+          <button onClick={onStart} className="btn-primary text-base px-8 py-3">{localize("Start Quiz →")}</button>
         </div>
       )}
       {section === 'placement' && <ElectrodePlacementSection />}
@@ -307,6 +300,7 @@ function shuffleElectrodes() {
 }
 
 function ElectrodePlacementSection() {
+  useLocale()
   const [trayOrder, setTrayOrder] = useState(() => shuffleElectrodes())
   const [placements, setPlacements] = useState({})
   const [selected, setSelected] = useState(null)
@@ -352,15 +346,15 @@ function ElectrodePlacementSection() {
 
   return (
     <div className="max-w-5xl">
-      <span className="label-tag mb-4 inline-block">Interactive Section</span>
+      <span className="label-tag mb-4 inline-block">{localize("Interactive Section")}</span>
       <div className="grid lg:grid-cols-[minmax(360px,520px)_minmax(280px,1fr)] gap-8 items-start">
         <div className="card p-5">
           <div className="flex items-center justify-between gap-4 mb-4">
             <div>
-              <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-1">10-20 Placement</p>
-              <h2 className="font-display text-xl font-bold text-eeg-text">Place the electrodes on the head</h2>
+              <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-1">{localize("10-20 Placement")}</p>
+              <h2 className="font-display text-xl font-bold text-eeg-text">{localize("Place the electrodes on the head")}</h2>
             </div>
-            <span className="font-mono text-xs text-eeg-muted">{placedCount} / {PLACEMENT_ELECTRODES.length}</span>
+            <span className="font-mono text-xs text-eeg-muted">{localize(placedCount)} / {localize(PLACEMENT_ELECTRODES.length)}</span>
           </div>
 
           <ElectrodePlacementMap
@@ -373,15 +367,14 @@ function ElectrodePlacementSection() {
 
         <div className="space-y-5">
           <div className="card p-5">
-            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">Electrode Tray</p>
+            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">{localize("Electrode Tray")}</p>
             <div className="min-h-[48px] mb-4">
               {selected ? (
-                <div className="px-3 py-2 rounded-lg border border-eeg-accent bg-eeg-accent bg-opacity-10 text-eeg-text text-sm font-mono inline-flex items-center gap-2">
-                  Selected: <strong>{selected}</strong>
+                <div className="px-3 py-2 rounded-lg border border-eeg-accent bg-eeg-accent bg-opacity-10 text-eeg-text text-sm font-mono inline-flex items-center gap-2">{localize("Selected: ")}<strong>{localize(selected)}</strong>
                   <button onClick={() => setSelected(null)} className="text-eeg-muted hover:text-eeg-text">×</button>
                 </div>
               ) : (
-                <p className="font-body text-sm text-eeg-muted">Choose a label, then click the matching target on the scalp map.</p>
+                <p className="font-body text-sm text-eeg-muted">{localize("Choose a label, then click the matching target on the scalp map.")}</p>
               )}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -397,46 +390,38 @@ function ElectrodePlacementSection() {
                       ? 'border-eeg-accent bg-eeg-accent bg-opacity-10 text-eeg-text'
                       : 'border-eeg-border text-eeg-muted hover:border-eeg-muted hover:text-eeg-text'
                     }`}
-                  title={PLACEMENT_LABELS[label]}
+                  title={localize(PLACEMENT_LABELS[label])}
                 >
-                  {label}
+                  {localize(label)}
                 </button>
               ))}
             </div>
           </div>
 
           <div className="card p-5">
-            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">Check Your Map</p>
+            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">{localize("Check Your Map")}</p>
             {checked ? (
-              <p className="font-body text-sm text-eeg-text mb-4">
-                You placed <span className="font-mono text-green-400">{correctCount}</span> of {PLACEMENT_ELECTRODES.length} electrodes correctly.
-              </p>
+              <p className="font-body text-sm text-eeg-text mb-4">{localize("You placed ")}<span className="font-mono text-green-400">{localize(correctCount)}</span>{localize(" of ")}{localize(PLACEMENT_ELECTRODES.length)}{localize(" electrodes correctly.")}</p>
             ) : (
-              <p className="font-body text-sm text-eeg-muted mb-4">
-                Filled targets can be clicked again to pick the label back up. Use the midline and left/right numbering to orient yourself.
-              </p>
+              <p className="font-body text-sm text-eeg-muted mb-4">{localize("Filled targets can be clicked again to pick the label back up. Use the midline and left/right numbering to orient yourself.")}</p>
             )}
             <div className="flex gap-3">
               <button
                 onClick={() => setChecked(true)}
                 disabled={!complete}
                 className="btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Check Placement
-              </button>
-              <button onClick={resetPlacement} className="btn-ghost text-xs">
-                Reset
-              </button>
+              >{localize("Check Placement")}</button>
+              <button onClick={resetPlacement} className="btn-ghost text-xs">{localize("Reset")}</button>
             </div>
           </div>
 
           {checked && correctCount < PLACEMENT_ELECTRODES.length && (
             <div className="card p-5 border-l-4 border-l-orange-500 animate-slide-up">
-              <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">Corrections</p>
+              <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">{localize("Corrections")}</p>
               <div className="grid grid-cols-2 gap-2">
                 {PLACEMENT_ELECTRODES.filter(label => placements[label] !== label).map(label => (
                   <p key={label} className="font-mono text-xs text-eeg-muted">
-                    {label}: {PLACEMENT_LABELS[label]}
+                    {localize(label)}: {localize(PLACEMENT_LABELS[label])}
                   </p>
                 ))}
               </div>
@@ -449,6 +434,7 @@ function ElectrodePlacementSection() {
 }
 
 function ElectrodePlacementMap({ placements, selected, checked, onPlace }) {
+  useLocale()
   const size = 480
   const cx = size / 2
   const cy = size / 2 + 8
@@ -456,11 +442,11 @@ function ElectrodePlacementMap({ placements, selected, checked, onPlace }) {
   const toSvg = point => ({ x: cx + point.x * r, y: cy - point.y * r })
 
   return (
-    <svg
+    <svg dir="ltr"
       viewBox={`0 0 ${size} ${size}`}
       className="w-full h-auto"
       role="img"
-      aria-label="Interactive 10-20 electrode placement map"
+      aria-label={localize("Interactive 10-20 electrode placement map")}
     >
       <circle cx={cx} cy={cy} r={r} fill="#0D1424" stroke="#1E2A40" strokeWidth="2" />
       <path
@@ -475,7 +461,7 @@ function ElectrodePlacementMap({ placements, selected, checked, onPlace }) {
       <line x1={cx} y1={cy - r + 6} x2={cx} y2={cy + r - 6} stroke="#1E2A40" strokeWidth="1" strokeDasharray="5,7" />
       <line x1={cx - r + 6} y1={cy} x2={cx + r - 6} y2={cy} stroke="#1E2A40" strokeWidth="1" strokeDasharray="5,7" />
 
-      {PLACEMENT_ELECTRODES.map(label => {
+      {localize(PLACEMENT_ELECTRODES.map(label => {
         const point = ELECTRODE_POSITIONS_2D[label]
         const { x, y } = toSvg(point)
         const placed = placements[label]
@@ -489,7 +475,7 @@ function ElectrodePlacementMap({ placements, selected, checked, onPlace }) {
             <g
               role="button"
               tabIndex={0}
-              aria-label={`Place ${selected ?? 'electrode'} at ${label}`}
+              aria-label={localize(`Place ${selected ?? 'electrode'} at ${label}`)}
               onClick={() => onPlace(label)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
@@ -516,7 +502,7 @@ function ElectrodePlacementMap({ placements, selected, checked, onPlace }) {
                 fontWeight="bold"
                 fill={placed ? '#E6EDF7' : '#5A6A82'}
               >
-                {placed ?? '?'}
+                {localize(placed ?? '?')}
               </text>
             </g>
             {checked && isWrong && (
@@ -529,12 +515,12 @@ function ElectrodePlacementMap({ placements, selected, checked, onPlace }) {
                 fill="#22c55e"
                 fontWeight="bold"
               >
-                {label}
+                {localize(label)}
               </text>
             )}
           </g>
         )
-      })}
+      }))}
     </svg>
   )
 }
@@ -639,6 +625,7 @@ function horizontalAxisPercent(coords) {
 }
 
 function SkullPlanesPlacementSection() {
+  useLocale()
   const [positions, setPositions] = useState(() => makeInitialSkullPositions())
   const [selected, setSelected] = useState('Cz')
   const [checked, setChecked] = useState(false)
@@ -664,26 +651,20 @@ function SkullPlanesPlacementSection() {
 
   return (
     <div className="max-w-7xl">
-      <span className="label-tag mb-4 inline-block">Interactive Section</span>
+      <span className="label-tag mb-4 inline-block">{localize("Interactive Section")}</span>
       <div className="flex flex-col gap-5">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
           <div>
-            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-1">Top-Down Skull Placement</p>
-            <h2 className="font-display text-2xl font-bold text-eeg-text">Drag electrodes onto the scalp grid</h2>
-            <p className="font-body text-sm text-eeg-muted mt-2 max-w-3xl">
-              The scalp is shown from above with spherical sagittal and coronal guides. Sagittal runs 0% at the nasion to 100% at the inion; coronal runs 0% left to 100% right.
-            </p>
+            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-1">{localize("Top-Down Skull Placement")}</p>
+            <h2 className="font-display text-2xl font-bold text-eeg-text">{localize("Drag electrodes onto the scalp grid")}</h2>
+            <p className="font-body text-sm text-eeg-muted mt-2 max-w-3xl">{localize("The scalp is shown from above with spherical sagittal and coronal guides. Sagittal runs 0% at the nasion to 100% at the inion; coronal runs 0% left to 100% right.")}</p>
           </div>
           <div className="flex gap-3 items-center">
             <button
               onClick={() => setChecked(true)}
               className="btn-primary"
-            >
-              Check Placement
-            </button>
-            <button onClick={resetSkullPlanes} className="btn-ghost text-xs">
-              Reset
-            </button>
+            >{localize("Check Placement")}</button>
+            <button onClick={resetSkullPlanes} className="btn-ghost text-xs">{localize("Reset")}</button>
           </div>
         </div>
 
@@ -702,16 +683,16 @@ function SkullPlanesPlacementSection() {
           <div className="card p-5">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
-                <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-1">Electrodes</p>
-                <p className="font-body text-sm text-eeg-muted">Select a label, then drag it on the scalp.</p>
+                <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-1">{localize("Electrodes")}</p>
+                <p className="font-body text-sm text-eeg-muted">{localize("Select a label, then drag it on the scalp.")}</p>
               </div>
               <span className="font-mono text-xs text-eeg-muted">
-                {correctCount} / {SKULL_GRID_ELECTRODES.length}
+                {localize(correctCount)} / {localize(SKULL_GRID_ELECTRODES.length)}
               </span>
             </div>
 
             <div className="flex flex-wrap gap-2 mb-5">
-              {SKULL_GRID_ELECTRODES.map(label => {
+              {localize(SKULL_GRID_ELECTRODES.map(label => {
                 const correct = isElectrodeCorrect(positions[label], SKULL_TARGETS[label])
                 return (
                   <button
@@ -726,20 +707,20 @@ function SkullPlanesPlacementSection() {
                             ? 'border-red-500 text-red-400 bg-red-500 bg-opacity-10'
                             : 'border-eeg-border text-eeg-muted hover:border-eeg-muted hover:text-eeg-text'
                       }`}
-                    title={PLACEMENT_LABELS[label]}
+                    title={localize(PLACEMENT_LABELS[label])}
                   >
-                    {label}
+                    {localize(label)}
                   </button>
                 )
-              })}
+              }))}
             </div>
 
             {selected && (
               <div className="border-t border-eeg-border pt-4">
-                <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">Selected</p>
+                <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">{localize("Selected")}</p>
                 <div className="flex items-center justify-between mb-3">
-                  <span className="font-display text-xl font-bold text-eeg-text">{selected}</span>
-                  <span className="font-body text-xs text-eeg-muted">{PLACEMENT_LABELS[selected]}</span>
+                  <span className="font-display text-xl font-bold text-eeg-text">{localize(selected)}</span>
+                  <span className="font-body text-xs text-eeg-muted">{localize(PLACEMENT_LABELS[selected])}</span>
                 </div>
                 <CoordinateReadout
                   position={positions[selected]}
@@ -754,11 +735,11 @@ function SkullPlanesPlacementSection() {
         {checked && (
           <div className="card p-5 border-l-4 animate-slide-up"
             style={{ borderLeftColor: correctCount === SKULL_GRID_ELECTRODES.length ? '#00FFB0' : '#FF6B35' }}>
-            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">Result</p>
+            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">{localize("Result")}</p>
             <p className="font-body text-sm text-eeg-text">
-              {correctCount === SKULL_GRID_ELECTRODES.length
+              {localize(correctCount === SKULL_GRID_ELECTRODES.length
                 ? 'All electrodes are correctly placed on the scalp grid.'
-                : `${correctCount} electrodes are correctly placed. Missed electrodes show their target crosshair on the scalp grid.`}
+                : `${correctCount} electrodes are correctly placed. Missed electrodes show their target crosshair on the scalp grid.`)}
             </p>
           </div>
         )}
@@ -768,6 +749,7 @@ function SkullPlanesPlacementSection() {
 }
 
 function CoordinateReadout({ position, target, checked }) {
+  useLocale()
   const rows = [
     {
       id: 'sagittal',
@@ -797,7 +779,7 @@ function CoordinateReadout({ position, target, checked }) {
 
   return (
     <div className="grid grid-cols-3 gap-2">
-      {rows.map(row => {
+      {localize(rows.map(row => {
         return (
           <div
             key={row.id}
@@ -809,17 +791,18 @@ function CoordinateReadout({ position, target, checked }) {
                 : 'border-eeg-border bg-eeg-surface'
               }`}
           >
-            <p className="font-mono text-[10px] uppercase text-eeg-muted">{row.label}</p>
-            <p className="font-mono text-sm text-eeg-text">{row.value}%</p>
-            {checked && <p className="font-mono text-[10px] text-eeg-muted">Target {row.target}%</p>}
+            <p className="font-mono text-[10px] uppercase text-eeg-muted">{localize(row.label)}</p>
+            <p className="font-mono text-sm text-eeg-text">{localize(row.value)}%</p>
+            {checked && <p className="font-mono text-[10px] text-eeg-muted">{localize("Target ")}{localize(row.target)}%</p>}
           </div>
         )
-      })}
+      }))}
     </div>
   )
 }
 
 function LegacyScalpGridPlacementMap({ positions, targets, selected, checked, onSelect, onMove }) {
+  useLocale()
   const [dragging, setDragging] = useState(null)
   const size = 640
   const cx = size / 2
@@ -1190,21 +1173,21 @@ function LegacyScalpGridPlacementMap({ positions, targets, selected, checked, on
     <div>
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
         <div>
-          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-1">Scalp Grid</p>
-          <p className="font-body text-xs text-eeg-muted">Nose anterior, ears lateral. Drag labels to the 10-20 positions.</p>
+          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-1">{localize("Scalp Grid")}</p>
+          <p className="font-body text-xs text-eeg-muted">{localize("Nose anterior, ears lateral. Drag labels to the 10-20 positions.")}</p>
         </div>
         <div className="flex flex-wrap gap-2 text-[10px] font-mono text-eeg-muted">
-          <span className="border border-eeg-border rounded px-2 py-1">sagittal: 10%</span>
-          <span className="border border-eeg-border rounded px-2 py-1">coronal: 10%</span>
-          <span className="border border-eeg-border rounded px-2 py-1">horizontal: 5%</span>
+          <span className="border border-eeg-border rounded px-2 py-1">{localize("sagittal: 10%")}</span>
+          <span className="border border-eeg-border rounded px-2 py-1">{localize("coronal: 10%")}</span>
+          <span className="border border-eeg-border rounded px-2 py-1">{localize("horizontal: 5%")}</span>
         </div>
       </div>
 
-      <svg
+      <svg dir="ltr"
         viewBox={`0 0 ${size} ${size}`}
         className="w-full max-h-[70vh] h-auto touch-none select-none"
         role="img"
-        aria-label="Top-down scalp grid electrode placement"
+        aria-label={localize("Top-down scalp grid electrode placement")}
         onPointerMove={continueDrag}
         onPointerDown={() => onSelect(null)}
         onPointerUp={endDrag}
@@ -1268,7 +1251,7 @@ function LegacyScalpGridPlacementMap({ positions, targets, selected, checked, on
             />
           ))}
 
-          {sagittalTicks.map(percent => {
+          {localize(sagittalTicks.map(percent => {
             const p = sagittalPoint(percent)
             return (
               <g key={`sagittal-tick-${percent}`}>
@@ -1280,13 +1263,13 @@ function LegacyScalpGridPlacementMap({ positions, targets, selected, checked, on
                   fontFamily="DM Mono, monospace"
                   fill="#00FFB0"
                 >
-                  {percent}%
+                  {localize(percent)}%
                 </text>
               </g>
             )
-          })}
+          }))}
 
-          {coronalBands.map(axis => (
+          {localize(coronalBands.map(axis => (
             axis.ticks.map(percent => {
               const p = axis.id === 'central'
                 ? coronalPoint(percent)
@@ -1302,14 +1285,14 @@ function LegacyScalpGridPlacementMap({ positions, targets, selected, checked, on
                     fontFamily="DM Mono, monospace"
                     fill={axis.color}
                   >
-                    {percent}%
+                    {localize(percent)}%
                   </text>
                 </g>
               )
             })
-          ))}
+          )))}
 
-          {horizontalTicks.map(percent => {
+          {localize(horizontalTicks.map(percent => {
             const p = horizontalLoopPoint(percent)
             const landmark = horizontalLandmarks[percent]
             return (
@@ -1324,12 +1307,12 @@ function LegacyScalpGridPlacementMap({ positions, targets, selected, checked, on
                     fontFamily="DM Mono, monospace"
                     fill="#00D4FF"
                   >
-                    {landmark} {percent}%
+                    {localize(landmark)} {localize(percent)}%
                   </text>
                 )}
               </g>
             )
-          })}
+          }))}
         </g>
 
         <circle cx={sagittalPoint(10).x} cy={sagittalPoint(10).y} r="5" fill="#00D4FF" stroke="#08111F" strokeWidth="1.5" />
@@ -1338,7 +1321,7 @@ function LegacyScalpGridPlacementMap({ positions, targets, selected, checked, on
         <circle cx={leftPreauricular.x} cy={leftPreauricular.y} r="5" fill="#E6EDF7" stroke="#08111F" strokeWidth="1.5" />
         <circle cx={rightPreauricular.x} cy={rightPreauricular.y} r="5" fill="#E6EDF7" stroke="#08111F" strokeWidth="1.5" />
 
-        {checked && SKULL_GRID_ELECTRODES.map(label => {
+        {localize(checked && SKULL_GRID_ELECTRODES.map(label => {
           const targetPoint = pointFor(drawnTargetByLabel[label] ?? targets[label])
           return (
             <g key={`target-${label}`} opacity="0.7">
@@ -1346,9 +1329,9 @@ function LegacyScalpGridPlacementMap({ positions, targets, selected, checked, on
               <line x1={targetPoint.x} y1={targetPoint.y - 5} x2={targetPoint.x} y2={targetPoint.y + 5} stroke="#00FFB0" strokeWidth="1" />
             </g>
           )
-        })}
+        }))}
 
-        {orderedLabels.map(label => {
+        {localize(orderedLabels.map(label => {
           const point = pointFor(positions[label])
           const isSelected = selected === label
           const correct = isElectrodeCorrect(positions[label], targets[label])
@@ -1361,7 +1344,7 @@ function LegacyScalpGridPlacementMap({ positions, targets, selected, checked, on
               key={label}
               role="button"
               tabIndex={0}
-              aria-label={`Drag ${label} on scalp grid`}
+              aria-label={localize(`Drag ${label} on scalp grid`)}
               transform={`translate(${point.x} ${point.y})`}
               className="cursor-grab active:cursor-grabbing"
               onPointerDown={(event) => beginDrag(event, label)}
@@ -1382,28 +1365,29 @@ function LegacyScalpGridPlacementMap({ positions, targets, selected, checked, on
                 fontWeight="bold"
                 fill={isSelected || checked ? '#08111F' : '#E6EDF7'}
               >
-                {label}
+                {localize(label)}
               </text>
             </g>
           )
-        })}
+        }))}
 
-        <text x={nasion.x + 15} y={nasion.y + 2} textAnchor="start" fontSize="12" fontFamily="DM Mono, monospace" fill="#C8D2E0">Nasion</text>
-        <text x={nasion.x - 15} y={nasion.y + 2} textAnchor="end" fontSize="10" fontFamily="DM Mono, monospace" fill="#00FFB0">Sagittal 0%</text>
-        <text x={inion.x + 15} y={inion.y + 4} textAnchor="start" fontSize="12" fontFamily="DM Mono, monospace" fill="#C8D2E0">Inion</text>
-        <text x={inion.x - 15} y={inion.y + 4} textAnchor="end" fontSize="10" fontFamily="DM Mono, monospace" fill="#00FFB0">Sagittal 100%</text>
-        <text x={leftPreauricular.x - 12} y={leftPreauricular.y - 8} textAnchor="end" fontSize="12" fontFamily="DM Mono, monospace" fill="#C8D2E0">Left</text>
-        <text x={leftPreauricular.x - 12} y={leftPreauricular.y + 10} textAnchor="end" fontSize="10" fontFamily="DM Mono, monospace" fill="#C8D2E0">tragus</text>
-        <text x={leftPreauricular.x - 12} y={leftPreauricular.y + 28} textAnchor="end" fontSize="10" fontFamily="DM Mono, monospace" fill="#00D4FF">Coronal 0%</text>
-        <text x={rightPreauricular.x + 12} y={rightPreauricular.y - 8} textAnchor="start" fontSize="12" fontFamily="DM Mono, monospace" fill="#C8D2E0">Right</text>
-        <text x={rightPreauricular.x + 12} y={rightPreauricular.y + 10} textAnchor="start" fontSize="10" fontFamily="DM Mono, monospace" fill="#C8D2E0">tragus</text>
-        <text x={rightPreauricular.x + 12} y={rightPreauricular.y + 28} textAnchor="start" fontSize="10" fontFamily="DM Mono, monospace" fill="#00D4FF">Coronal 100%</text>
+        <text x={nasion.x + 15} y={nasion.y + 2} textAnchor="start" fontSize="12" fontFamily="DM Mono, monospace" fill="#C8D2E0">{localize("Nasion")}</text>
+        <text x={nasion.x - 15} y={nasion.y + 2} textAnchor="end" fontSize="10" fontFamily="DM Mono, monospace" fill="#00FFB0">{localize("Sagittal 0%")}</text>
+        <text x={inion.x + 15} y={inion.y + 4} textAnchor="start" fontSize="12" fontFamily="DM Mono, monospace" fill="#C8D2E0">{localize("Inion")}</text>
+        <text x={inion.x - 15} y={inion.y + 4} textAnchor="end" fontSize="10" fontFamily="DM Mono, monospace" fill="#00FFB0">{localize("Sagittal 100%")}</text>
+        <text x={leftPreauricular.x - 12} y={leftPreauricular.y - 8} textAnchor="end" fontSize="12" fontFamily="DM Mono, monospace" fill="#C8D2E0">{localize("Left")}</text>
+        <text x={leftPreauricular.x - 12} y={leftPreauricular.y + 10} textAnchor="end" fontSize="10" fontFamily="DM Mono, monospace" fill="#C8D2E0">{localize("tragus")}</text>
+        <text x={leftPreauricular.x - 12} y={leftPreauricular.y + 28} textAnchor="end" fontSize="10" fontFamily="DM Mono, monospace" fill="#00D4FF">{localize("Coronal 0%")}</text>
+        <text x={rightPreauricular.x + 12} y={rightPreauricular.y - 8} textAnchor="start" fontSize="12" fontFamily="DM Mono, monospace" fill="#C8D2E0">{localize("Right")}</text>
+        <text x={rightPreauricular.x + 12} y={rightPreauricular.y + 10} textAnchor="start" fontSize="10" fontFamily="DM Mono, monospace" fill="#C8D2E0">{localize("tragus")}</text>
+        <text x={rightPreauricular.x + 12} y={rightPreauricular.y + 28} textAnchor="start" fontSize="10" fontFamily="DM Mono, monospace" fill="#00D4FF">{localize("Coronal 100%")}</text>
       </svg>
     </div>
   )
 }
 
 function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect, onMove }) {
+  useLocale()
   const [dragging, setDragging] = useState(null)
   const size = 660
   const cx = size / 2
@@ -1610,16 +1594,16 @@ function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect
     <div>
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
         <div>
-          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-1">Top-Down Scalp Projection</p>
-          <p className="font-body text-xs text-eeg-muted">Top-down projection. Drag labels to snap onto the nearest 10-10 coordinate.</p>
+          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-1">{localize("Top-Down Scalp Projection")}</p>
+          <p className="font-body text-xs text-eeg-muted">{localize("Top-down projection. Drag labels to snap onto the nearest 10-10 coordinate.")}</p>
         </div>
       </div>
 
-      <svg
+      <svg dir="ltr"
         viewBox={`0 0 ${size} ${size}`}
         className="w-full max-h-[72vh] h-auto touch-none select-none"
         role="img"
-        aria-label="Top-down 10-10 scalp projection electrode placement"
+        aria-label={localize("Top-down 10-10 scalp projection electrode placement")}
         onPointerDownCapture={clearSelectionFromBackground}
         onPointerMove={continueDrag}
         onPointerUp={endDrag}
@@ -1658,7 +1642,7 @@ function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect
             stroke="#74849BCC"
             strokeWidth="1.8"
           />
-          {horizontalTickPercents.map(percent => {
+          {localize(horizontalTickPercents.map(percent => {
             const inner = project(horizontalAxisCoord(percent, horizontalAxisRadius - 2.5))
             const outer = project(horizontalAxisCoord(percent, horizontalAxisRadius + 2.5))
             const labelPoint = project(horizontalAxisCoord(percent, horizontalAxisRadius + 8))
@@ -1681,12 +1665,12 @@ function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect
                   fontFamily="DM Mono, monospace"
                   fill={isCardinal ? '#8EA2BD' : '#5A6A82'}
                 >
-                  {percent}%
+                  {localize(percent)}%
                 </text>
               </g>
             )
-          })}
-          {TEN_TWENTY_ROWS.map((row, index) => {
+          }))}
+          {localize(TEN_TWENTY_ROWS.map((row, index) => {
             const isMiddleCoronal = row.includes('Cz')
             return (
             <path
@@ -1697,8 +1681,8 @@ function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect
               strokeWidth={isMiddleCoronal ? 2.2 : 1.2}
             />
             )
-          })}
-          {[sagittalLabels, centralCoronalLabels, ...longitudinalChains].map((chain, index) => {
+          }))}
+          {localize([sagittalLabels, centralCoronalLabels, ...longitudinalChains].map((chain, index) => {
             const isMiddleAxis = index === 0 || index === 1
             return (
             <path
@@ -1709,10 +1693,10 @@ function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect
               strokeWidth={index < 2 ? 2.4 : 1.2}
             />
             )
-          })}
+          }))}
         </g>
 
-        {TEN_TWENTY_VISUAL_LABELS.map(label => {
+        {localize(TEN_TWENTY_VISUAL_LABELS.map(label => {
           const point = pointForLabel(label)
           const aliasTargets = Object.values(TEN_TWENTY_ALIASES)
           const isMajor = SKULL_GRID_ELECTRODES.includes(label) || aliasTargets.includes(label) || sagittalLabels.includes(label)
@@ -1721,9 +1705,9 @@ function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect
               <circle cx={point.x} cy={point.y} r={isMajor ? 4 : 2.5} fill={isMajor ? '#C8D2E0' : '#5A6A82'} opacity={isMajor ? 0.9 : 0.6} />
             </g>
           )
-        })}
+        }))}
 
-        {checked && SKULL_GRID_ELECTRODES.map(label => {
+        {localize(checked && SKULL_GRID_ELECTRODES.map(label => {
           const targetPoint = pointFor(targets[label])
           return (
             <g key={`target-${label}`} opacity="0.75">
@@ -1731,9 +1715,9 @@ function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect
               <line x1={targetPoint.x} y1={targetPoint.y - 6} x2={targetPoint.x} y2={targetPoint.y + 6} stroke="#00FFB0" strokeWidth="1" />
             </g>
           )
-        })}
+        }))}
 
-        {orderedLabels.map(label => {
+        {localize(orderedLabels.map(label => {
           const point = pointFor(positions[label])
           const isSelected = selected === label
           const correct = isElectrodeCorrect(positions[label], targets[label])
@@ -1747,7 +1731,7 @@ function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect
               data-electrode-handle="true"
               role="button"
               tabIndex={0}
-              aria-label={`Drag ${label} on 10-20 scalp grid`}
+              aria-label={localize(`Drag ${label} on 10-20 scalp grid`)}
               transform={`translate(${point.x} ${point.y})`}
               className="cursor-grab active:cursor-grabbing"
               onPointerDown={(event) => beginDrag(event, label)}
@@ -1768,11 +1752,11 @@ function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect
                 fontWeight="bold"
                 fill={isSelected || checked ? '#08111F' : '#E6EDF7'}
               >
-                {label}
+                {localize(label)}
               </text>
             </g>
           )
-        })}
+        }))}
       </svg>
     </div>
   )
@@ -1781,6 +1765,7 @@ function ScalpGridPlacementMap({ positions, targets, selected, checked, onSelect
 // ─── Results Screen ───────────────────────────────────────────────────────────
 
 function QuizResults({ questions, answers, onRestart }) {
+  useLocale()
   const correct = questions.filter(q => {
     const chosen = answers[q.id]
     return q.options.find(o => o.id === chosen)?.correct
@@ -1797,47 +1782,47 @@ function QuizResults({ questions, answers, onRestart }) {
   return (
     <div className="flex-1 overflow-y-auto px-12 py-10">
       <div className="max-w-2xl">
-        <span className="label-tag mb-4 inline-block">Results</span>
+        <span className="label-tag mb-4 inline-block">{localize("Results")}</span>
 
         {/* Score card */}
         <div className="card p-8 mb-8 text-center">
-          <div className="text-5xl mb-3">{grade.emoji}</div>
+          <div className="text-5xl mb-3">{localize(grade.emoji)}</div>
           <div className="font-display font-extrabold text-6xl mb-1" style={{ color: grade.color }}>
-            {pct}%
+            {localize(pct)}%
           </div>
-          <div className="font-body text-eeg-muted mb-1">{correct} / {total} correct</div>
+          <div className="font-body text-eeg-muted mb-1">{localize(correct)} / {localize(total)}{localize(" correct")}</div>
           <div className="font-display font-semibold text-xl mt-3" style={{ color: grade.color }}>
-            {grade.label}
+            {localize(grade.label)}
           </div>
         </div>
 
         {/* Per-question review */}
-        <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-4">Review</p>
+        <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-4">{localize("Review")}</p>
         <div className="space-y-2 mb-8">
-          {questions.map(q => {
+          {localize(questions.map(q => {
             const chosen     = answers[q.id]
             const isCorrect  = q.options.find(o => o.id === chosen)?.correct
             const correctOpt = q.options.find(o => o.correct)
             return (
               <div key={q.id} className="card px-4 py-3 flex items-start gap-3">
                 <span className={`text-lg flex-shrink-0 mt-0.5 ${isCorrect ? 'text-green-400' : 'text-red-400'}`}>
-                  {isCorrect ? '✓' : '✗'}
+                  {localize(isCorrect ? '✓' : '✗')}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-body text-xs text-eeg-text leading-snug line-clamp-2">{q.question}</p>
+                  <p className="font-body text-xs text-eeg-text leading-snug line-clamp-2">{localize(q.question)}</p>
                   {!isCorrect && (
                     <p className="font-mono text-xs text-green-400 mt-1">
-                      ✓ {correctOpt?.text}
+                      ✓ {localize(correctOpt?.text)}
                     </p>
                   )}
                 </div>
                 <DifficultyBadge level={q.difficulty} small />
               </div>
             )
-          })}
+          }))}
         </div>
 
-        <button onClick={onRestart} className="btn-primary">Try Another Quiz</button>
+        <button onClick={onRestart} className="btn-primary">{localize("Try Another Quiz")}</button>
       </div>
     </div>
   )
@@ -1846,11 +1831,12 @@ function QuizResults({ questions, answers, onRestart }) {
 // ─── Difficulty Badge ─────────────────────────────────────────────────────────
 
 function DifficultyBadge({ level, small }) {
+  useLocale()
   const { label, color } = DIFFICULTY_LABELS[level] ?? { label: level, color: '#5A6A82' }
   return (
     <span className={`font-mono rounded border ${small ? 'text-xs px-1.5 py-0.5' : 'text-xs px-2 py-0.5'}`}
       style={{ color, borderColor: color + '44', background: color + '11' }}>
-      {label}
+      {localize(label)}
     </span>
   )
 }

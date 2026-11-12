@@ -1,3 +1,4 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
 import React, { useState } from 'react'
 import { FILTER_PRESETS } from '@/engine/filters'
 
@@ -10,6 +11,7 @@ import { FILTER_PRESETS } from '@/engine/filters'
  *   onChange  - (config) => void
  */
 export default function FilterControls({ config, onChange }) {
+  useLocale()
   const [expanded, setExpanded] = useState(false)
 
   function applyPreset(id) {
@@ -40,12 +42,12 @@ export default function FilterControls({ config, onChange }) {
         className="flex items-center justify-between w-full text-xs font-mono text-eeg-muted
                    hover:text-eeg-text transition-colors"
       >
-        <span className="uppercase tracking-widest">Filters</span>
+        <span className="uppercase tracking-widest">{localize("Filters")}</span>
         <span className="flex items-center gap-1.5">
           <span className="text-eeg-accent">
-            {activePreset === 'none' ? 'off' : activePreset === 'custom' ? 'custom' : FILTER_PRESETS[activePreset]?.label?.split(' ')[0]}
+            {localize(activePreset === 'none' ? 'off' : activePreset === 'custom' ? 'custom' : FILTER_PRESETS[activePreset]?.label?.split(' ')[0])}
           </span>
-          <svg className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          <svg dir="ltr" className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
             viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <polyline points="6 9 12 15 18 9"/>
           </svg>
@@ -60,23 +62,23 @@ export default function FilterControls({ config, onChange }) {
               <button
                 key={id}
                 onClick={() => applyPreset(id)}
-                className={`text-left text-xs px-2 py-1.5 rounded transition-all font-body
+                className={`text-start text-xs px-2 py-1.5 rounded transition-all font-body
                   ${activePreset === id
                     ? 'bg-eeg-accent bg-opacity-10 text-eeg-accent border border-eeg-accent border-opacity-20'
                     : 'text-eeg-muted hover:text-eeg-text'
                   }`}
               >
-                {preset.label}
+                {localize(preset.label)}
               </button>
             ))}
           </div>
 
           <div className="border-t border-eeg-border pt-2">
-            <p className="text-xs font-mono text-eeg-muted mb-2">Custom</p>
+            <p className="text-xs font-mono text-eeg-muted mb-2">{localize("Custom")}</p>
             <div className="grid grid-cols-1 gap-2">
-              <FilterInput label="HP (Hz)" value={config.hp} onChange={v => set('hp', v)} placeholder="e.g. 0.5" />
-              <FilterInput label="LP (Hz)" value={config.lp} onChange={v => set('lp', v)} placeholder="e.g. 70" />
-              <FilterInput label="Notch"   value={config.notch} onChange={v => set('notch', v)} placeholder="50 or 60" />
+              <FilterInput label="HP (Hz)" value={config.hp} onChange={v => set('hp', v)} placeholder={localize("e.g. 0.5")} />
+              <FilterInput label="LP (Hz)" value={config.lp} onChange={v => set('lp', v)} placeholder={localize("e.g. 70")} />
+              <FilterInput label="Notch"   value={config.notch} onChange={v => set('notch', v)} placeholder={localize("50 or 60")} />
             </div>
           </div>
         </div>
@@ -86,9 +88,10 @@ export default function FilterControls({ config, onChange }) {
 }
 
 function FilterInput({ label, value, onChange, placeholder }) {
+  useLocale()
   return (
     <div className="flex items-center gap-2">
-      <span className="text-xs font-mono text-eeg-muted w-14 flex-shrink-0">{label}</span>
+      <span className="text-xs font-mono text-eeg-muted w-14 flex-shrink-0">{localize(label)}</span>
       <input
         type="number"
         min="0.1"
@@ -96,7 +99,7 @@ function FilterInput({ label, value, onChange, placeholder }) {
         step="0.1"
         value={value ?? ''}
         onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
+        placeholder={localize(placeholder)}
         className="flex-1 bg-eeg-bg border border-eeg-border rounded px-2 py-1 text-xs font-mono
                    text-eeg-text placeholder-eeg-muted focus:outline-none focus:border-eeg-accent
                    [appearance:textfield]"

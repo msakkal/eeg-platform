@@ -1,4 +1,10 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
+import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
+import { DEFAULT_FOCAL_SEIZURE_OPTIONS, DEFAULT_SEIZURE_DURATION, fitFocalOptionsToDuration } from '@/engine/seizures'
+import { ADDITIONAL_PATTERN_ANALYSIS } from '@/content/additionalFindings'
 import React, { memo, useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ATLAS_BY_ID, atlasPath } from '@/content/atlas'
 import { useTranslation }         from 'react-i18next'
 import { useEEGStore }            from '@/store/eegStore'
 import { useAnnotationStore, ANNOTATION_LABELS } from '@/store/annotationStore'
@@ -27,6 +33,7 @@ const MAX_SWEEP_SPEED = 90
 const MAX_SWEEP_WINDOW_SECONDS = STANDARD_WINDOW_SECONDS * STANDARD_SWEEP_SPEED / MIN_SWEEP_SPEED
 
 const PATTERN_ANALYSIS = {
+  ...ADDITIONAL_PATTERN_ANALYSIS,
   normal_awake: {
     spectrum: 'Posterior channels should show a dominant alpha peak around 8-13 Hz, especially with eyes closed, with lower-amplitude beta and little delta.',
     spectrogram: 'Alpha power should appear as a fairly stable horizontal band near 10 Hz, strongest in occipital/parietal channels.',
@@ -166,7 +173,11 @@ const PATTERN_ANALYSIS = {
 }
 
 export default function SandboxPage() {
+  useLocale()
   const { t } = useTranslation()
+  const [searchParams] = useSearchParams()
+  const atlasEntry = ATLAS_BY_ID[searchParams.get('atlas')]
+  const loadAtlasExample = useEEGStore(state => state.loadAtlasExample)
 
   // ── EEG state ───────────────────────────────────────────────────────────
   const {
@@ -176,9 +187,6 @@ export default function SandboxPage() {
     noiseLevel,setNoiseLevel,
     sweepSpeed,setSweepSpeed,
     isPlaying, togglePlay,
-    pendingSpike, triggerSpike,
-    pendingArtifact, triggerArtifact,
-    clearPending,
     eyesClosed, toggleEyes,
     blinksEnabled, toggleBlinks,
     blinkRate, setBlinkRate,
@@ -189,6 +197,8 @@ export default function SandboxPage() {
   const theme = getViewerTheme(viewerTheme)
 
   // ── UI state ────────────────────────────────────────────────────────────
+  const [seizureDuration, setSeizureDuration] = useState(DEFAULT_SEIZURE_DURATION)
+  const [focalOptions, setFocalOptions] = useState(DEFAULT_FOCAL_SEIZURE_OPTIONS)
   const [activePanel,    setActivePanel]    = useState('traces')
   const [specChannel,    setSpecChannel]    = useState('O2')
   const [filterConfig,   setFilterConfig]   = useState({ hp: null, lp: null, notch: null })
@@ -198,6 +208,14 @@ export default function SandboxPage() {
   const [hoveredTraceChannel, setHoveredTraceChannel] = useState(null)
   const [analysisRateHz, setAnalysisRateHz] = useState(12)
   const [viewerStyle, setViewerStyle] = useState(DEFAULT_VIEWER_STYLE)
+
+  useEffect(() => {
+    if (!atlasEntry?.simulation) return
+    loadAtlasExample(atlasEntry.simulation)
+    setFilterConfig({ hp: null, lp: null, notch: null })
+    setActivePanel('traces')
+    setAnnotateMode(false)
+  }, [atlasEntry, loadAtlasExample])
 
   const viewerThemeOverrides = useMemo(
     () => viewerTheme === 'custom' ? buildViewerThemeOverrides(viewerStyle) : {},
@@ -210,14 +228,17 @@ export default function SandboxPage() {
   const { annotations, addAnnotation, removeAnnotation, clearAnnotations } = useAnnotationStore()
 
   // ── Signal ──────────────────────────────────────────────────────────────
-  const { channels, timeAxis, isReady, events, windowStart, sampleOffset } = useEEGSignal({
+  const { channels, timeAxis, isReady, isUpdating, events, windowStart, sampleOffset, activeSeizure, startSeizure, stopSeizure } = useEEGSignal({
     montageId, pattern, noiseLevel, activationProcedure, filterConfig,
-    isPlaying, pendingSpike, pendingArtifact,
-    onClearPending: clearPending,
+    isPlaying,
     eyesClosed, blinksEnabled: effectiveBlinksEnabled, blinkRate,
     windowSecs: sweepWindowSecs,
     maxWindowSecs: MAX_SWEEP_WINDOW_SECONDS,
   })
+
+  const handleStartSeizure = useCallback((kind) => {
+    if (startSeizure(kind, { ...(kind === 'focal' ? focalOptions : {}), duration: seizureDuration }) && !isPlaying) togglePlay()
+  }, [startSeizure, isPlaying, togglePlay, focalOptions, seizureDuration])
 
   const specSignal = useMemo(() => {
     const ch = channels.find(c => c.label.startsWith(specChannel))
@@ -255,8 +276,8 @@ export default function SandboxPage() {
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useKeyboardShortcuts({
     ' ':           togglePlay,
-    's':           triggerSpike,
-    'a':           triggerArtifact,
+    'f':           () => handleStartSeizure('focal'),
+    'g':           () => handleStartSeizure('generalized'),
     '+':           () => stepSensitivity(-1),
     '=':           () => stepSensitivity(-1),
     '-':           () => stepSensitivity(1),
@@ -286,6 +307,7 @@ export default function SandboxPage() {
         <div className="px-4 py-2.5 border-b border-eeg-border flex items-center gap-3 flex-shrink-0">
           <div className="flex-1 min-w-0">
             <h1 className="font-display font-bold text-base text-eeg-text leading-tight">{t('sandbox.title')}</h1>
+            {atlasEntry && <Link to={atlasPath(atlasEntry.id)} className="text-xs text-eeg-accent hover:underline">← {localize(atlasEntry.title)}</Link>}
           </div>
 
           {/* Panel tabs */}
@@ -294,7 +316,7 @@ export default function SandboxPage() {
               <button key={p} onClick={() => setActivePanel(p)}
                 className={`px-3 py-1.5 text-xs font-mono capitalize transition-colors
                   ${activePanel === p ? 'bg-eeg-accent bg-opacity-20 text-eeg-accent' : 'text-eeg-muted hover:text-eeg-text'}`}>
-                {p}
+                {localize(p)}
               </button>
             ))}
           </div>
@@ -307,24 +329,24 @@ export default function SandboxPage() {
                 ? 'border-yellow-500 text-yellow-400 bg-yellow-500 bg-opacity-10'
                 : 'border-eeg-border text-eeg-muted hover:text-eeg-text'
               }`}
-            title="Click on the EEG trace to place annotations"
+            title={localize("Click on the EEG trace to place annotations")}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
             </svg>
-            {annotateMode ? 'Marking' : 'Mark'}
+            {localize(annotateMode ? 'Marking' : 'Mark')}
           </button>
 
           {/* Annotation label picker (only when in annotate mode) */}
           {annotateMode && (
             <div className="flex gap-1">
-              {ANNOTATION_LABELS.slice(0, 4).map(al => {
+              {localize(ANNOTATION_LABELS.slice(0, 4).map(al => {
                 const label = t(`annotations.labels.${al.id}`)
                 const isActive = activeAnnLabel.id === al.id
                 return (
                   <button key={al.id}
                     onClick={() => setActiveAnnLabel(al)}
-                    title={label}
+                    title={localize(label)}
                     className={`text-xs font-mono px-2 py-1 rounded border transition-all
                       ${isActive
                         ? 'text-eeg-text border-opacity-60'
@@ -334,27 +356,25 @@ export default function SandboxPage() {
                       ? { borderColor: al.color, background: al.color + '22', color: al.color }
                       : {}}
                   >
-                    {al.key}:{label.split(' ')[0]}
+                    {localize(al.key)}:{localize(label.split(' ')[0])}
                   </button>
                 )
-              })}
+              }))}
               {annotations.length > 0 && (
                 <button onClick={clearAnnotations}
-                  className="text-xs font-mono px-2 py-1 rounded border border-eeg-border text-eeg-muted hover:text-red-400 hover:border-red-400 transition-all">
-                  Clear
-                </button>
+                  className="text-xs font-mono px-2 py-1 rounded border border-eeg-border text-eeg-muted hover:text-red-400 hover:border-red-400 transition-all">{localize("Clear")}</button>
               )}
             </div>
           )}
 
           {/* Live badge */}
           <div className={`flex items-center gap-1.5 text-xs font-mono px-2.5 py-1 rounded-full border flex-shrink-0
-            ${isPlaying
+            ${isPlaying && !isUpdating
               ? 'text-eeg-signal border-eeg-signal border-opacity-40 bg-eeg-signal bg-opacity-10'
               : 'text-eeg-muted border-eeg-border'
             }`}>
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isPlaying ? 'bg-eeg-signal animate-pulse' : 'bg-eeg-muted'}`} />
-            {isPlaying ? 'LIVE' : 'PAUSED'}
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isPlaying && !isUpdating ? 'bg-eeg-signal animate-pulse' : 'bg-eeg-muted'}`} />
+            {localize(isUpdating ? 'UPDATING' : isPlaying ? 'LIVE' : 'PAUSED')}
           </div>
 
           {/* Help */}
@@ -365,15 +385,20 @@ export default function SandboxPage() {
         </div>
 
         {/* Panel content */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden relative">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden relative" aria-busy={isUpdating || !isReady}>
+          {isUpdating && isReady && (
+            <p role="status" className="absolute top-2 right-3 z-10 rounded border border-eeg-border bg-eeg-surface px-3 py-1 text-xs text-eeg-muted">{localize("Updating recording")}{localize(channels[0] && '? Previous frame remains visible.')}
+            </p>
+          )}
           {!isReady ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-eeg-muted font-mono text-sm animate-pulse">{t('common.loading')}</div>
             </div>
           ) : (
             <>
-              {activePanel === 'traces' && (
+              <div hidden={activePanel !== 'traces'}>
                 <TracePanel
+                  isVisible={activePanel === 'traces'}
                   channels={channels}
                   timeAxis={timeAxis}
                   sensitivity={sensitivity}
@@ -382,7 +407,7 @@ export default function SandboxPage() {
                   events={events}
                   windowStart={windowStart}
                   sampleOffset={sampleOffset}
-                  annotateMode={annotateMode}
+                  annotateMode={annotateMode && !isUpdating}
                   onAnnotate={handleAnnotate}
                   hoveredTraceChannel={hoveredTraceChannel}
                   onHoverChannel={setHoveredTraceChannel}
@@ -415,7 +440,7 @@ export default function SandboxPage() {
                   onActivationProcedureChange={setActivationProcedure}
                   pattern={pattern}
                 />
-              )}
+              </div>
 
               {activePanel === 'analysis' && specSignal && (
                 <div className="p-6 flex flex-col gap-6">
@@ -439,17 +464,15 @@ export default function SandboxPage() {
               {activePanel === 'topo' && (
                 <div className="p-8 flex flex-col items-center gap-8">
                   <div className="text-center">
-                    <p className="font-body text-sm text-eeg-muted max-w-md">
-                      Real-time scalp topographic map showing RMS amplitude distribution across electrode positions. Colour maps from blue (low) to red (high). Update the pattern or inject events to see the topography change.
-                    </p>
+                    <p className="font-body text-sm text-eeg-muted max-w-md">{localize("Relative channel RMS amplitudes depend on the shared reference and are displayed only for common-reference montages.")}</p>
                   </div>
                   <div className="flex gap-12 items-start">
-                    <ScalpTopoMap channels={channels} size={260} />
+                    <ScalpTopoMap channels={channels} montageId={montageId} revision={analysisRevision} size={260} />
                     {/* Channel amplitude table */}
                     <div className="card p-4 min-w-[180px]">
-                      <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">RMS µV</p>
+                      <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">{localize("RMS µV")}</p>
                       <div className="space-y-1 max-h-64 overflow-y-auto">
-                        {channels.slice(0, 18).map(ch => {
+                        {localize(channels.slice(0, 18).map(ch => {
                           const rms = ch.data?.length
                             ? Math.sqrt(ch.data.reduce((s, v) => s + v*v, 0) / ch.data.length)
                             : 0
@@ -458,17 +481,17 @@ export default function SandboxPage() {
                           const pct = Math.min(100, (rms / 60) * 100)
                           return (
                             <div key={ch.label} className="flex items-center gap-2">
-                              <span className="font-mono text-xs text-eeg-muted w-16 flex-shrink-0">{ch.label}</span>
+                              <span className="font-mono text-xs text-eeg-muted w-16 flex-shrink-0">{localize(ch.label)}</span>
                               <div className="flex-1 h-1.5 bg-eeg-border rounded-full overflow-hidden">
                                 <div className="h-full bg-eeg-accent rounded-full transition-all duration-300"
                                   style={{ width: `${pct}%` }} />
                               </div>
-                              <span className="font-mono text-xs text-eeg-muted w-10 text-right">
-                                {rms.toFixed(0)}
+                              <span className="font-mono text-xs text-eeg-muted w-10 text-end">
+                                {localize(rms.toFixed(0))}
                               </span>
                             </div>
                           )
-                        })}
+                        }))}
                       </div>
                     </div>
                   </div>
@@ -480,14 +503,23 @@ export default function SandboxPage() {
       </div>
 
       {/* ── Right controls panel ────────────────────────────────────────── */}
-      <div className="w-56 flex-shrink-0 border-l border-eeg-border bg-eeg-surface overflow-y-auto p-4 flex flex-col gap-4">
+      <CollapsiblePanel title="Simulation controls" side="right" widthClass="w-56"><div className="p-4 min-h-0 flex-1">
         <SandboxControls
           pattern={pattern}           onPatternChange={setPattern}
           isPlaying={isPlaying}       onTogglePlay={togglePlay}
-          onInjectSpike={triggerSpike}
-          onInjectArtifact={triggerArtifact}
+          onStartSeizure={handleStartSeizure}
+          seizureDuration={seizureDuration}
+          onSeizureDurationChange={duration => {
+            setSeizureDuration(duration)
+            setFocalOptions(current => fitFocalOptionsToDuration(current, duration))
+          }}
+          focalOptions={focalOptions} onFocalOptionsChange={options => setFocalOptions(fitFocalOptionsToDuration(options, seizureDuration))}
+          seizureElapsed={activeSeizure ? Math.max(0, windowStart + sweepWindowSecs - activeSeizure.startTime) : 0}
+          onStopSeizure={stopSeizure}
+          activeSeizure={activeSeizure}
+          isReady={isReady}
         />
-      </div>
+      </div></CollapsiblePanel>
 
       {/* Keyboard help overlay */}
       {showHelp && <KeyboardHelpOverlay onClose={() => setShowHelp(false)} />}
@@ -496,6 +528,7 @@ export default function SandboxPage() {
 }
 
 const TracePanel = memo(function TracePanel({
+  isVisible,
   channels,
   timeAxis,
   sensitivity,
@@ -532,6 +565,7 @@ const TracePanel = memo(function TracePanel({
   onActivationProcedureChange,
   pattern,
 }) {
+  useLocale()
   const [hoverPanelOpen, setHoverPanelOpen] = useState(true)
   const [hoveredEvent, setHoveredEvent] = useState(null)
 
@@ -565,6 +599,7 @@ const TracePanel = memo(function TracePanel({
           pattern={pattern}
         />
         <EEGViewer
+          isVisible={isVisible}
           channels={channels}
           timeAxis={timeAxis}
           sensitivity={sensitivity}
@@ -590,11 +625,12 @@ const TracePanel = memo(function TracePanel({
           onClick={() => setHoverPanelOpen(v => !v)}
           className={`w-full h-9 flex items-center justify-center border-b border-eeg-border text-eeg-muted hover:text-eeg-text transition-colors
             ${hoverPanelOpen ? '' : 'bg-eeg-card bg-opacity-60'}`}
-          title={hoverPanelOpen ? 'Collapse channel view' : 'Expand channel view'}
-          aria-label={hoverPanelOpen ? 'Collapse channel view' : 'Expand channel view'}
+          title={localize(hoverPanelOpen ? 'Collapse channel view' : 'Expand channel view')}
+          aria-label={localize(hoverPanelOpen ? 'Collapse channel view' : 'Expand channel view')}
+          aria-expanded={hoverPanelOpen}
         >
           <span className="w-6 h-6 rounded border border-eeg-border flex items-center justify-center font-mono text-xs">
-            {hoverPanelOpen ? '>' : '<'}
+            {localize(hoverPanelOpen ? '>' : '<')}
           </span>
         </button>
         {hoverPanelOpen && (
@@ -613,15 +649,15 @@ const TracePanel = memo(function TracePanel({
         )}
         {!hoverPanelOpen && (
           <div className="h-[calc(100%-2.25rem)] flex items-center justify-center">
-            <div className="rotate-90 whitespace-nowrap text-[10px] font-mono uppercase tracking-widest text-eeg-muted">
-              Channel
-            </div>
+            <div className="rotate-90 whitespace-nowrap text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{localize("Channel")}</div>
           </div>
         )}
       </div>
     </div>
   )
 }, (prev, next) => (
+  (!prev.isVisible && !next.isVisible) || (
+  prev.isVisible === next.isVisible &&
   prev.channels === next.channels &&
   prev.timeAxis === next.timeAxis &&
   prev.sensitivity === next.sensitivity &&
@@ -642,9 +678,10 @@ const TracePanel = memo(function TracePanel({
   prev.theme === next.theme &&
   prev.viewerThemeOverrides === next.viewerThemeOverrides &&
   prev.viewerStyle === next.viewerStyle
-))
+)))
 
 function SandboxEventList({ events = [], windowStart = 0, duration = 10, onHoverEvent = null }) {
+  useLocale()
   const [flashEventIds, setFlashEventIds] = useState(() => new Set())
   const knownEventIdsRef = useRef(new Set())
   const initialisedRef = useRef(false)
@@ -752,18 +789,14 @@ function SandboxEventList({ events = [], windowStart = 0, duration = 10, onHover
 
   return (
     <div className="border-t border-eeg-border px-3 py-3 flex-1 min-h-0 overflow-hidden">
-      <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">
-        Event list
-      </p>
+      <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-2">{localize("Event list")}</p>
       {visibleEvents.length === 0 ? (
         <div className="h-full min-h-[96px] flex items-center justify-center text-center">
-          <p className="text-[10px] font-mono text-eeg-muted leading-relaxed">
-            No visible events in this sweep window.
-          </p>
+          <p className="text-[10px] font-mono text-eeg-muted leading-relaxed">{localize("No visible events in this sweep window.")}</p>
         </div>
       ) : (
         <div className="space-y-1.5 overflow-y-auto pr-1 max-h-full">
-          {visibleEvents.map(event => {
+          {localize(visibleEvents.map(event => {
             const color = colorFor(event.type)
             const isFlashing = flashEventIds.has(event.id)
             return (
@@ -783,20 +816,20 @@ function SandboxEventList({ events = [], windowStart = 0, duration = 10, onHover
                     style={{ background: color }}
                   />
                   <span className="font-mono text-[10px] text-eeg-muted flex-shrink-0">
-                    {event.t.toFixed(2)}s
+                    {localize(event.t.toFixed(2))}s
                   </span>
                   <span className="font-body text-xs text-eeg-text truncate">
-                    {event.label}
+                    {localize(event.label)}
                   </span>
                 </div>
                 {event.detail && (
                   <p className="font-mono text-[9px] text-eeg-muted truncate mt-0.5 pl-4">
-                    {event.detail}
+                    {localize(event.detail)}
                   </p>
                 )}
               </div>
             )
-          })}
+          }))}
         </div>
       )}
     </div>
@@ -829,6 +862,7 @@ function ViewerTopBar({
   onActivationProcedureChange,
   pattern,
 }) {
+  useLocale()
   return (
     <EEGViewerControls
       montageId={montageId}
@@ -860,10 +894,11 @@ function ViewerTopBar({
 }
 
 function ToolbarRange({ label, value, min, max, step, unit, onChange, wide = false, disabled = false }) {
+  useLocale()
   return (
     <label className={`flex flex-col gap-1 ${wide ? 'w-40' : 'w-28'} ${disabled ? 'opacity-50' : ''}`}>
       <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">
-        {label} <span className="text-eeg-accent">{Number(value).toFixed(step < 1 ? 2 : 0)}{unit}</span>
+        {localize(label)} <span className="text-eeg-accent">{localize(Number(value).toFixed(step < 1 ? 2 : 0))}{localize(unit)}</span>
       </span>
       <input
         type="range"
@@ -880,6 +915,7 @@ function ToolbarRange({ label, value, min, max, step, unit, onChange, wide = fal
 }
 
 function PatternAnalysisSummary({ pattern, channel }) {
+  useLocale()
   const meta = getPatternMeta(pattern)
   const analysis = PATTERN_ANALYSIS[pattern] ?? {
     spectrum: 'Compare the dominant frequency bands with the expected background rhythm and any generated events for this pattern.',
@@ -890,11 +926,9 @@ function PatternAnalysisSummary({ pattern, channel }) {
     <div className="card p-4">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted mb-1">
-            Current pattern analysis
-          </p>
+          <p className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted mb-1">{localize("Current pattern analysis")}</p>
           <h2 className="font-display text-sm font-semibold text-eeg-text truncate">
-            {meta?.label ?? pattern}
+            {localize(meta?.label ?? pattern)}
           </h2>
         </div>
         <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -907,29 +941,25 @@ function PatternAnalysisSummary({ pattern, channel }) {
                 background: `${meta.color}18`,
               }}
             >
-              {meta.groupLabel}
+              {localize(meta.groupLabel)}
             </span>
           )}
           <span className="text-[10px] font-mono text-eeg-muted">
-            {channel}
+            {localize(channel)}
           </span>
         </div>
       </div>
       <div className="grid md:grid-cols-2 gap-3">
         <div>
-          <p className="text-[10px] font-mono uppercase tracking-widest text-eeg-accent mb-1">
-            Spectrum
-          </p>
+          <p className="text-[10px] font-mono uppercase tracking-widest text-eeg-accent mb-1">{localize("Spectrum")}</p>
           <p className="text-xs font-body text-eeg-muted leading-relaxed">
-            {analysis.spectrum}
+            {localize(analysis.spectrum)}
           </p>
         </div>
         <div>
-          <p className="text-[10px] font-mono uppercase tracking-widest text-eeg-accent mb-1">
-            Spectrogram
-          </p>
+          <p className="text-[10px] font-mono uppercase tracking-widest text-eeg-accent mb-1">{localize("Spectrogram")}</p>
           <p className="text-xs font-body text-eeg-muted leading-relaxed">
-            {analysis.spectrogram}
+            {localize(analysis.spectrogram)}
           </p>
         </div>
       </div>
@@ -944,6 +974,7 @@ function AnalysisPanelControls({
   updateRateHz,
   onUpdateRateChange,
 }) {
+  useLocale()
   return (
     <div className="flex items-end justify-between gap-4 flex-wrap">
       <ChannelPicker
@@ -965,9 +996,10 @@ function AnalysisPanelControls({
 }
 
 function ChannelPicker({ channels, active, onSelect }) {
+  useLocale()
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-xs font-mono text-eeg-muted">Channel:</span>
+      <span className="text-xs font-mono text-eeg-muted">{localize("Channel:")}</span>
       {channels.map(ch => (
         <button key={ch} onClick={() => onSelect(ch)}
           className={`text-xs font-mono px-2 py-1 rounded border transition-all
@@ -975,7 +1007,7 @@ function ChannelPicker({ channels, active, onSelect }) {
               ? 'border-eeg-accent text-eeg-accent bg-eeg-accent bg-opacity-10'
               : 'border-eeg-border text-eeg-muted hover:text-eeg-text'
             }`}>
-          {ch}
+          {localize(ch)}
         </button>
       ))}
     </div>

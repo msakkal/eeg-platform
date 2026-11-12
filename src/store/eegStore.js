@@ -1,3 +1,4 @@
+import { ADDITIONAL_PATTERN_CONFIG } from '@/engine/additionalPatterns'
 import { create } from 'zustand'
 import { DEFAULT_MONTAGE } from '@/engine/montages'
 import { DEFAULT_VIEWER_THEME, DEFAULT_SENSITIVITY } from '@/engine/viewerThemes'
@@ -18,8 +19,6 @@ export const useEEGStore = create((set, _get) => ({
   noiseLevel:     0.25,
   sweepSpeed:     30,     // mm/s — standard EEG paper speed = real-time
   isPlaying:      true,
-  pendingSpike:   false,
-  pendingArtifact:false,
   activationProcedure: 'none',
 
   // ── Physiologic state (awake modifiers) ──────────────────────────────────
@@ -28,9 +27,16 @@ export const useEEGStore = create((set, _get) => ({
   blinkRate:      18,       // blinks per minute (normal 15–20)
 
   // ── Actions ───────────────────────────────────────────────────────────────
+  loadAtlasExample: ({ pattern, montageId, eyesClosed }) => set({
+    pattern, montageId, eyesClosed,
+    sensitivity: 7, sweepSpeed: 30, noiseLevel: 0.15,
+    isPlaying: false, blinksEnabled: false, blinkRate: 18,
+    activationProcedure: 'none',
+  }),
   setMontage:      (id)      => set({ montageId: id }),
   setPattern:      (p)       => set(s => ({
     pattern: p,
+    ...(Object.hasOwn(ADDITIONAL_PATTERN_CONFIG, p) ? { montageId: 'longitudinal_bipolar', eyesClosed: true } : {}),
     activationProcedure: isActivationProcedureAllowed(s.activationProcedure, p) ? s.activationProcedure : 'none',
     ...(['mu_rhythm', 'central_midline_theta', 'lambda_waves', 'phantom_spike_wave', 'posterior_slow_waves_youth'].includes(p) ? { montageId: 'average_reference' } : {}),
     ...(p === 'positive_spikes_14_6' ? { montageId: 'referential_ears', eyesClosed: true } : {}),
@@ -45,9 +51,6 @@ export const useEEGStore = create((set, _get) => ({
   setNoiseLevel:   (v)       => set(s => ({ noiseLevel: resolveValue(v, s.noiseLevel) })),
   setSweepSpeed:   (v)       => set(s => ({ sweepSpeed: resolveValue(v, s.sweepSpeed) })),
   togglePlay:      ()        => set(s => ({ isPlaying: !s.isPlaying })),
-  triggerSpike:    ()        => set({ pendingSpike: true }),
-  triggerArtifact: ()        => set({ pendingArtifact: true }),
-  clearPending:    ()        => set({ pendingSpike: false, pendingArtifact: false }),
   setActivationProcedure: (procedure) => set(s => ({
     activationProcedure: isActivationProcedureAllowed(procedure, s.pattern) ? procedure : 'none',
   })),

@@ -108,4 +108,19 @@ describe('generateEEGReport', () => {
     expect(report).toContain('Technically limited awake and asleep EEG.')
     expect(report).not.toContain('Normal awake and asleep EEG.')
   })
+
+  it('capitalizes custom sentences while preserving clinical abbreviations', () => {
+    const data = makeData()
+    data.study.indication = 'suspected seizures after an ECG change'
+    data.sleep.notes = 'brief NREM sleep was obtained'
+    data.impression.customFinding = 'an ECG artifact is present'
+    data.impression.customImpression = 'interpret EEG in context'
+    data.impression.correlation = 'correlate with MRI and ECG'
+    const report = generateEEGReport(data)
+    expect(report).toContain('Indication: Suspected seizures after an ECG change.')
+    expect(report).toContain('Brief NREM sleep was obtained.')
+    expect(report).toContain('An ECG artifact is present.')
+    expect(report).toContain('Interpret EEG in context.')
+    expect(report).toContain('Correlate with MRI and ECG.')
+  })
 })

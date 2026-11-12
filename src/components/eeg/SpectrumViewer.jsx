@@ -1,4 +1,5 @@
-import React, { useRef, useEffect, useMemo } from 'react'
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
+import { useRef, useEffect, useMemo } from 'react'
 import { computePSD, computeBandPowers, EEG_BANDS } from '@/engine/fft'
 import { SAMPLE_RATE } from '@/engine/signalGenerator'
 
@@ -22,12 +23,15 @@ export default function SpectrumViewer({
   maxFreq = 40,
   className = '',
 }) {
+  const language = useLocale()
   const psdCanvasRef  = useRef(null)
   const barCanvasRef  = useRef(null)
   const dpr           = window.devicePixelRatio || 1
 
   // Compute dB PSD for plotting and linear PSD for relative band power.
   const { freqs, psd, linearPsd } = useMemo(() => {
+    // Streaming mutates these buffers in place; revision marks new samples.
+    void revision
     if (!signal || signal.length < 64) {
       return {
         freqs: new Float64Array(),
@@ -83,7 +87,7 @@ export default function SpectrumViewer({
       ctx.fillStyle = bc + '88'
       ctx.font = `8px "DM Mono", monospace`
       ctx.textAlign = 'center'
-      ctx.fillText(key.toUpperCase(), (x1 + x2) / 2, PADDING.top + plotH + 10)
+      ctx.fillText(localize(key.toUpperCase(), language), (x1 + x2) / 2, PADDING.top + plotH + 10)
     })
 
     // ── Grid lines ────────────────────────────────────────────────────────
@@ -96,7 +100,7 @@ export default function SpectrumViewer({
       ctx.fillStyle   = '#5A6A82'
       ctx.font        = '8px "DM Mono", monospace'
       ctx.textAlign   = 'center'
-      ctx.fillText(`${f}`, x, PADDING.top + plotH + 20)
+      ctx.fillText(localize(`${f}`, language), x, PADDING.top + plotH + 20)
     }
 
     // ── Trim and normalise PSD ────────────────────────────────────────────
@@ -113,9 +117,9 @@ export default function SpectrumViewer({
     ctx.fillStyle   = '#5A6A82'
     ctx.font        = '8px "DM Mono", monospace'
     ctx.textAlign   = 'right'
-    ctx.fillText(`${pMax.toFixed(0)}`, PADDING.left - 4, PADDING.top + 6)
-    ctx.fillText(`${pMin.toFixed(0)}`, PADDING.left - 4, PADDING.top + plotH)
-    ctx.fillText('dB', PADDING.left - 4, PADDING.top + plotH / 2)
+    ctx.fillText(localize(`${pMax.toFixed(0)}`, language), PADDING.left - 4, PADDING.top + 6)
+    ctx.fillText(localize(`${pMin.toFixed(0)}`, language), PADDING.left - 4, PADDING.top + plotH)
+    ctx.fillText(localize('dB', language), PADDING.left - 4, PADDING.top + plotH / 2)
 
     // ── Gradient fill under curve ─────────────────────────────────────────
     if (trimmed.length > 1) {
@@ -156,7 +160,7 @@ export default function SpectrumViewer({
     ctx.lineTo(PADDING.left + plotW, PADDING.top + plotH)
     ctx.stroke()
 
-  }, [freqs, psd, color, maxFreq])
+  }, [freqs, psd, color, maxFreq, dpr, language])
 
   // ── Draw band power bars ─────────────────────────────────────────────────
   useEffect(() => {
@@ -205,32 +209,28 @@ export default function SpectrumViewer({
       ctx.fillStyle   = bc + 'CC'
       ctx.font        = `8px "DM Mono", monospace`
       ctx.textAlign   = 'center'
-      ctx.fillText(label.split(' ')[0], x + barW / 2, H - 6)
+      ctx.fillText(localize(label.split(' ')[0], language), x + barW / 2, H - 6)
 
       // Percentage label
       ctx.fillStyle = '#E8EDF5CC'
       ctx.font      = `7px "DM Mono", monospace`
-      ctx.fillText(`${(power * 100).toFixed(0)}%`, x + barW / 2, H - 20 - barH - 3)
+      ctx.fillText(localize(`${(power * 100).toFixed(0)}%`, language), x + barW / 2, H - 20 - barH - 3)
     })
-  }, [bands])
+  }, [bands, dpr, language])
 
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
       <div className="flex items-center justify-between px-1 mb-1">
-        <span className="text-xs font-mono text-eeg-muted uppercase tracking-widest">Power Spectrum</span>
-        <span className="text-xs font-mono" style={{ color }}>0–{maxFreq} Hz</span>
+        <span className="text-xs font-mono text-eeg-muted uppercase tracking-widest">{localize("Power Spectrum")}</span>
+        <span className="text-xs font-mono" style={{ color }}>0–{localize(maxFreq)}{localize(" Hz")}</span>
       </div>
-      <canvas ref={psdCanvasRef} className="w-full block rounded" role="img"
-        aria-label={`EEG power spectrum from 0 to ${maxFreq} hertz`}>
-        EEG power spectrum from 0 to {maxFreq} hertz.
-      </canvas>
+      <canvas dir="ltr" ref={psdCanvasRef} className="w-full block rounded" role="img"
+        aria-label={localize(`EEG power spectrum from 0 to ${maxFreq} hertz`)}>{localize("EEG power spectrum from 0 to ")}{localize(maxFreq)}{localize(" hertz.")}</canvas>
       <div className="flex items-center justify-between px-1 mt-1">
-        <span className="text-xs font-mono text-eeg-muted uppercase tracking-widest">Band Power</span>
+        <span className="text-xs font-mono text-eeg-muted uppercase tracking-widest">{localize("Band Power")}</span>
       </div>
-      <canvas ref={barCanvasRef} className="w-full block rounded" role="img"
-        aria-label="Relative EEG band power for delta, theta, alpha, beta, and gamma bands">
-        Relative EEG band power for delta, theta, alpha, beta, and gamma bands.
-      </canvas>
+      <canvas dir="ltr" ref={barCanvasRef} className="w-full block rounded" role="img"
+        aria-label={localize("Relative EEG band power for delta, theta, alpha, beta, and gamma bands")}>{localize("Relative EEG band power for delta, theta, alpha, beta, and gamma bands.")}</canvas>
     </div>
   )
 }

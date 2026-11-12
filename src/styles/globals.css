@@ -70,6 +70,16 @@
 }
 
 /* Grid background for EEG paper look */
+html[lang='ar'] .font-body,
+html[lang='ar'] .font-display {
+  font-family: Tahoma, Arial, sans-serif;
+}
+
+html[lang='ar'] .tracking-widest,
+html[lang='ar'] .tracking-wide {
+  letter-spacing: normal;
+}
+
 .eeg-paper {
   background-color: #0D1424;
   background-image:

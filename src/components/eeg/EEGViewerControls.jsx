@@ -1,3 +1,4 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
 import { useEffect, useMemo, useState } from 'react'
 import { MONTAGE_LIST } from '@/engine/montages'
 import { FILTER_PRESETS } from '@/engine/filters'
@@ -6,6 +7,8 @@ import { ACTIVATION_PROCEDURES, hasActivationProcedures, isActivationProcedureAl
 
 export const DEFAULT_VIEWER_STYLE = {
   signalColor: '',
+  leftColor: '',
+  rightColor: '',
   plotBg: '',
   pageBg: '',
   gridColor: '',
@@ -39,6 +42,12 @@ export function buildViewerThemeOverrides(viewerStyle) {
     overrides.signalHover = viewerStyle.signalColor
     overrides.glow = viewerStyle.signalColor
     overrides.glowHover = viewerStyle.signalColor
+  }
+  if (viewerStyle.leftColor) overrides.signalLeft = viewerStyle.leftColor
+  if (viewerStyle.rightColor) overrides.signalRight = viewerStyle.rightColor
+  if (viewerStyle.signalColor) {
+    overrides.signalMidline = viewerStyle.signalColor
+    overrides.signalMixed = viewerStyle.signalColor
   }
   if (viewerStyle.plotBg) overrides.plotBg = viewerStyle.plotBg
   if (viewerStyle.pageBg) {
@@ -81,6 +90,7 @@ export default function EEGViewerControls({
   onActivationProcedureChange,
   pattern,
 }) {
+  useLocale()
   const matchedFilter = useMemo(() => (
     Object.entries(FILTER_PRESETS).find(([, preset]) =>
       preset.hp === filterConfig?.hp &&
@@ -103,16 +113,17 @@ export default function EEGViewerControls({
   }
 
   return (
-    <div className="relative z-10 border-b border-eeg-border bg-eeg-surface">
+    <details open className="relative z-10 border-b border-eeg-border bg-eeg-surface">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-eeg-muted hover:text-eeg-text">{localize("Viewer controls")}</summary>
       <div className="px-3 py-2 flex flex-wrap items-end gap-2">
         {montageId && onMontageChange && (
           <ToolbarSelect label="Montage" value={montageId} onChange={onMontageChange} className="w-36">
-            {MONTAGE_LIST.map(m => <option key={m.id} value={m.id}>{m.shortLabel}</option>)}
+            {MONTAGE_LIST.map(m => <option key={m.id} value={m.id}>{localize(m.shortLabel)}</option>)}
           </ToolbarSelect>
         )}
         {sensitivity && onSensitivityChange && (
           <ToolbarSelect label="Sensitivity" value={sensitivity} onChange={value => onSensitivityChange(Number(value))} className="w-28">
-            {SENSITIVITY_STEPS.map(step => <option key={step} value={step}>{step} uV/mm</option>)}
+            {SENSITIVITY_STEPS.map(step => <option key={step} value={step}>{localize(step)}{localize(" uV/mm")}</option>)}
           </ToolbarSelect>
         )}
         {noiseLevel != null && onNoiseLevelChange && (
@@ -160,10 +171,10 @@ export default function EEGViewerControls({
             className="w-44"
             disabled={!hasActivationProcedures(pattern)}
           >
-            <option value="none">None</option>
+            <option value="none">{localize("None")}</option>
             {Object.entries(ACTIVATION_PROCEDURES).map(([id, procedure]) => (
               <option key={id} value={id} disabled={!isActivationProcedureAllowed(id, pattern)}>
-                {procedure.label}
+                {localize(procedure.label)}
               </option>
             ))}
           </ToolbarSelect>
@@ -181,8 +192,8 @@ export default function EEGViewerControls({
               }}
               className="w-44"
             >
-              {Object.entries(FILTER_PRESETS).map(([id, preset]) => <option key={id} value={id}>{preset.label}</option>)}
-              <option value="custom">Custom</option>
+              {Object.entries(FILTER_PRESETS).map(([id, preset]) => <option key={id} value={id}>{localize(preset.label)}</option>)}
+              <option value="custom">{localize("Custom")}</option>
             </ToolbarSelect>
             {activeFilter === 'custom' && (
               <div className="grid grid-cols-3 gap-1">
@@ -195,8 +206,8 @@ export default function EEGViewerControls({
         )}
         {viewerTheme && onViewerThemeChange && (
           <ToolbarSelect label="Theme" value={viewerTheme} onChange={onViewerThemeChange} className="w-32">
-            {VIEWER_THEME_LIST.map(th => <option key={th.id} value={th.id}>{th.label}</option>)}
-            <option value="custom">Custom</option>
+            {VIEWER_THEME_LIST.map(th => <option key={th.id} value={th.id}>{localize(th.label)}</option>)}
+            <option value="custom">{localize("Custom")}</option>
           </ToolbarSelect>
         )}
         {isCustomTheme && viewerStyle && onViewerStyleChange && (
@@ -212,7 +223,9 @@ export default function EEGViewerControls({
 
       {isCustomTheme && viewerStyle && (
         <div className="px-3 pb-3 flex flex-wrap items-end gap-3 border-t border-eeg-border bg-eeg-bg bg-opacity-35">
-          <ToolbarColor label="Curve" value={viewerStyle.signalColor || baseTheme.signal} onChange={value => setStyle('signalColor', value)} />
+          <ToolbarColor label="Left" value={viewerStyle.leftColor || baseTheme.signalLeft} onChange={value => setStyle('leftColor', value)} />
+          <ToolbarColor label="Right" value={viewerStyle.rightColor || baseTheme.signalRight} onChange={value => setStyle('rightColor', value)} />
+          <ToolbarColor label="Midline / other" value={viewerStyle.signalColor || baseTheme.signal} onChange={value => setStyle('signalColor', value)} />
           <ToolbarColor label="Plot" value={viewerStyle.plotBg || baseTheme.plotBg} onChange={value => setStyle('plotBg', value)} />
           <ToolbarColor label="Frame" value={viewerStyle.pageBg || baseTheme.pageBg} onChange={value => setStyle('pageBg', value)} />
           <ToolbarColor label="Grid" value={viewerStyle.gridColor || rgbaToHex(baseTheme.gridMajor) || baseTheme.signal} onChange={value => setStyle('gridColor', value)} />
@@ -221,23 +234,22 @@ export default function EEGViewerControls({
             type="button"
             onClick={() => onViewerStyleChange(DEFAULT_VIEWER_STYLE)}
             className="h-8 px-3 rounded border border-eeg-border text-xs font-mono text-eeg-muted hover:text-eeg-text transition-colors"
-          >
-            Reset
-          </button>
+          >{localize("Reset")}</button>
         </div>
       )}
-    </div>
+    </details>
   )
 }
 
 function ToolbarToggle({ label, value, offLabel, onLabel, onChange, disabled = false }) {
+  useLocale()
   const inactiveClass = disabled
     ? 'text-eeg-muted cursor-not-allowed'
     : 'text-eeg-muted hover:text-eeg-text'
 
   return (
     <label className={`flex flex-col gap-1 ${disabled ? 'opacity-50' : ''}`}>
-      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{label}</span>
+      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{localize(label)}</span>
       <div className="h-8 grid grid-cols-2 rounded border border-eeg-border bg-eeg-card overflow-hidden text-xs font-mono">
         <button
           type="button"
@@ -245,7 +257,7 @@ function ToolbarToggle({ label, value, offLabel, onLabel, onChange, disabled = f
           disabled={disabled}
           className={`px-2 transition-colors disabled:cursor-not-allowed ${!value ? 'bg-eeg-accent text-eeg-bg' : inactiveClass}`}
         >
-          {offLabel}
+          {localize(offLabel)}
         </button>
         <button
           type="button"
@@ -253,7 +265,7 @@ function ToolbarToggle({ label, value, offLabel, onLabel, onChange, disabled = f
           disabled={disabled}
           className={`px-2 transition-colors disabled:cursor-not-allowed ${value ? 'bg-eeg-accent text-eeg-bg' : inactiveClass}`}
         >
-          {onLabel}
+          {localize(onLabel)}
         </button>
       </div>
     </label>
@@ -261,22 +273,24 @@ function ToolbarToggle({ label, value, offLabel, onLabel, onChange, disabled = f
 }
 
 function ToolbarSelect({ label, value, onChange, children, className = '', disabled = false }) {
+  useLocale()
   return (
     <label className={`flex flex-col gap-1 ${disabled ? 'opacity-45' : ''}`}>
-      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{label}</span>
+      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{localize(label)}</span>
       <select value={value} onChange={event => onChange(event.target.value)} disabled={disabled}
         className={`h-8 bg-eeg-card border border-eeg-border rounded px-2 text-xs font-mono text-eeg-text focus:outline-none focus:border-eeg-accent disabled:cursor-not-allowed ${className}`}>
-        {children}
+        {localize(children)}
       </select>
     </label>
   )
 }
 
 function ToolbarRange({ label, value, min, max, step, unit, onChange, wide = false, disabled = false }) {
+  useLocale()
   return (
     <label className={`flex flex-col gap-1 ${wide ? 'w-40' : 'w-28'} ${disabled ? 'opacity-50' : ''}`}>
       <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">
-        {label} <span className="text-eeg-accent">{Number(value).toFixed(step < 1 ? 2 : 0)}{unit}</span>
+        {localize(label)} <span className="text-eeg-accent">{localize(Number(value).toFixed(step < 1 ? 2 : 0))}{localize(unit)}</span>
       </span>
       <input type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={event => onChange(Number(event.target.value))} className="h-8 w-full accent-eeg-accent disabled:cursor-not-allowed disabled:opacity-40" />
     </label>
@@ -284,9 +298,10 @@ function ToolbarRange({ label, value, min, max, step, unit, onChange, wide = fal
 }
 
 function ToolbarNumber({ label, value, onChange }) {
+  useLocale()
   return (
     <label className="flex flex-col gap-1 w-16">
-      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{label}</span>
+      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{localize(label)}</span>
       <input type="number" value={value ?? ''} onChange={event => onChange(event.target.value === '' ? null : Number(event.target.value))}
         className="h-8 bg-eeg-card border border-eeg-border rounded px-2 text-xs font-mono text-eeg-text focus:outline-none focus:border-eeg-accent" />
     </label>
@@ -294,9 +309,10 @@ function ToolbarNumber({ label, value, onChange }) {
 }
 
 function ToolbarColor({ label, value, onChange }) {
+  useLocale()
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{label}</span>
+      <span className="text-[10px] font-mono uppercase tracking-widest text-eeg-muted">{localize(label)}</span>
       <input type="color" value={value} onChange={event => onChange(event.target.value)}
         className="h-8 w-12 rounded border border-eeg-border bg-eeg-card cursor-pointer" />
     </label>

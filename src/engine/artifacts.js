@@ -1353,7 +1353,7 @@ export const ARTIFACT_CATALOGUE = [
     morphology: 'Bilateral symmetric; fast rise (~60 ms), slower fall (~220 ms); positive at frontopolar channels',
     distribution: 'Maximal: Fp1, Fp2. Moderate: F3, F4, F7, F8. Absent: central, parietal, occipital',
     generator:  generateEyeBlinkArtifact,
-    mechanism:  'The corneoretinal potential — the standing potential between the electrically positive cornea and negative retina (~100 mV) — is partially detected at scalp electrodes. When the eyelid closes, it briefly short-circuits this potential, creating a high-amplitude positive deflection at frontopolar electrodes. Closure is fast; reopening is slower, producing an asymmetric waveform.',
+    mechanism:  "The eye has a cornea-positive, retina-negative standing potential. Eye and eyelid movements alter its projection onto frontal electrodes and can produce large asymmetric blink transients.",
     identification: [
       'Bilateral, symmetric slow positive deflections at Fp1 and Fp2',
       'Amplitude maximum at frontopolar electrodes, rapidly diminishing posteriorly',

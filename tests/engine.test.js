@@ -1,3 +1,4 @@
+import { ADDITIONAL_PATTERN_CONFIG } from '../src/engine/additionalPatterns.js'
 import { describe, it, expect } from 'vitest'
 
 import {
@@ -385,6 +386,7 @@ describe('generateDemoTrace', () => {
 
 describe('createEngineForPattern', () => {
   const expected = {
+    ...Object.fromEntries(Object.entries(ADDITIONAL_PATTERN_CONFIG).map(([id, config]) => [id, { mode: config.mode, overlays: [config.overlay] }])),
     normal_awake: { mode: 'normal_awake', overlays: [] },
     fast_alpha_variant: { mode: 'fast_alpha_variant', overlays: [] },
     mu_rhythm: { mode: 'mu_rhythm', overlays: ['MuRhythmEventOverlay'] },

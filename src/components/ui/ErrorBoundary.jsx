@@ -1,3 +1,4 @@
+import { translateDisplay as localize } from '@/i18n/localize'
 import React from 'react'
 
 export default class ErrorBoundary extends React.Component {
@@ -27,30 +28,22 @@ export default class ErrorBoundary extends React.Component {
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
             </div>
-            <h2 className="font-display font-bold text-lg text-eeg-text mb-2">Something went wrong</h2>
-            <p className="font-body text-sm text-eeg-muted mb-4 leading-relaxed">
-              An unexpected error occurred while loading this page. Try refreshing, or navigate back home.
-            </p>
+            <h2 className="font-display font-bold text-lg text-eeg-text mb-2">{localize("Something went wrong")}</h2>
+            <p className="font-body text-sm text-eeg-muted mb-4 leading-relaxed">{localize("An unexpected error occurred while loading this page. Try refreshing, or navigate back home.")}</p>
             <div className="flex gap-3 justify-center">
               <button
                 onClick={() => window.location.reload()}
                 className="btn-primary text-sm"
-              >
-                Refresh Page
-              </button>
-              <a href="/" className="btn-ghost text-sm">
-                Go Home
-              </a>
+              >{localize("Refresh Page")}</button>
+              <a href={`${import.meta.env.BASE_URL}#/`} className="btn-ghost text-sm">{localize("Go Home")}</a>
             </div>
             {import.meta.env.DEV && this.state.error && (
-              <details className="mt-4 text-left">
-                <summary className="font-mono text-xs text-eeg-muted cursor-pointer">
-                  Error details
-                </summary>
+              <details className="mt-4 text-start">
+                <summary className="font-mono text-xs text-eeg-muted cursor-pointer">{localize("Error details")}</summary>
                 <pre className="mt-2 p-3 bg-eeg-surface border border-eeg-border rounded text-xs font-mono text-eeg-warn overflow-auto max-h-48">
-                  {this.state.error.toString()}
-                  {'\n'}
-                  {this.state.errorInfo?.componentStack}
+                  {localize(this.state.error.toString())}
+                  {localize('\n')}
+                  {localize(this.state.errorInfo?.componentStack)}
                 </pre>
               </details>
             )}

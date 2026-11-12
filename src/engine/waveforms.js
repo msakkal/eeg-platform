@@ -154,6 +154,7 @@ function injectPolyspikeAndSlow(sig, at, fs, {
 } = {}) {
   for (let k = 0; k < count; k++) {
     injectSpike(sig, at + Math.round(k * spacing * fs), {
+      sampleRate: fs,
       amplitude: amp * (1 - k * 0.09) * (0.9 + random() * 0.18),
       duration: 0.035 + random() * 0.012,
       polarity: -1,
@@ -174,6 +175,7 @@ function injectSpikeWaveComplex(sig, at, fs, {
   slowDuration = 0.24,
 } = {}) {
   injectSpike(sig, at, {
+    sampleRate: fs,
     amplitude: spikeAmp * (0.9 + random() * 0.2),
     duration: 0.038 + random() * 0.01,
     polarity: -1,
@@ -320,21 +322,21 @@ function injectVertexSharp(sig, at, fs = SAMPLE_RATE, {
 }
 
 /** Inject a sleep spindle: 12–14 Hz, 0.5–1.5 s, waxing/waning envelope. */
-function injectSpindle(sig, at, { amp = 35, durSec = 1.0, freq = 13 } = {}) {
-  const dur = Math.round(durSec * SAMPLE_RATE)
+function injectSpindle(sig, at, { amp = 35, durSec = 1.0, freq = 13, sampleRate = SAMPLE_RATE } = {}) {
+  const dur = Math.round(durSec * sampleRate)
   for (let i = 0; i < dur; i++) {
     const idx = at + i
     if (idx >= sig.length) break
     const env = Math.sin(Math.PI * i / dur)    // 0..1..0
-    sig[idx] += amp * env * Math.sin(2 * Math.PI * freq * i / SAMPLE_RATE)
+    sig[idx] += amp * env * Math.sin(2 * Math.PI * freq * i / sampleRate)
   }
 }
 
 /** Inject a triphasic wave: brief positive → large negative → large positive. */
-function injectTriphasic(sig, at, { amp = 120 } = {}) {
-  const p1 = Math.round(0.08 * SAMPLE_RATE)   // short positive bump
-  const p2 = Math.round(0.12 * SAMPLE_RATE)   // large negative
-  const p3 = Math.round(0.22 * SAMPLE_RATE)   // broad positive
+function injectTriphasic(sig, at, { amp = 120, sampleRate = SAMPLE_RATE } = {}) {
+  const p1 = Math.round(0.08 * sampleRate)   // short positive bump
+  const p2 = Math.round(0.12 * sampleRate)   // large negative
+  const p3 = Math.round(0.22 * sampleRate)   // broad positive
   let idx = at
   for (let i = 0; i < p1; i++, idx++) {
     if (idx >= sig.length) return
@@ -647,7 +649,7 @@ export const WAVEFORM_PATTERNS = {
     group:       'epileptiform',
     label:       'Spike',
     freq:        'Transient',
-    duration:    '< 70 ms',
+    duration:    "20–<70 ms",
     amplitude:   '50–500 µV',
     morphology:  'Sharply contoured, asymmetric, steep rise, usually negative; followed by after-going slow wave',
     location:    'Focal or generalised',
@@ -677,9 +679,9 @@ export const WAVEFORM_PATTERNS = {
     group:       'epileptiform',
     label:       'Polyspike',
     freq:        'Transient burst',
-    duration:    '< 200 ms (burst)',
+    duration:    "Variable burst duration",
     amplitude:   '100–500 µV',
-    morphology:  'Multiple (3+) spikes in rapid succession',
+    morphology:  "Two or more successive spikes",
     location:    'Generalised (typical); less often focal',
     reactivity:  'N/A',
     clinical:    'Seen in generalised epilepsies (JME, Lennox-Gastaut)',
@@ -878,6 +880,11 @@ export const WAVEFORM_GROUPS = {
  * Returns Float32Array (single channel).
  */
 export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options = {}) {
+  const injectSpikeAtRate = (signal, at, opts) => injectSpike(signal, at, { ...opts, sampleRate })
+  const injectSharpWaveAtRate = (signal, at, opts) => injectSharpWave(signal, at, { ...opts, sampleRate })
+  const injectEyeBlinkAtRate = (signal, at, opts) => injectEyeBlink(signal, at, { ...opts, sampleRate })
+  const injectSpindleAtRate = (signal, at, opts) => injectSpindle(signal, at, { ...opts, sampleRate })
+  const injectTriphasicAtRate = (signal, at, opts) => injectTriphasic(signal, at, { ...opts, sampleRate })
   const { seed = seedFromString(patternId) } = options
   const previousRandom = activeRandom
   if (seed != null) activeRandom = makeRng(seed)
@@ -1142,8 +1149,8 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       // Light N2-like background
       addRhythm(sig, sampleRate, { centerFreq: 2, amplitude: 25, nComp: 2, envFloor: 0.5 })
       addRhythm(sig, sampleRate, { centerFreq: 6, amplitude: 20, nComp: 2, envFloor: 0.5 })
-      injectSpindle(sig, Math.round(0.5 * sampleRate), { amp: 45, durSec: 1.1, freq: 13 })
-      injectSpindle(sig, Math.round(1.9 * sampleRate), { amp: 40, durSec: 0.9, freq: 12.5 })
+      injectSpindleAtRate(sig, Math.round(0.5 * sampleRate), { amp: 45, durSec: 1.1, freq: 13 })
+      injectSpindleAtRate(sig, Math.round(1.9 * sampleRate), { amp: 40, durSec: 0.9, freq: 12.5 })
       return sig
     }
     case 'k_complex': {
@@ -1161,7 +1168,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
         terminalScale: 0.07,
       })
       // K-complex often followed by a sleep spindle
-      injectSpindle(sig, Math.round(1.48 * sampleRate), { amp: 28, durSec: 0.82, freq: 13 })
+      injectSpindleAtRate(sig, Math.round(1.48 * sampleRate), { amp: 28, durSec: 0.82, freq: 13 })
       return sig
     }
     case 'posts': {
@@ -1195,7 +1202,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 35, nComp: 2, envFloor: 0.5 })
       ;[0.6, 1.4, 2.2].forEach(t => {
         const at = Math.round(t * sampleRate)
-        injectSpike(sig, at, {
+        injectSpikeAtRate(sig, at, {
           amplitude: 170 + random() * 45,
           duration: 0.04 + random() * 0.015,
           polarity: -1,
@@ -1216,7 +1223,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 35, nComp: 2, envFloor: 0.5 })
       ;[0.7, 1.6, 2.4].forEach(t => {
         const at = Math.round(t * sampleRate)
-        injectSharpWave(sig, at, {
+        injectSharpWaveAtRate(sig, at, {
           amplitude: 120 + random() * 50,
           duration: 0.095 + random() * 0.045,
           polarity: -1,
@@ -1291,7 +1298,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
         const t = random() * (dur - 0.1)
         const at = Math.round(t * sampleRate)
         const polarity = random() > 0.5 ? -1 : 1
-        injectSpike(sig, at, {
+        injectSpikeAtRate(sig, at, {
           amplitude: 150 + random() * 180,
           duration:  0.04 + random() * 0.08,
           polarity,
@@ -1311,7 +1318,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       const ibiMean = 1 / 1.5
       let t = 0.25
       while (t < dur - ibiMean * 0.5) {
-        injectTriphasic(sig, Math.round(t * sampleRate),
+        injectTriphasicAtRate(sig, Math.round(t * sampleRate),
           { amp: 130 * (0.85 + random() * 0.30) })
         t += ibiMean * (0.88 + random() * 0.24)
       }
@@ -1328,7 +1335,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       while (t < dur - ibiMean * 0.5) {
         const ampJ = 0.85 + random() * 0.30
         const s    = Math.round(t * sampleRate)
-        injectSharpWave(sig, s,
+        injectSharpWaveAtRate(sig, s,
           { amplitude: 140 * ampJ, duration: 0.12, polarity: -1 })
         injectAfterSlowWave(sig, s, sampleRate, {
           amp: 60 * ampJ,
@@ -1352,7 +1359,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       while (t < dur - ibiMean * 0.5) {
         const ampJ = 0.85 + random() * 0.30
         const s    = Math.round(t * sampleRate)
-        injectSharpWave(sig, s,
+        injectSharpWaveAtRate(sig, s,
           { amplitude: 200 * ampJ, duration: 0.10, polarity: -1 })
         injectAfterSlowWave(sig, s, sampleRate, {
           amp: 85 * ampJ,
@@ -1428,10 +1435,10 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
         })
         // Embed 1–2 sharp transients inside the burst — characteristic of
         // the pattern seen in hypoxic-ischaemic encephalopathy.
-        injectSharpWave(burst, Math.round(bN * 0.25),
+        injectSharpWaveAtRate(burst, Math.round(bN * 0.25),
           { amplitude: 170, duration: 0.09, polarity: -1 })
         if (bN > 0.4 * sampleRate) {
-          injectSharpWave(burst, Math.round(bN * 0.65),
+          injectSharpWaveAtRate(burst, Math.round(bN * 0.65),
             { amplitude: 140, duration: 0.07, polarity: +1 })
         }
         // Envelope: rapid rise, gentle plateau, steeper fall (bursts end abruptly)
@@ -1479,7 +1486,7 @@ export function generateDemoTrace(patternId, sampleRate = SAMPLE_RATE, options =
       addNoise(sig, 3)
       addRhythm(sig, sampleRate, { centerFreq: 10, amplitude: 22, nComp: 2, envFloor: 0.5 })
       ;[0.5, 1.5, 2.4].forEach(t =>
-        injectEyeBlink(sig, Math.round(t * sampleRate), { amplitude: 280 }))
+        injectEyeBlinkAtRate(sig, Math.round(t * sampleRate), { amplitude: 280 }))
       return sig
     }
     default: {

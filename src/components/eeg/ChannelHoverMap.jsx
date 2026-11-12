@@ -1,3 +1,5 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
+import { getChannelThemeColor, getViewerTheme } from '@/engine/viewerThemes'
 import { useMemo } from 'react'
 import { ELECTRODE_POSITIONS_2D, SELECTABLE_ELECTRODES } from '@/engine/propagation'
 
@@ -22,6 +24,7 @@ export function ChannelHoverPanel({
   idleText = 'Move over a channel to highlight its scalp contacts.',
   className = '',
 }) {
+  useLocale()
   const highlighted = useMemo(
     () => getChannelElectrodes(channelLabel, electrodes),
     [channelLabel, electrodes],
@@ -30,7 +33,7 @@ export function ChannelHoverPanel({
   return (
     <div className={`bg-eeg-surface p-4 flex flex-col gap-2 items-center ${className}`}>
       <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted self-start mb-1">
-        {title}
+        {localize(title)}
       </p>
       <ChannelHoverMap
         channelLabel={channelLabel}
@@ -40,7 +43,7 @@ export function ChannelHoverPanel({
         polarity={polarity}
       />
       <p className="text-[10px] font-mono text-eeg-muted text-center mt-2 leading-relaxed">
-        {channelLabel ? activeText : idleText}
+        {localize(channelLabel ? activeText : idleText)}
       </p>
     </div>
   )
@@ -54,6 +57,7 @@ export default function ChannelHoverMap({
   polarity = 0,
   size = 168,
 }) {
+  useLocale()
   const highlighted = useMemo(
     () => getChannelElectrodes(channelLabel, electrodes),
     [channelLabel, electrodes],
@@ -85,12 +89,12 @@ export default function ChannelHoverMap({
     : '#5A6A82'
 
   return (
-    <svg
+    <svg dir="ltr"
       viewBox={`0 0 ${size} ${svgHeight}`}
       width={size}
       height={svgHeight}
       style={{ display: 'block' }}
-      aria-label={channelLabel ? `Electrodes for ${channelLabel}` : 'Hovered channel electrodes'}
+      aria-label={localize(channelLabel ? `Electrodes for ${channelLabel}` : 'Hovered channel electrodes')}
       role="img"
     >
       <circle cx={CX} cy={CY} r={R} fill="#0D1424" stroke="#1E2A40" strokeWidth="1.2" />
@@ -137,7 +141,7 @@ export default function ChannelHoverMap({
         strokeDasharray="2,3"
       />
 
-      {pos &&
+      {localize(pos &&
         neg &&
         pairMode &&
         (() => {
@@ -154,9 +158,9 @@ export default function ChannelHoverMap({
               strokeDasharray="3,3"
             />
           )
-        })()}
+        })())}
 
-      {SELECTABLE_ELECTRODES.map((elec) => {
+      {localize(SELECTABLE_ELECTRODES.map((elec) => {
         const point = ELECTRODE_POSITIONS_2D[elec]
         const sv = toSvg(point.x, point.y)
         const isPos = elec === pos
@@ -164,8 +168,9 @@ export default function ChannelHoverMap({
         const isSource = elec === sourceElec
 
         let r = 2.4
-        let fill = '#0D1424'
-        let stroke = '#2A3A5488'
+        const sideColor = getChannelThemeColor(elec, getViewerTheme('midnight'))
+        let fill = `${sideColor}33`
+        let stroke = `${sideColor}AA`
         let strokeWidth = 0.7
         let showLabel = false
 
@@ -212,12 +217,12 @@ export default function ChannelHoverMap({
                 fontWeight="bold"
                 fill={isPos ? posColor : negColor}
               >
-                {elec}
+                {localize(elec)}
               </text>
             )}
           </g>
         )
-      })}
+      }))}
 
       <text
         x={CX}
@@ -228,7 +233,7 @@ export default function ChannelHoverMap({
         fill="#5A6A82"
         fontWeight="bold"
       >
-        {channelLabel ?? '-'}
+        {localize(channelLabel ?? '-')}
       </text>
     </svg>
   )

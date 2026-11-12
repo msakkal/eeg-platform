@@ -1,126 +1,248 @@
-import { useMemo, useState } from 'react'
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
+import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
+import { createContext, useContext, useId, useMemo, useRef, useState } from 'react'
 import { DEFAULT_REPORT_DATA, generateEEGReport } from '@/engine/reportGenerator'
 
-const STEPS = [
-  ['study', 'Study & technique', '01'],
-  ['background', 'Background', '02'],
-  ['sleep', 'Sleep', '03'],
-  ['slowing', 'Slowing', '04'],
-  ['epileptiform', 'Epileptiform', '05'],
-  ['rhythmicPeriodic', 'Rhythmic / periodic', '06'],
-  ['events', 'Events & seizures', '07'],
-  ['impression', 'Correlation', '08'],
-  ['preview', 'Full report', '09'],
+const SECTIONS = [
+  ['study', 'Study and technique'],
+  ['background', 'Background'],
+  ['sleep', 'Drowsiness and sleep'],
+  ['findings', 'Abnormal findings'],
+  ['events', 'Events and seizures'],
+  ['correlation', 'Clinical correlation'],
+  ['preview', 'Review and export'],
 ]
 
+const LOCATIONS = [
+  ...['left', 'right', 'bilateral'].flatMap((side) =>
+    [
+      'frontal',
+      'frontotemporal',
+      'anterior temporal',
+      'temporal',
+      'centrotemporal',
+      'central',
+      'parietal',
+      'occipital',
+      'posterior',
+    ].map((region) => `${side} ${region} region`),
+  ),
+  'left hemisphere',
+  'right hemisphere',
+  'both hemispheres',
+  'midline region',
+  'multiple independent regions',
+]
+const EVENT_DESCRIPTIONS = [
+  'behavioral arrest',
+  'impaired responsiveness',
+  'staring',
+  'motor automatisms',
+  'left arm clonic movements',
+  'right arm clonic movements',
+  'bilateral tonic-clonic movements',
+  'myoclonic jerks',
+  'subjective sensory symptoms',
+  'the patient?s typical event',
+]
+const displayLabel = (value) => (value ? value[0].toUpperCase() + value.slice(1) : 'Not specified')
+
+const GuidanceContext = createContext(false)
+
 const FIELD_CRITERIA = {
-  'Study type': 'Choose the protocol actually performed; routine, ambulatory, prolonged, and continuous studies have different sampling and clinical aims.',
-  'Recording modality': 'State whether synchronized video was available, because electroclinical correlation depends on it.',
-  'Duration': 'Report the usable recording time, excluding setup and prolonged uninterpretable segments.',
-  'Number of channels': 'Enter channels actually recorded; note a reduced array because it lowers spatial sampling and may limit localization.',
-  'Electrode system': 'Select the placement system used. Standard 10–20 coverage is the minimum reference for routine scalp EEG interpretation.',
-  'Technical limitations': 'Document artifact, missing electrodes, cooperation, or other issues only when they materially limit interpretation.',
-  'States recorded': 'Select only states demonstrated on EEG or video; distinguish physiologic sleep from medication-related sedation or coma.',
-  'Activation procedures': 'Select procedures adequately attempted and document why a standard procedure was omitted or stopped early.',
-  'Indication / referral question': 'Use a de-identified clinical question that the EEG can address; avoid assuming the diagnosis being investigated.',
-  'Relevant medications': 'Include agents that may alter background, sleep architecture, epileptiform activity, or level of consciousness, with timing when known.',
-  'Hyperventilation response': 'Expected bilateral slowing should resolve promptly after hyperventilation; persistent focal slowing or epileptiform activation is abnormal.',
-  'Photic response': 'Assess symmetric driving separately from a photoparoxysmal response; a photomyogenic response is muscle artifact, not cerebral epileptiform activity.',
-  'Continuity': 'For adult critical-care terminology: continuous has <1% attenuation/suppression, nearly continuous 1–9%, discontinuous 10–49%, burst-suppression 50–99%, and suppression >99%.',
-  'Organization': 'Judge whether expected rhythms, gradients, and state transitions form an orderly age- and state-appropriate background.',
-  'Symmetry': 'Compare homologous regions in the same state and montage; persistent differences in frequency or amplitude are more meaningful than brief variation.',
-  'Voltage': 'Interpret amplitude in montage and context. ACNS adult critical-care convention uses normal >20 µV, low 10–<20 µV, and suppressed <10 µV.',
-  'Predominant frequencies': 'Describe activity occupying most of the background, relative to age, vigilance, medication, and recording conditions.',
-  'Anterior–posterior gradient': 'Present means relatively faster, lower-amplitude activity anteriorly with an organized posterior rhythm during appropriate wakefulness.',
-  'Variability / state changes': 'Look for spontaneous, reproducible shifts with vigilance; reduced or absent variability should be judged over adequate recording time.',
-  'Reactivity': 'Present requires a reproducible EEG change in frequency or amplitude after stimulation; muscle or movement artifact alone is not reactivity.',
-  'Posterior dominant rhythm identified': 'Mark present only for a sustained posterior rhythm during relaxed wakefulness, best assessed with eye closure.',
-  'PDR frequency (Hz)': 'Measure the dominant posterior frequency over several clean cycles. Interpret by age and state; a typical awake adult PDR is 8–13 Hz.',
-  'PDR symmetry': 'Compare frequency and amplitude at O1/O2 across adequate epochs; describe persistent asymmetry rather than transient waxing and waning.',
-  'Reactive to eye opening': 'Normal reactivity is clear attenuation or blocking with eye opening and return after eye closure.',
-  'Sleep obtained': 'Mark present only when physiologic sleep is supported by state change or recognizable sleep graphoelements.',
-  'Stages reached': 'Stage from the deepest clearly demonstrated state; N2 requires a spindle or K-complex, and N3 requires age-appropriate high-amplitude slow-wave criteria.',
-  'Sleep architecture': 'Assess expected progression, cycling, arousals, and age-appropriate graphoelements; a brief routine EEG may limit this assessment.',
-  'Vertex waves': 'Normal N1–N2 vertex transients are maximal at Cz with a symmetric central field; persistent asymmetry requires context.',
-  'Sleep spindles': 'Identify waxing–waning sigma bursts, usually 11–16 Hz and central; assess age appropriateness and persistent asymmetry or asynchrony.',
-  'K-complexes': 'Identify a well-delineated negative sharp wave followed by a positive slow component in N2; separate dyshormia from a benign K-complex.',
-  'Additional sleep observations': 'Record state-specific elements not captured above, including POSTS, arousals, REM features, or abnormal sleep activation.',
-  'Finding status': 'Select present only when the raw EEG supports the finding after excluding artifact and normal age- or state-related activity.',
-  'Distribution': 'Choose the spatial extent supported by the voltage field: focal, lateralized, multifocal/independent, or generalized.',
-  'Location / maximum': 'Name the electrode or region of maximum expression and laterality; localization should follow the field, not one channel alone.',
-  'Frequency content': 'Theta is 4–<8 Hz and delta is <4 Hz; report slowing only when excessive for age, state, and medication.',
-  'Persistence': 'Intermittent slowing comes and goes; persistent slowing occupies the region throughout most comparable, artifact-free epochs.',
-  'Morphology': 'Choose the observed waveform shape. Sharp contour alone is insufficient—consider duration, field, background disruption, and after-going slow wave.',
-  'State dependence': 'State the vigilance state in which discharges occur and whether sleep activates them; compare equivalent amounts of each state.',
-  'Field': 'A physiologic field should involve adjacent electrodes with a plausible gradient and polarity; a single-electrode transient suggests artifact.',
-  'Pattern': 'Periodic discharges recur at near-regular intervals; rhythmic delta has no interval between cycles; spike-wave contains a spike or sharp component with a slow wave.',
-  'Location': 'Specify predominance and laterality using the electrodes or lobar/hemispheric region that best represents the pattern.',
-  'Typical frequency (Hz)': 'Measure cycles per second over a representative stable segment and report a range when the rate varies.',
-  'Modifiers': 'Apply +F, +R, or +S only when the superimposed feature is distinct from the main pattern; fluctuation is not the same as definite evolution.',
-  'Stimulus-induced': 'Mark present only when the pattern is reproducibly triggered or worsened by stimulation; name the stimulus in the narrative when relevant.',
-  'Recording result': 'A seizure requires a qualifying ictal EEG pattern; an event without scalp correlate should be described without assigning etiology from EEG alone.',
-  'Number captured': 'Count only the patient’s typical clinical events that were adequately recorded on EEG and, when available, video.',
-  'Event description': 'Describe observed semiology, responsiveness, onset/offset, and duration without inferring cause.',
-  'Number recorded': 'Count distinct electrographic or electroclinical seizures, or select multiple when an exact count is impractical.',
-  'Type': 'Electroclinical requires a time-locked clinical correlate; electrographic seizures have no definite clinical correlate.',
-  'Electrographic onset': 'Describe first unequivocal EEG change, localization, frequency, morphology, and earliest spread—separate from clinical onset.',
-  'Evolution': 'Definite evolution is sequential change in at least two of frequency, morphology, or location according to standardized criteria.',
-  'Clinical correlate': 'Document the time-locked sign or symptom and its relationship to EEG onset; do not infer an unobserved correlate.',
-  'Additional descriptive finding': 'Use objective EEG language: morphology, frequency, field, prevalence, state, evolution, and reactivity.',
-  'Additional impression statement': 'Summarize clinical significance with calibrated certainty; avoid unsupported etiology, prognosis, or treatment advice.',
-  'Clinical correlation': 'Answer the referral question, integrate relevant context, and state important limitations or uncertainty.',
+  'Study type':
+    'Choose the protocol actually performed; routine, ambulatory, prolonged, and continuous studies have different sampling and clinical aims.',
+  'Recording modality':
+    'State whether synchronized video was available, because electroclinical correlation depends on it.',
+  'Recording duration':
+    'Report the usable recording time, excluding setup and prolonged uninterpretable segments.',
+  'Number of channels':
+    'Enter channels actually recorded; note a reduced array because it lowers spatial sampling and may limit localization.',
+  'Electrode system':
+    'Select the placement system used. Standard 10–20 coverage is the minimum reference for routine scalp EEG interpretation.',
+  'Technical limitations':
+    'Document artifact, missing electrodes, cooperation, or other issues only when they materially limit interpretation.',
+  'States recorded':
+    'Select only states demonstrated on EEG or video; distinguish physiologic sleep from medication-related sedation or coma.',
+  'Activation procedures':
+    'Select procedures adequately attempted and document why a standard procedure was omitted or stopped early.',
+  'Indication / referral question':
+    'Use a de-identified clinical question that the EEG can address; avoid assuming the diagnosis being investigated.',
+  'Relevant medications':
+    'Include agents that may alter background, sleep architecture, epileptiform activity, or level of consciousness, with timing when known.',
+  'Hyperventilation response':
+    'Expected bilateral slowing should resolve promptly after hyperventilation; persistent focal slowing or epileptiform activation is abnormal.',
+  'Photic response':
+    'Assess symmetric driving separately from a photoparoxysmal response; a photomyogenic response is muscle artifact, not cerebral epileptiform activity.',
+  Continuity:
+    'For adult critical-care terminology: continuous has <1% attenuation/suppression, nearly continuous 1–9%, discontinuous 10–49%, burst-suppression 50–99%, and suppression >99%.',
+  Organization:
+    'Judge whether expected rhythms, gradients, and state transitions form an orderly age- and state-appropriate background.',
+  Symmetry:
+    'Compare homologous regions in the same state and montage; persistent differences in frequency or amplitude are more meaningful than brief variation.',
+  Voltage:
+    "Interpret amplitude in montage and context. ACNS adult critical-care voltage categories are normal ≥20 µV, low 10–<20 µV, and suppressed <10 µV.",
+  'Predominant frequencies':
+    'Describe activity occupying most of the background, relative to age, vigilance, medication, and recording conditions.',
+  'Anterior–posterior gradient':
+    'Present means relatively faster, lower-amplitude activity anteriorly with an organized posterior rhythm during appropriate wakefulness.',
+  'Variability / state changes':
+    'Look for spontaneous, reproducible shifts with vigilance; reduced or absent variability should be judged over adequate recording time.',
+  Reactivity:
+    'Present requires a reproducible EEG change in frequency or amplitude after stimulation; muscle or movement artifact alone is not reactivity.',
+  'Posterior dominant rhythm identified':
+    'Mark present only for a sustained posterior rhythm during relaxed wakefulness, best assessed with eye closure.',
+  'PDR frequency (Hz)':
+    'Measure the dominant posterior frequency over several clean cycles. Interpret by age and state; a typical awake adult PDR is 8–13 Hz.',
+  'PDR symmetry':
+    'Compare frequency and amplitude at O1/O2 across adequate epochs; describe persistent asymmetry rather than transient waxing and waning.',
+  'Reactive to eye opening':
+    'Normal reactivity is clear attenuation or blocking with eye opening and return after eye closure.',
+  'Sleep obtained':
+    'Mark present only when physiologic sleep is supported by state change or recognizable sleep graphoelements.',
+  'Stages reached':
+    'Stage from the deepest clearly demonstrated state; N2 requires a spindle or K-complex, and N3 requires age-appropriate high-amplitude slow-wave criteria.',
+  'Sleep architecture':
+    'Assess expected progression, cycling, arousals, and age-appropriate graphoelements; a brief routine EEG may limit this assessment.',
+  'Vertex waves':
+    'Normal N1–N2 vertex transients are maximal at Cz with a symmetric central field; persistent asymmetry requires context.',
+  'Sleep spindles':
+    'Identify waxing–waning sigma bursts, usually 11–16 Hz and central; assess age appropriateness and persistent asymmetry or asynchrony.',
+  'K-complexes':
+    'Identify a well-delineated negative sharp wave followed by a positive slow component in N2; separate dyshormia from a benign K-complex.',
+  'Additional sleep observations':
+    'Record state-specific elements not captured above, including POSTS, arousals, REM features, or abnormal sleep activation.',
+  'Finding status':
+    'Select present only when the raw EEG supports the finding after excluding artifact and normal age- or state-related activity.',
+  Distribution:
+    'Choose the spatial extent supported by the voltage field: focal, lateralized, multifocal/independent, or generalized.',
+  'Location / maximum':
+    'Name the electrode or region of maximum expression and laterality; localization should follow the field, not one channel alone.',
+  'Frequency content':
+    'Theta is 4–<8 Hz and delta is <4 Hz; report slowing only when excessive for age, state, and medication.',
+  Persistence:
+    'Intermittent slowing comes and goes; persistent slowing occupies the region throughout most comparable, artifact-free epochs.',
+  Morphology:
+    'Choose the observed waveform shape. Sharp contour alone is insufficient—consider duration, field, background disruption, and after-going slow wave.',
+  'State dependence':
+    'State the vigilance state in which discharges occur and whether sleep activates them; compare equivalent amounts of each state.',
+  Field:
+    'A physiologic field should involve adjacent electrodes with a plausible gradient and polarity; a single-electrode transient suggests artifact.',
+  Pattern:
+    'Periodic discharges recur at near-regular intervals; rhythmic delta has no interval between cycles; spike-wave contains a spike or sharp component with a slow wave.',
+  Location:
+    'Specify predominance and laterality using the electrodes or lobar/hemispheric region that best represents the pattern.',
+  'Typical frequency (Hz)':
+    'Measure cycles per second over a representative stable segment and report a range when the rate varies.',
+  Modifiers:
+    'Apply +F, +R, or +S only when the superimposed feature is distinct from the main pattern; fluctuation is not the same as definite evolution.',
+  'Stimulus-induced':
+    'Mark present only when the pattern is reproducibly triggered or worsened by stimulation; name the stimulus in the narrative when relevant.',
+  'Recording result':
+    'A seizure requires a qualifying ictal EEG pattern; an event without scalp correlate should be described without assigning etiology from EEG alone.',
+  'Number captured':
+    'Count only the patient’s typical clinical events that were adequately recorded on EEG and, when available, video.',
+  'Event description':
+    'Describe observed semiology, responsiveness, onset/offset, and duration without inferring cause.',
+  'Number recorded':
+    'Count distinct electrographic or electroclinical seizures, or select multiple when an exact count is impractical.',
+  Type: 'Electroclinical requires a time-locked clinical correlate; electrographic seizures have no definite clinical correlate.',
+  'Electrographic onset':
+    'Describe first unequivocal EEG change, localization, frequency, morphology, and earliest spread—separate from clinical onset.',
+  Evolution:
+    'Definite evolution requires unequivocal sequential changes in frequency, morphology, or location according to standardized criteria; amplitude change alone is insufficient.',
+  'Clinical correlate':
+    'Document the time-locked sign or symptom and its relationship to EEG onset; do not infer an unobserved correlate.',
+  'Additional descriptive finding':
+    'Use objective EEG language: morphology, frequency, field, prevalence, state, evolution, and reactivity.',
+  'Additional impression statement':
+    'Summarize clinical significance with calibrated certainty; avoid unsupported etiology, prognosis, or treatment advice.',
+  'Clinical correlation':
+    'Answer the referral question, integrate relevant context, and state important limitations or uncertainty.',
 }
 
 const cloneDefaults = () => JSON.parse(JSON.stringify(DEFAULT_REPORT_DATA))
 
 function getValidationIssues(data) {
   const issues = []
-  if (!data.study.duration.trim()) issues.push('Enter the recording duration.')
-  if (!data.study.channels.trim()) issues.push('Enter the number of recorded channels.')
-  if (!data.study.states.length) issues.push('Select at least one recorded state.')
+  const addIssue = (step, message) => issues.push({ step, message })
+  if (!data.study.duration.trim()) addIssue('study', 'Enter the recording duration.')
+  if (!data.study.channels.trim()) addIssue('study', 'Enter the number of recorded channels.')
+  if (!data.study.states.length) addIssue('study', 'Select at least one recorded state.')
   if (data.background.pdrPresent && !data.background.pdrFrequency.trim())
-    issues.push('Enter the posterior dominant rhythm frequency.')
+    addIssue('background', 'Enter the posterior dominant rhythm frequency.')
   if (
     data.slowing.present &&
     data.slowing.distribution !== 'generalized' &&
     !data.slowing.location.trim()
   )
-    issues.push('Enter the location of focal slowing.')
+    addIssue('findings', 'Enter the location of focal slowing.')
   if (
     data.epileptiform.present &&
     data.epileptiform.distribution !== 'generalized' &&
     !data.epileptiform.location.trim()
   )
-    issues.push('Enter the location of epileptiform discharges.')
+    addIssue('findings', 'Enter the location of epileptiform discharges.')
   if (data.rhythmicPeriodic.present && !data.rhythmicPeriodic.location.trim())
-    issues.push('Enter the rhythmic/periodic pattern location.')
+    addIssue('findings', 'Enter the rhythmic/periodic pattern location.')
   if (data.rhythmicPeriodic.present && !data.rhythmicPeriodic.frequency.trim())
-    issues.push('Enter the rhythmic/periodic pattern frequency.')
+    addIssue('findings', 'Enter the rhythmic/periodic pattern frequency.')
   if (data.events.status === 'seizures' && !data.events.onset.trim())
-    issues.push('Enter the electrographic seizure onset.')
+    addIssue('events', 'Enter the electrographic seizure onset.')
   if (data.events.status === 'seizures' && !data.events.duration.trim())
-    issues.push('Enter the seizure duration.')
+    addIssue('events', 'Enter the seizure duration.')
   if (
     data.events.status === 'seizures' &&
     data.events.seizureType === 'electroclinical' &&
     !data.events.clinicalCorrelate.trim()
   )
-    issues.push('Describe the clinical correlate.')
+    addIssue('events', 'Describe the clinical correlate.')
   return issues
 }
 
 export default function ReportBuilderPage() {
+  const language = useLocale()
   const [data, setData] = useState(cloneDefaults)
-  const [activeStep, setActiveStep] = useState('study')
+  const [activeSection, setActiveSection] = useState('study')
   const [copyStatus, setCopyStatus] = useState('')
-  const report = useMemo(() => generateEEGReport(data), [data])
+  const [draftVersion, setDraftVersion] = useState(0)
+  const [showGuidance, setShowGuidance] = useState(false)
+  const contentRef = useRef(null)
+  const openSection = (id) => {
+    setActiveSection(id)
+    const heading = contentRef.current?.querySelector(`#report-${id}`)
+    heading?.focus({ preventScroll: true })
+    heading?.scrollIntoView?.({ block: 'start', behavior: 'instant' })
+  }
+  const trackSection = () => {
+    const container = contentRef.current
+    const top = container.getBoundingClientRect().top + 96
+    let current = 'study'
+    for (const heading of container.querySelectorAll('[data-report-section]')) {
+      if (heading.getBoundingClientRect().top <= top) current = heading.dataset.reportSection
+    }
+    if (container.scrollHeight - container.scrollTop - container.clientHeight < 8)
+      current = 'preview'
+    setActiveSection(current)
+  }
+  const report = useMemo(() => generateEEGReport(data, language), [data, language])
   const validationIssues = useMemo(() => getValidationIssues(data), [data])
 
   const update = (section, key, value) => {
-    setData((current) => ({
-      ...current,
-      [section]: { ...current[section], [key]: value },
-    }))
+    setData((current) => {
+      const next = { ...current, [section]: { ...current[section], [key]: value } }
+      if (section === 'sleep' && key === 'obtained') {
+        next.study = {
+          ...current.study,
+          states: value
+            ? [...new Set([...current.study.states, 'sleep'])]
+            : current.study.states.filter((state) => state !== 'sleep'),
+        }
+      }
+      if (section === 'study' && key === 'states')
+        next.sleep = { ...current.sleep, obtained: value.includes('sleep') }
+      return next
+    })
   }
 
   const toggleListValue = (section, key, value) => {
@@ -161,98 +283,82 @@ export default function ReportBuilderPage() {
 
   const resetReport = () => {
     setData(cloneDefaults())
-    setActiveStep('study')
+    setDraftVersion((version) => version + 1)
+    openSection('study')
     setCopyStatus('Draft reset')
     window.setTimeout(() => setCopyStatus(''), 2000)
   }
 
-  const findingsCount = [
-    data.slowing.present,
-    data.epileptiform.present,
-    data.rhythmicPeriodic.present,
-    data.events.status !== 'none',
-    Boolean(data.impression.customFinding.trim()),
-  ].filter(Boolean).length
-
   return (
-    <div className="flex h-screen overflow-hidden">
-      <aside className="w-56 flex-shrink-0 border-r border-eeg-border bg-eeg-surface/30 p-4 overflow-y-auto">
-        <div className="mb-5">
-          <span className="label-tag inline-block">Drafting tool</span>
-          <h1 className="font-display text-lg font-bold text-eeg-text mt-3">EEG Report Builder</h1>
-          <p className="font-body text-xs text-eeg-muted leading-relaxed mt-2">
-            Select observed characteristics to assemble a structured report.
-          </p>
-        </div>
-
-        <nav className="space-y-1" aria-label="Report builder steps">
-          {STEPS.map(([id, label, number]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setActiveStep(id)}
-              aria-current={activeStep === id ? 'step' : undefined}
-              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
-                activeStep === id
-                  ? 'bg-eeg-accent/10 text-eeg-accent border border-eeg-accent/20'
-                  : 'text-eeg-muted hover:text-eeg-text hover:bg-eeg-border/40 border border-transparent'
-              }`}
-            >
-              <span className="font-mono text-[10px] opacity-75">{number}</span>
-              <span className="font-body text-sm">{label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <div className="mt-6 pt-4 border-t border-eeg-border">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-eeg-muted">
-            Current draft
-          </p>
-          <div className="flex items-center justify-between mt-2 text-xs">
-            <span className="text-eeg-muted">Selected findings</span>
-            <span className="font-mono text-eeg-signal">{findingsCount}</span>
-          </div>
-          <div
-            className={`mt-3 rounded-lg border p-3 ${validationIssues.length ? 'border-eeg-warn/30 bg-eeg-warn/5' : 'border-eeg-signal/20 bg-eeg-signal/5'}`}
+    <GuidanceContext.Provider value={showGuidance}>
+      <div className="flex h-screen flex-col lg:flex-row overflow-hidden">
+        <CollapsiblePanel title="Report sections" responsive widthClass="lg:w-60">
+          <p className="px-5 pt-5 pb-3 text-xs font-mono uppercase tracking-widest text-eeg-muted">{localize("Report sections")}</p>
+          <nav
+            className="flex lg:flex-col gap-1 overflow-x-auto px-3 pb-4"
+            aria-label={localize("Report builder subsections")}
           >
-            <p
-              className={`font-mono text-[10px] ${validationIssues.length ? 'text-eeg-warn' : 'text-eeg-signal'}`}
-            >
-              {validationIssues.length
-                ? `${validationIssues.length} review check${validationIssues.length === 1 ? '' : 's'}`
-                : 'Ready to review'}
+            {SECTIONS.map(([id, label], index) => (
+              <a
+                key={id}
+                href={`#report-${id}`}
+                onClick={(event) => {
+                  if (
+                    event.button !== 0 ||
+                    event.ctrlKey ||
+                    event.metaKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return
+                  event.preventDefault()
+                  openSection(id)
+                }}
+                aria-current={activeSection === id ? 'location' : undefined}
+                className={`flex items-start gap-3 shrink-0 rounded-lg border px-3 py-2.5 text-sm ${activeSection === id ? 'border-eeg-accent/20 bg-eeg-accent/10 text-eeg-accent' : 'border-transparent text-eeg-muted hover:text-eeg-text'}`}
+              >
+                <span aria-hidden="true" className="font-mono text-[10px] pt-0.5">
+                  {localize(String(index + 1).padStart(2, '0'))}
+                </span>
+                <span className="whitespace-nowrap lg:whitespace-normal">{localize(label)}</span>
+              </a>
+            ))}
+          </nav>
+          <div className="hidden lg:block px-5 pb-5">
+            <p className="text-xs text-eeg-muted">
+              {localize(validationIssues.length
+                ? `${validationIssues.length} checks before export`
+                : 'Ready to review')}
             </p>
-            {validationIssues.length > 0 && (
-              <ul className="mt-2 space-y-1 text-[10px] leading-relaxed text-eeg-muted">
-                {validationIssues.slice(0, 3).map((issue) => (
-                  <li key={issue}>• {issue}</li>
-                ))}
-                {validationIssues.length > 3 && <li>• {validationIssues.length - 3} more…</li>}
-              </ul>
-            )}
+            <button type="button" onClick={resetReport} className="btn-ghost mt-4">{localize("Reset draft")}</button>
           </div>
-          <button type="button" onClick={resetReport} className="btn-ghost w-full mt-4">
-            Reset all
-          </button>
-        </div>
-      </aside>
-
-      <main
-        className="flex-1 min-w-0 overflow-y-auto px-7 py-8"
-        aria-label="Report characteristics"
-      >
-        <div className="max-w-3xl mx-auto">
-          <div className="mb-7 rounded-xl border border-eeg-warn/25 bg-eeg-warn/5 p-4">
-            <p className="text-xs font-body text-eeg-muted leading-relaxed">
-              <strong className="text-eeg-warn">Educational draft only.</strong> Do not enter
-              patient identifiers. A qualified EEG interpreter must review the source recording,
-              correct the generated text, and sign the final clinical report.
-            </p>
-          </div>
-
-          {activeStep === 'study' && (
+        </CollapsiblePanel>
+        <div
+          ref={contentRef}
+          onScroll={trackSection}
+          tabIndex={0}
+          role="region"
+          aria-label={localize("Report characteristics")}
+          className="flex-1 min-h-0 overflow-y-auto px-5 py-8 md:px-10"
+        >
+          <div key={draftVersion} className="max-w-4xl mx-auto">
+            <header className="flex flex-wrap justify-between items-start gap-4 mb-8">
+              <div>
+                <h1 className="section-title">{localize("EEG report builder")}</h1>
+                <p className="text-sm text-eeg-muted mt-3">{localize("Select observed features, then review the generated draft below.")}</p>
+                <p className="text-xs text-eeg-muted mt-2">{localize("Educational draft. Use de-identified details and verify against the source EEG.")}</p>
+              </div>
+              <button
+                type="button"
+                aria-pressed={showGuidance}
+                onClick={() => setShowGuidance(!showGuidance)}
+                className="btn-ghost"
+              >
+                {localize(showGuidance ? 'Hide guidance' : 'Show guidance')}
+              </button>
+            </header>
             <FormSection
-              eyebrow="Step 1"
+              id="study"
               title="Study and technique"
               description="Define what was recorded and whether any technical limitation affects interpretation."
             >
@@ -279,17 +385,32 @@ export default function ReportBuilderPage() {
                     'ambulatory digital EEG',
                   ]}
                 />
-                <TextField
-                  label="Duration"
+                <SelectField
+                  label="Recording duration"
                   value={data.study.duration}
                   onChange={(value) => update('study', 'duration', value)}
-                  placeholder="e.g. 30 minutes"
+                  options={[
+                    '15 minutes',
+                    '20 minutes',
+                    '30 minutes',
+                    '45 minutes',
+                    '60 minutes',
+                    '90 minutes',
+                    '2 hours',
+                    '4 hours',
+                    '12 hours',
+                    '24 hours',
+                    '48 hours',
+                    '72 hours',
+                  ]}
+                  allowCustom
                 />
-                <TextField
+                <SelectField
                   label="Number of channels"
                   value={data.study.channels}
                   onChange={(value) => update('study', 'channels', value)}
-                  placeholder="e.g. 21"
+                  options={['8', '16', '19', '21', '25', '32', '64']}
+                  allowCustom
                 />
                 <SelectField
                   label="Electrode system"
@@ -327,17 +448,24 @@ export default function ReportBuilderPage() {
                 options={['hyperventilation', 'photic stimulation']}
                 onToggle={(value) => toggleListValue('study', 'activations', value)}
               />
-              <TextAreaField
+              <SelectField
                 label="Indication / referral question"
                 value={data.study.indication}
                 onChange={(value) => update('study', 'indication', value)}
-                placeholder="De-identified clinical indication"
+                options={[
+                  '',
+                  'Evaluation of suspected seizures',
+                  'Epilepsy classification',
+                  'Evaluation of episodic altered awareness',
+                  'Evaluation of encephalopathy',
+                  'Monitoring for seizures',
+                  'Follow-up EEG in known epilepsy',
+                ]}
+                allowCustom
               />
-              <TextAreaField
-                label="Relevant medications"
+              <MedicationField
                 value={data.study.medications}
                 onChange={(value) => update('study', 'medications', value)}
-                placeholder="Optional; include only clinically relevant medication context"
               />
               {data.study.activations.length > 0 && (
                 <div className="grid md:grid-cols-2 gap-4 mt-5">
@@ -374,11 +502,9 @@ export default function ReportBuilderPage() {
                 </div>
               )}
             </FormSection>
-          )}
 
-          {activeStep === 'background' && (
             <FormSection
-              eyebrow="Step 2"
+              id="background"
               title="Background"
               description="Describe the background independently of isolated abnormalities and interpret it relative to age, state, and medication."
             >
@@ -457,14 +583,12 @@ export default function ReportBuilderPage() {
               />
               {data.background.pdrPresent && (
                 <div className="grid md:grid-cols-3 gap-4 mt-4 p-4 card">
-                  <TextField
+                  <SelectField
                     label="PDR frequency (Hz)"
-                    type="number"
-                    min="1"
-                    max="20"
-                    step="0.5"
                     value={data.background.pdrFrequency}
                     onChange={(value) => update('background', 'pdrFrequency', value)}
+                    options={Array.from({ length: 39 }, (_, index) => String(1 + index * 0.5))}
+                    allowCustom
                   />
                   <SelectField
                     label="PDR symmetry"
@@ -486,11 +610,9 @@ export default function ReportBuilderPage() {
                 </div>
               )}
             </FormSection>
-          )}
 
-          {activeStep === 'sleep' && (
             <FormSection
-              eyebrow="Step 3"
+              id="sleep"
               title="Drowsiness and sleep"
               description="Document whether sleep was obtained and whether its graphoelements were appropriate and symmetric."
             >
@@ -525,253 +647,266 @@ export default function ReportBuilderPage() {
                         'not assessable',
                       ]}
                     />
-                    <SelectField
-                      label="Vertex waves"
-                      value={data.sleep.vertexWaves}
-                      onChange={(value) => update('sleep', 'vertexWaves', value)}
-                      options={[
-                        'present and symmetric',
-                        'present but asymmetric',
-                        'poorly formed',
-                        'not identified',
-                      ]}
-                    />
-                    <SelectField
-                      label="Sleep spindles"
-                      value={data.sleep.spindles}
-                      onChange={(value) => update('sleep', 'spindles', value)}
-                      options={[
-                        'present and symmetric',
-                        'present but asymmetric',
-                        'asynchronous',
-                        'poorly formed',
-                        'not identified',
-                      ]}
-                    />
-                    <SelectField
-                      label="K-complexes"
-                      value={data.sleep.kComplexes}
-                      onChange={(value) => update('sleep', 'kComplexes', value)}
-                      options={[
-                        'present',
-                        'present with associated epileptiform discharges (dyshormia)',
-                        'poorly formed',
-                        'not identified',
-                      ]}
-                    />
                   </div>
-                  <TextAreaField
-                    label="Additional sleep observations"
-                    value={data.sleep.notes}
-                    onChange={(value) => update('sleep', 'notes', value)}
-                    placeholder="POSTS, arousals, state-specific findings, or other observations"
-                  />
+                  <details className="rounded-lg border border-eeg-border p-4">
+                    <summary className="cursor-pointer text-sm text-eeg-text">{localize("Sleep graphoelements and notes")}</summary>
+                    <div className="grid md:grid-cols-2 gap-4 mt-4">
+                      <SelectField
+                        label="Vertex waves"
+                        value={data.sleep.vertexWaves}
+                        onChange={(value) => update('sleep', 'vertexWaves', value)}
+                        options={[
+                          'present and symmetric',
+                          'present but asymmetric',
+                          'poorly formed',
+                          'not identified',
+                        ]}
+                      />
+                      <SelectField
+                        label="Sleep spindles"
+                        value={data.sleep.spindles}
+                        onChange={(value) => update('sleep', 'spindles', value)}
+                        options={[
+                          'present and symmetric',
+                          'present but asymmetric',
+                          'asynchronous',
+                          'poorly formed',
+                          'not identified',
+                        ]}
+                      />
+                      <SelectField
+                        label="K-complexes"
+                        value={data.sleep.kComplexes}
+                        onChange={(value) => update('sleep', 'kComplexes', value)}
+                        options={[
+                          'present',
+                          'present with associated epileptiform discharges (dyshormia)',
+                          'poorly formed',
+                          'not identified',
+                        ]}
+                      />
+                    </div>
+                    <SelectField
+                      label="Additional sleep observations"
+                      value={data.sleep.notes}
+                      onChange={(value) => update('sleep', 'notes', value)}
+                      options={[
+                        '',
+                        'Positive occipital sharp transients of sleep',
+                        'Frequent arousals',
+                        'Sleep-activated epileptiform discharges',
+                        'Limited sleep sampling',
+                      ]}
+                      allowCustom
+                    />
+                  </details>
                 </div>
               )}
             </FormSection>
-          )}
 
-          {activeStep === 'slowing' && (
-            <FindingSection
-              title="Focal or generalized slowing"
-              description="Add slowing only when it is not explained by normal drowsiness, sleep, or artifact."
-              present={data.slowing.present}
-              onPresentChange={(value) => update('slowing', 'present', value)}
-            >
-              <div className="grid md:grid-cols-2 gap-4">
-                <SelectField
-                  label="Distribution"
-                  value={data.slowing.distribution}
-                  onChange={(value) => update('slowing', 'distribution', value)}
-                  options={[
-                    'focal',
-                    'lateralized',
-                    'bilateral independent',
-                    'multifocal',
-                    'generalized',
-                  ]}
-                />
-                {data.slowing.distribution !== 'generalized' && (
-                  <TextField
-                    label="Location / maximum"
-                    value={data.slowing.location}
-                    onChange={(value) => update('slowing', 'location', value)}
-                  />
-                )}
-                <SelectField
-                  label="Frequency content"
-                  value={data.slowing.frequency}
-                  onChange={(value) => update('slowing', 'frequency', value)}
-                  options={['theta', 'delta', 'theta and delta']}
-                />
-                <SelectField
-                  label="Prevalence"
-                  criteria="Estimate the portion of comparable artifact-free recording occupied by slowing; use local conventions and describe uncertainty when sampling is limited."
-                  value={data.slowing.prevalence}
-                  onChange={(value) => update('slowing', 'prevalence', value)}
-                  options={['rare', 'occasional', 'frequent', 'abundant', 'continuous']}
-                />
-                <SelectField
-                  label="Persistence"
-                  value={data.slowing.persistence}
-                  onChange={(value) => update('slowing', 'persistence', value)}
-                  options={['intermittent', 'persistent']}
-                />
-                <SelectField
-                  label="Morphology"
-                  value={data.slowing.rhythmicity}
-                  onChange={(value) => update('slowing', 'rhythmicity', value)}
-                  options={['polymorphic', 'rhythmic', 'semi-rhythmic']}
-                />
-              </div>
-            </FindingSection>
-          )}
-
-          {activeStep === 'epileptiform' && (
-            <FindingSection
-              title="Interictal epileptiform discharges"
-              description="Describe the waveform and field. Do not infer epilepsy from an isolated selection."
-              present={data.epileptiform.present}
-              onPresentChange={(value) => update('epileptiform', 'present', value)}
-            >
-              <div className="grid md:grid-cols-2 gap-4">
-                <SelectField
-                  label="Distribution"
-                  value={data.epileptiform.distribution}
-                  onChange={(value) => update('epileptiform', 'distribution', value)}
-                  options={['focal', 'multifocal', 'generalized']}
-                />
-                {data.epileptiform.distribution !== 'generalized' && (
-                  <TextField
-                    label="Location / maximum"
-                    value={data.epileptiform.location}
-                    onChange={(value) => update('epileptiform', 'location', value)}
-                  />
-                )}
-                <SelectField
-                  label="Morphology"
-                  value={data.epileptiform.morphology}
-                  onChange={(value) => update('epileptiform', 'morphology', value)}
-                  options={[
-                    'spikes',
-                    'sharp waves',
-                    'spike-and-wave discharges',
-                    'sharp-and-wave discharges',
-                    'polyspikes',
-                    'polyspike-and-wave discharges',
-                  ]}
-                />
-                <SelectField
-                  label="Prevalence"
-                  criteria="For sporadic epileptiform discharges, ACNS defines rare as <1/hour, occasional as 1/hour to <1/minute, frequent as 1/minute to <1/10 seconds, and abundant as >1/10 seconds."
-                  value={data.epileptiform.prevalence}
-                  onChange={(value) => update('epileptiform', 'prevalence', value)}
-                  options={['rare', 'occasional', 'frequent', 'abundant']}
-                />
-                <SelectField
-                  label="State dependence"
-                  value={data.epileptiform.state}
-                  onChange={(value) => update('epileptiform', 'state', value)}
-                  options={[
-                    'during wakefulness',
-                    'during drowsiness',
-                    'during sleep',
-                    'in wakefulness and sleep',
-                    'without clear state dependence',
-                  ]}
-                />
-                <SelectField
-                  label="Field"
-                  value={data.epileptiform.field}
-                  onChange={(value) => update('epileptiform', 'field', value)}
-                  options={[
-                    'with a plausible physiologic field',
-                    'with a broad field',
-                    'with a restricted field',
-                    'with shifting laterality',
-                  ]}
-                  allowCustom
-                />
-              </div>
-            </FindingSection>
-          )}
-
-          {activeStep === 'rhythmicPeriodic' && (
-            <FindingSection
-              title="Rhythmic and periodic patterns"
-              description="Use standardized adult critical-care terminology only when it applies; this builder does not apply neonatal criteria."
-              present={data.rhythmicPeriodic.present}
-              onPresentChange={(value) => update('rhythmicPeriodic', 'present', value)}
-            >
-              <div className="grid md:grid-cols-2 gap-4">
-                <SelectField
-                  label="Distribution"
-                  value={data.rhythmicPeriodic.distribution}
-                  onChange={(value) => update('rhythmicPeriodic', 'distribution', value)}
-                  options={[
-                    'generalized',
-                    'lateralized',
-                    'bilateral independent',
-                    'unilateral independent',
-                    'multifocal',
-                  ]}
-                />
-                <SelectField
-                  label="Pattern"
-                  value={data.rhythmicPeriodic.pattern}
-                  onChange={(value) => update('rhythmicPeriodic', 'pattern', value)}
-                  options={[
-                    'periodic discharges',
-                    'rhythmic delta activity',
-                    'spike-and-wave activity',
-                  ]}
-                />
-                <TextField
-                  label="Location"
-                  value={data.rhythmicPeriodic.location}
-                  onChange={(value) => update('rhythmicPeriodic', 'location', value)}
-                />
-                <TextField
-                  label="Typical frequency (Hz)"
-                  type="number"
-                  min="0"
-                  max="20"
-                  step="0.5"
-                  value={data.rhythmicPeriodic.frequency}
-                  onChange={(value) => update('rhythmicPeriodic', 'frequency', value)}
-                />
-                <SelectField
-                  label="Prevalence"
-                  criteria="For rhythmic/periodic patterns, ACNS defines rare as <1%, occasional 1–9%, frequent 10–49%, abundant 50–89%, and continuous ≥90% of the record or epoch."
-                  value={data.rhythmicPeriodic.prevalence}
-                  onChange={(value) => update('rhythmicPeriodic', 'prevalence', value)}
-                  options={['rare', 'occasional', 'frequent', 'abundant', 'continuous']}
-                />
-                <SelectField
-                  label="Modifiers"
-                  value={data.rhythmicPeriodic.modifiers}
-                  onChange={(value) => update('rhythmicPeriodic', 'modifiers', value)}
-                  options={[
-                    'without plus modifiers',
-                    'with superimposed fast activity (+F)',
-                    'with superimposed rhythmic activity (+R)',
-                    'with superimposed sharp waves or spikes (+S)',
-                    'with fluctuation',
-                    'with evolution',
-                  ]}
-                />
-              </div>
-              <ToggleField
-                label="Stimulus-induced"
-                value={data.rhythmicPeriodic.stimulusInduced}
-                onChange={(value) => update('rhythmicPeriodic', 'stimulusInduced', value)}
-              />
-            </FindingSection>
-          )}
-
-          {activeStep === 'events' && (
             <FormSection
-              eyebrow="Step 7"
+              id="findings"
+              title="Abnormal findings"
+              description="Enable only findings you observed. Details appear when selected."
+            >
+              <FindingSection
+                title="Focal or generalized slowing"
+                description="Add slowing only when it is not explained by normal drowsiness, sleep, or artifact."
+                present={data.slowing.present}
+                onPresentChange={(value) => update('slowing', 'present', value)}
+              >
+                <div className="grid md:grid-cols-2 gap-4">
+                  <SelectField
+                    label="Distribution"
+                    value={data.slowing.distribution}
+                    onChange={(value) => update('slowing', 'distribution', value)}
+                    options={[
+                      'focal',
+                      'lateralized',
+                      'bilateral independent',
+                      'multifocal',
+                      'generalized',
+                    ]}
+                  />
+                  {data.slowing.distribution !== 'generalized' && (
+                    <SelectField
+                      label="Location / maximum"
+                      value={data.slowing.location}
+                      onChange={(value) => update('slowing', 'location', value)}
+                      options={LOCATIONS}
+                      allowCustom
+                    />
+                  )}
+                  <SelectField
+                    label="Frequency content"
+                    value={data.slowing.frequency}
+                    onChange={(value) => update('slowing', 'frequency', value)}
+                    options={['theta', 'delta', 'theta and delta']}
+                  />
+                  <SelectField
+                    label="Prevalence"
+                    criteria="Estimate the portion of comparable artifact-free recording occupied by slowing; use local conventions and describe uncertainty when sampling is limited."
+                    value={data.slowing.prevalence}
+                    onChange={(value) => update('slowing', 'prevalence', value)}
+                    options={['rare', 'occasional', 'frequent', 'abundant', 'continuous']}
+                  />
+                  <SelectField
+                    label="Persistence"
+                    value={data.slowing.persistence}
+                    onChange={(value) => update('slowing', 'persistence', value)}
+                    options={['intermittent', 'persistent']}
+                  />
+                  <SelectField
+                    label="Morphology"
+                    value={data.slowing.rhythmicity}
+                    onChange={(value) => update('slowing', 'rhythmicity', value)}
+                    options={['polymorphic', 'rhythmic', 'semi-rhythmic']}
+                  />
+                </div>
+              </FindingSection>
+
+              <FindingSection
+                title="Interictal epileptiform discharges"
+                description="Describe the waveform and field. Do not infer epilepsy from an isolated selection."
+                present={data.epileptiform.present}
+                onPresentChange={(value) => update('epileptiform', 'present', value)}
+              >
+                <div className="grid md:grid-cols-2 gap-4">
+                  <SelectField
+                    label="Distribution"
+                    value={data.epileptiform.distribution}
+                    onChange={(value) => update('epileptiform', 'distribution', value)}
+                    options={['focal', 'multifocal', 'generalized']}
+                  />
+                  {data.epileptiform.distribution !== 'generalized' && (
+                    <SelectField
+                      label="Location / maximum"
+                      value={data.epileptiform.location}
+                      onChange={(value) => update('epileptiform', 'location', value)}
+                      options={LOCATIONS}
+                      allowCustom
+                    />
+                  )}
+                  <SelectField
+                    label="Morphology"
+                    value={data.epileptiform.morphology}
+                    onChange={(value) => update('epileptiform', 'morphology', value)}
+                    options={[
+                      'spikes',
+                      'sharp waves',
+                      'spike-and-wave discharges',
+                      'sharp-and-wave discharges',
+                      'polyspikes',
+                      'polyspike-and-wave discharges',
+                    ]}
+                  />
+                  <SelectField
+                    label="Prevalence"
+                    criteria="For sporadic epileptiform discharges, ACNS defines rare as <1/hour, occasional as 1/hour to <1/minute, frequent as 1/minute to <1/10 seconds, and abundant as >1/10 seconds."
+                    value={data.epileptiform.prevalence}
+                    onChange={(value) => update('epileptiform', 'prevalence', value)}
+                    options={['rare', 'occasional', 'frequent', 'abundant']}
+                  />
+                  <SelectField
+                    label="State dependence"
+                    value={data.epileptiform.state}
+                    onChange={(value) => update('epileptiform', 'state', value)}
+                    options={[
+                      'during wakefulness',
+                      'during drowsiness',
+                      'during sleep',
+                      'in wakefulness and sleep',
+                      'without clear state dependence',
+                    ]}
+                  />
+                  <SelectField
+                    label="Field"
+                    value={data.epileptiform.field}
+                    onChange={(value) => update('epileptiform', 'field', value)}
+                    options={[
+                      'with a plausible physiologic field',
+                      'with a broad field',
+                      'with a restricted field',
+                      'with shifting laterality',
+                    ]}
+                    allowCustom
+                  />
+                </div>
+              </FindingSection>
+
+              <FindingSection
+                title="Rhythmic and periodic patterns"
+                description="Use standardized adult critical-care terminology only when it applies; this builder does not apply neonatal criteria."
+                present={data.rhythmicPeriodic.present}
+                onPresentChange={(value) => update('rhythmicPeriodic', 'present', value)}
+              >
+                <div className="grid md:grid-cols-2 gap-4">
+                  <SelectField
+                    label="Distribution"
+                    value={data.rhythmicPeriodic.distribution}
+                    onChange={(value) => update('rhythmicPeriodic', 'distribution', value)}
+                    options={[
+                      'generalized',
+                      'lateralized',
+                      'bilateral independent',
+                      'unilateral independent',
+                      'multifocal',
+                    ]}
+                  />
+                  <SelectField
+                    label="Pattern"
+                    value={data.rhythmicPeriodic.pattern}
+                    onChange={(value) => update('rhythmicPeriodic', 'pattern', value)}
+                    options={[
+                      'periodic discharges',
+                      'rhythmic delta activity',
+                      'spike-and-wave activity',
+                    ]}
+                  />
+                  <SelectField
+                    label="Location"
+                    value={data.rhythmicPeriodic.location}
+                    onChange={(value) => update('rhythmicPeriodic', 'location', value)}
+                    options={LOCATIONS}
+                    allowCustom
+                  />
+                  <SelectField
+                    label="Typical frequency (Hz)"
+                    value={data.rhythmicPeriodic.frequency}
+                    onChange={(value) => update('rhythmicPeriodic', 'frequency', value)}
+                    options={['0.5', '1', '1.5', '2', '2.5', '3', '3.5', '4', '5', '6', '8']}
+                    allowCustom
+                  />
+                  <SelectField
+                    label="Prevalence"
+                    criteria="For rhythmic/periodic patterns, ACNS defines rare as <1%, occasional 1–9%, frequent 10–49%, abundant 50–89%, and continuous ≥90% of the record or epoch."
+                    value={data.rhythmicPeriodic.prevalence}
+                    onChange={(value) => update('rhythmicPeriodic', 'prevalence', value)}
+                    options={['rare', 'occasional', 'frequent', 'abundant', 'continuous']}
+                  />
+                  <SelectField
+                    label="Modifiers"
+                    value={data.rhythmicPeriodic.modifiers}
+                    onChange={(value) => update('rhythmicPeriodic', 'modifiers', value)}
+                    options={[
+                      'without plus modifiers',
+                      'with superimposed fast activity (+F)',
+                      'with superimposed rhythmic activity (+R)',
+                      'with superimposed sharp waves or spikes (+S)',
+                      'with fluctuation',
+                      'with evolution',
+                    ]}
+                  />
+                </div>
+                <ToggleField
+                  label="Stimulus-induced"
+                  value={data.rhythmicPeriodic.stimulusInduced}
+                  onChange={(value) => update('rhythmicPeriodic', 'stimulusInduced', value)}
+                />
+              </FindingSection>
+            </FormSection>
+            <FormSection
+              id="events"
               title="Events and seizures"
               description="Record whether typical events were captured and whether a definite ictal EEG pattern was present."
             >
@@ -793,10 +928,12 @@ export default function ReportBuilderPage() {
                     onChange={(value) => update('events', 'eventCount', value)}
                     options={['one', 'two', 'three', 'multiple']}
                   />
-                  <TextField
+                  <SelectField
                     label="Event description"
                     value={data.events.eventDescription}
                     onChange={(value) => update('events', 'eventDescription', value)}
+                    options={EVENT_DESCRIPTIONS}
+                    allowCustom
                   />
                 </div>
               )}
@@ -814,16 +951,32 @@ export default function ReportBuilderPage() {
                     onChange={(value) => update('events', 'seizureType', value)}
                     options={['electrographic', 'electroclinical']}
                   />
-                  <TextField
+                  <SelectField
                     label="Electrographic onset"
                     value={data.events.onset}
                     onChange={(value) => update('events', 'onset', value)}
+                    options={LOCATIONS}
+                    allowCustom
                   />
-                  <TextField
-                    label="Duration"
+                  <SelectField
+                    label="Seizure duration"
                     criteria="Measure from electrographic onset to electrographic offset. Under ACNS adult critical-care criteria, a qualifying evolving pattern lasting ≥10 seconds is an electrographic seizure."
                     value={data.events.duration}
                     onChange={(value) => update('events', 'duration', value)}
+                    options={[
+                      '5 seconds',
+                      '10 seconds',
+                      '15 seconds',
+                      '20 seconds',
+                      '30 seconds',
+                      '45 seconds',
+                      '60 seconds',
+                      '90 seconds',
+                      '2 minutes',
+                      '3 minutes',
+                      '5 minutes',
+                    ]}
+                    allowCustom
                   />
                   <SelectField
                     label="Evolution"
@@ -836,75 +989,77 @@ export default function ReportBuilderPage() {
                     ]}
                     allowCustom
                   />
-                  <TextField
-                    label="Clinical correlate"
-                    value={data.events.clinicalCorrelate}
-                    onChange={(value) => update('events', 'clinicalCorrelate', value)}
-                    disabled={data.events.seizureType === 'electrographic'}
-                    placeholder={
-                      data.events.seizureType === 'electrographic'
-                        ? 'No definite clinical correlate'
-                        : ''
-                    }
-                  />
+                  {data.events.seizureType === 'electroclinical' && (
+                    <SelectField
+                      label="Clinical correlate"
+                      value={data.events.clinicalCorrelate}
+                      onChange={(value) => update('events', 'clinicalCorrelate', value)}
+                      options={EVENT_DESCRIPTIONS}
+                      allowCustom
+                    />
+                  )}
                 </div>
               )}
-              <InfoBox>
-                Absence of an ictal scalp EEG correlate does not by itself determine whether a
-                reported event is neurologic; preserve the observed semiology and clinical context.
-              </InfoBox>
+              <InfoBox>{localize("Absence of an ictal scalp EEG correlate does not by itself determine whether a reported event is neurologic; preserve the observed semiology and clinical context.")}</InfoBox>
             </FormSection>
-          )}
 
-          {activeStep === 'impression' && (
             <FormSection
-              eyebrow="Step 8"
-              title="Additional findings and correlation"
-              description="Add observations not represented by the controls. The generated impression prioritizes selected abnormalities automatically."
+              id="correlation"
+              title="Clinical correlation"
+              description="Add any final context, then check the generated report below."
             >
-              <TextAreaField
-                label="Additional descriptive finding"
-                value={data.impression.customFinding}
-                onChange={(value) => update('impression', 'customFinding', value)}
-                placeholder="Appears under Abnormal Findings; describe only what is visible"
-                rows={4}
-              />
-              <TextAreaField
-                label="Additional impression statement"
-                value={data.impression.customImpression}
-                onChange={(value) => update('impression', 'customImpression', value)}
-                placeholder="Optional qualified interpretation; do not include treatment instructions"
-                rows={4}
-              />
-              <TextAreaField
+              <details className="rounded-lg border border-eeg-border p-4">
+                <summary className="text-sm text-eeg-text cursor-pointer">{localize("Additional findings or impression (optional)")}</summary>
+                <TextAreaField
+                  label="Additional descriptive finding"
+                  value={data.impression.customFinding}
+                  onChange={(value) => update('impression', 'customFinding', value)}
+                  placeholder={localize("Appears under Abnormal Findings; describe only what is visible")}
+                  rows={4}
+                />
+                <TextAreaField
+                  label="Additional impression statement"
+                  value={data.impression.customImpression}
+                  onChange={(value) => update('impression', 'customImpression', value)}
+                  placeholder={localize("Optional qualified interpretation; do not include treatment instructions")}
+                  rows={4}
+                />
+              </details>
+              <SelectField
                 label="Clinical correlation"
                 value={data.impression.correlation}
                 onChange={(value) => update('impression', 'correlation', value)}
-                placeholder="Answer the referral question, acknowledge uncertainty, or suggest correlation with clinical data"
-                rows={5}
+                options={[
+                  '',
+                  'A normal interictal EEG does not exclude epilepsy',
+                  'Interpret in conjunction with the clinical history and available imaging',
+                  'Interpretation is limited by recording quality',
+                  'The captured event has no associated ictal scalp EEG pattern; its cause requires clinical assessment',
+                ]}
+                allowCustom
               />
-              <InfoBox>
-                A normal interictal EEG does not exclude epilepsy. Interictal epileptiform activity
-                increases seizure propensity but does not independently establish a clinical
-                epilepsy diagnosis.
-              </InfoBox>
+              <InfoBox>{localize("A normal interictal EEG does not exclude epilepsy. Interictal epileptiform activity increases seizure propensity but does not independently establish a clinical epilepsy diagnosis.")}</InfoBox>
             </FormSection>
-          )}
 
-          {activeStep === 'preview' && (
             <FormSection
-              eyebrow="Step 9"
-              title="Full report preview"
+              id="preview"
+              title="Review and export"
               description="Review every sentence against the source EEG before using this draft."
             >
               {validationIssues.length > 0 && (
                 <div className="mb-5 rounded-xl border border-eeg-warn/30 bg-eeg-warn/5 p-4">
-                  <p className="font-display text-sm font-semibold text-eeg-warn">
-                    Complete before export
-                  </p>
+                  <p className="font-display text-sm font-semibold text-eeg-warn">{localize("Complete before export")}</p>
                   <ul className="mt-2 space-y-1 text-xs text-eeg-muted">
                     {validationIssues.map((issue) => (
-                      <li key={issue}>• {issue}</li>
+                      <li key={issue.message}>
+                        <button
+                          type="button"
+                          onClick={() => openSection(issue.step)}
+                          className="text-start underline underline-offset-4 hover:text-eeg-text"
+                        >
+                          {localize(issue.message)}
+                        </button>
+                      </li>
                     ))}
                   </ul>
                 </div>
@@ -917,168 +1072,187 @@ export default function ReportBuilderPage() {
                 disabled={validationIssues.length > 0}
               />
             </FormSection>
-          )}
-        </div>
-      </main>
-
-      <aside className="hidden xl:flex w-[38%] max-w-2xl flex-shrink-0 border-l border-eeg-border bg-eeg-surface/20 flex-col">
-        <div className="px-5 py-4 border-b border-eeg-border flex items-center justify-between gap-4">
-          <div>
-            <p className="font-display font-semibold text-eeg-text">Live report</p>
-            <p className="font-mono text-[10px] text-eeg-muted mt-0.5">
-              Updates with every selection
-            </p>
+            <div className="pb-6">
+              <button type="button" onClick={resetReport} className="btn-ghost">{localize("Start new draft")}</button>
+            </div>
           </div>
-          <span
-            className={`font-mono text-[10px] px-2 py-1 rounded border ${findingsCount ? 'text-eeg-warn border-eeg-warn/30 bg-eeg-warn/5' : 'text-eeg-signal border-eeg-signal/30 bg-eeg-signal/5'}`}
-          >
-            {findingsCount
-              ? `${findingsCount} finding${findingsCount === 1 ? '' : 's'}`
-              : 'No findings'}
-          </span>
         </div>
-        <div className="flex-1 min-h-0 p-5">
-          <ReportPreview report={report} />
-        </div>
-        <ReportActions
-          copyReport={copyReport}
-          downloadReport={downloadReport}
-          copyStatus={copyStatus}
-          disabled={validationIssues.length > 0}
-        />
-      </aside>
-
-      <div className="xl:hidden fixed bottom-5 right-5 z-20 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setActiveStep('preview')}
-          className="btn-primary shadow-xl"
-        >
-          View report
-        </button>
-        <button
-          type="button"
-          onClick={copyReport}
-          disabled={validationIssues.length > 0}
-          className="btn-ghost bg-eeg-surface shadow-xl disabled:opacity-40"
-        >
-          Copy
-        </button>
+        <span className="sr-only" aria-live="polite">
+          {localize(copyStatus)}
+        </span>
       </div>
-      <span className="sr-only" aria-live="polite">
-        {copyStatus}
-      </span>
-    </div>
+    </GuidanceContext.Provider>
   )
 }
 
-function FormSection({ eyebrow, title, description, children }) {
+function FormSection({ id, title, description, children }) {
+  useLocale()
   return (
-    <section className="animate-fade-in pb-24">
-      <span className="font-mono text-xs uppercase tracking-widest text-eeg-accent">{eyebrow}</span>
-      <h2 className="font-display text-3xl font-bold text-eeg-text mt-2">{title}</h2>
-      <p className="font-body text-sm text-eeg-muted leading-relaxed mt-3 mb-7 max-w-2xl">
-        {description}
-      </p>
-      {children}
+    <section aria-labelledby={`report-${id}`} className="border-t border-eeg-border py-8">
+      <h2
+        id={`report-${id}`}
+        data-report-section={id}
+        tabIndex={-1}
+        className="font-display text-2xl font-semibold text-eeg-text scroll-mt-8 focus:outline-none"
+      >
+        {localize(title)}
+      </h2>
+      <p className="font-body text-sm text-eeg-muted leading-relaxed mt-3 mb-6">{localize(description)}</p>
+      {localize(children)}
     </section>
   )
 }
 
 function FindingSection({ title, description, present, onPresentChange, children }) {
+  useLocale()
   return (
-    <FormSection eyebrow="Finding" title={title} description={description}>
-      <SegmentedField
-        label="Finding status"
-        value={present ? 'present' : 'absent'}
-        onChange={(value) => onPresentChange(value === 'present')}
-        options={[
-          ['absent', 'Not present'],
-          ['present', 'Present'],
-        ]}
-      />
-      {present ? (
-        <div className="mt-6 p-5 card border-eeg-accent/20">{children}</div>
-      ) : (
-        <div className="mt-6 card p-6 text-center">
-          <p className="font-body text-sm text-eeg-muted">
-            This finding will be documented as absent in the generated report.
-          </p>
-        </div>
+    <section aria-label={localize(title)} className="card p-5 mb-4">
+      <ToggleField label={title} value={present} onChange={onPresentChange} compact />
+      {present && (
+        <>
+          <p className="text-sm text-eeg-muted mt-4 mb-4">{localize(description)}</p>
+          {localize(children)}
+        </>
       )}
-    </FormSection>
+    </section>
   )
 }
 
 function CriteriaText({ children }) {
-  if (!children) return null
+  useLocale()
+  const showGuidance = useContext(GuidanceContext)
+  if (!showGuidance || !children) return null
   return (
     <span className="block font-body text-[10px] leading-relaxed text-eeg-muted mb-2">
-      {children}
+      {localize(children)}
     </span>
   )
 }
 
-function SelectField({ label, criteria, value, onChange, options, allowCustom = false }) {
-  const isCustom = allowCustom && !options.includes(value)
-  const criteriaText = criteria ?? FIELD_CRITERIA[label]
+function SelectField({
+  label,
+  criteria,
+  value,
+  onChange,
+  options,
+  allowCustom = false,
+  disabled = false,
+}) {
+  useLocale()
+  const id = useId()
+  const [customMode, setCustomMode] = useState(false)
+  const isCustom = allowCustom && (customMode || !options.includes(value))
   return (
-    <label className="block">
-      <span className="block font-body text-xs font-medium text-eeg-text mb-1.5">{label}</span>
-      <CriteriaText>{criteriaText}</CriteriaText>
+    <div className="block">
+      <label htmlFor={id} className="block font-body text-xs font-medium text-eeg-text mb-1.5">
+        {localize(label)}
+      </label>
+      <CriteriaText>{localize(criteria ?? FIELD_CRITERIA[label])}</CriteriaText>
       <select
+        id={id}
+        disabled={disabled}
         value={isCustom ? '__custom' : value}
-        onChange={(event) => onChange(event.target.value === '__custom' ? '' : event.target.value)}
-        className="w-full rounded-lg border border-eeg-border bg-eeg-surface px-3 py-2.5 text-sm text-eeg-text focus:border-eeg-accent focus:outline-none"
+        onChange={(event) => {
+          const custom = event.target.value === '__custom'
+          setCustomMode(custom)
+          onChange(custom ? '' : event.target.value)
+        }}
+        className="w-full rounded-lg border border-eeg-border bg-eeg-surface px-3 py-2.5 text-sm text-eeg-text focus:border-eeg-accent focus:outline-none disabled:opacity-40"
       >
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {localize(displayLabel(option))}
           </option>
         ))}
-        {allowCustom && <option value="__custom">Custom…</option>}
+        {allowCustom && <option value="__custom">{localize("Other (specify)")}</option>}
       </select>
       {isCustom && (
-        <input
-          autoFocus
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="Enter custom description"
-          className="mt-2 w-full rounded-lg border border-eeg-accent/40 bg-eeg-bg px-3 py-2 text-sm text-eeg-text focus:border-eeg-accent focus:outline-none"
-        />
+        <label className="block mt-2">
+          <span className="block text-xs text-eeg-muted mb-1">{localize(label)}{localize(" (custom)")}</span>
+          <input
+            disabled={disabled}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            className="w-full rounded-lg border border-eeg-accent/40 bg-eeg-bg px-3 py-2 text-sm text-eeg-text focus:border-eeg-accent focus:outline-none disabled:opacity-40"
+          />
+        </label>
       )}
-    </label>
+    </div>
   )
 }
 
-function TextField({ label, criteria, value, onChange, placeholder = '', disabled = false, ...inputProps }) {
-  const criteriaText = criteria ?? FIELD_CRITERIA[label]
+const MEDICATION_OPTIONS = [
+  'levetiracetam',
+  'lamotrigine',
+  'valproate',
+  'lacosamide',
+  'carbamazepine',
+  'oxcarbazepine',
+  'topiramate',
+  'clobazam',
+  'clonazepam',
+  'lorazepam',
+  'midazolam',
+  'propofol',
+]
+
+function MedicationField({ value, onChange }) {
+  useLocale()
+  const values = value ? value.split('; ') : []
+  const selected = values.filter((item) => MEDICATION_OPTIONS.includes(item))
+  const other = values.filter((item) => !MEDICATION_OPTIONS.includes(item)).join('; ')
+  const [showOther, setShowOther] = useState(false)
   return (
-    <label className="block">
-      <span className="block font-body text-xs font-medium text-eeg-text mb-1.5">{label}</span>
-      <CriteriaText>{criteriaText}</CriteriaText>
-      <input
-        {...inputProps}
-        disabled={disabled}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="w-full rounded-lg border border-eeg-border bg-eeg-surface px-3 py-2.5 text-sm text-eeg-text placeholder:text-eeg-muted/60 focus:border-eeg-accent focus:outline-none disabled:opacity-40"
+    <div className="mt-5">
+      <ChoiceGroup
+        label="Relevant medications"
+        values={selected}
+        options={MEDICATION_OPTIONS}
+        onToggle={(item) =>
+          onChange(
+            [
+              ...(selected.includes(item)
+                ? selected.filter((value) => value !== item)
+                : [...selected, item]),
+              ...(other ? [other] : []),
+            ].join('; '),
+          )
+        }
       />
-    </label>
+      <p className="text-xs text-eeg-muted mt-2">{localize("Select all documented medications that affect interpretation. Leave unselected if not provided.")}</p>
+      <button
+        type="button"
+        className="text-xs text-eeg-accent mt-3 hover:underline"
+        aria-expanded={showOther || Boolean(other)}
+        onClick={() => setShowOther(!showOther)}
+      >{localize("Other medication or timing details")}</button>
+      {(showOther || other) && (
+        <label className="block mt-2 text-xs text-eeg-muted">{localize("Other relevant medications")}<input
+            value={other}
+            onChange={(event) =>
+              onChange(
+                [...selected, ...(event.target.value ? [event.target.value] : [])].join('; '),
+              )
+            }
+            className="mt-1 w-full rounded-lg border border-eeg-border bg-eeg-surface px-3 py-2 text-sm text-eeg-text"
+          />
+        </label>
+      )}
+    </div>
   )
 }
 
 function TextAreaField({ label, criteria, value, onChange, placeholder, rows = 3 }) {
+  useLocale()
   const criteriaText = criteria ?? FIELD_CRITERIA[label]
   return (
     <label className="block mt-5">
-      <span className="block font-body text-xs font-medium text-eeg-text mb-1.5">{label}</span>
-      <CriteriaText>{criteriaText}</CriteriaText>
+      <span className="block font-body text-xs font-medium text-eeg-text mb-1.5">{localize(label)}</span>
+      <CriteriaText>{localize(criteriaText)}</CriteriaText>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
+        placeholder={localize(placeholder)}
         rows={rows}
         className="w-full resize-y rounded-lg border border-eeg-border bg-eeg-surface px-3 py-2.5 text-sm leading-relaxed text-eeg-text placeholder:text-eeg-muted/60 focus:border-eeg-accent focus:outline-none"
       />
@@ -1087,13 +1261,14 @@ function TextAreaField({ label, criteria, value, onChange, placeholder, rows = 3
 }
 
 function ChoiceGroup({ label, criteria, values, options, onToggle }) {
+  useLocale()
   const criteriaText = criteria ?? FIELD_CRITERIA[label]
   return (
     <fieldset className="mt-5">
-      <legend className="font-body text-xs font-medium text-eeg-text mb-2">{label}</legend>
-      <CriteriaText>{criteriaText}</CriteriaText>
+      <legend className="font-body text-xs font-medium text-eeg-text mb-2">{localize(label)}</legend>
+      <CriteriaText>{localize(criteriaText)}</CriteriaText>
       <div className="flex flex-wrap gap-2">
-        {options.map((option) => {
+        {localize(options.map((option) => {
           const selected = values.includes(option)
           return (
             <button
@@ -1104,30 +1279,30 @@ function ChoiceGroup({ label, criteria, values, options, onToggle }) {
               className={`px-3 py-2 rounded-lg border text-xs transition-colors ${selected ? 'border-eeg-accent/40 bg-eeg-accent/10 text-eeg-accent' : 'border-eeg-border text-eeg-muted hover:text-eeg-text'}`}
             >
               {selected && <span aria-hidden="true">✓ </span>}
-              {option}
+              {localize(displayLabel(option))}
             </button>
           )
-        })}
+        }))}
       </div>
     </fieldset>
   )
 }
 
 function ToggleField({ label, criteria, value, onChange, compact = false }) {
+  useLocale()
   const criteriaText = criteria ?? FIELD_CRITERIA[label]
   return (
     <div
       className={`${compact ? '' : 'mt-5'} flex items-center justify-between gap-4 rounded-lg border border-eeg-border bg-eeg-surface px-4 py-3`}
     >
       <span className="min-w-0 pr-2">
-        <span className="block font-body text-xs font-medium text-eeg-text">{label}</span>
-        <span className="block font-body text-[10px] leading-relaxed text-eeg-muted mt-1">
-          {criteriaText}
-        </span>
+        <span className="block font-body text-xs font-medium text-eeg-text">{localize(label)}</span>
+        <CriteriaText>{localize(criteriaText)}</CriteriaText>
       </span>
       <button
         type="button"
         role="switch"
+        aria-label={localize(label)}
         aria-checked={value}
         onClick={() => onChange(!value)}
         className={`relative w-10 h-5 rounded-full transition-colors ${value ? 'bg-eeg-accent' : 'bg-eeg-border'}`}
@@ -1141,11 +1316,12 @@ function ToggleField({ label, criteria, value, onChange, compact = false }) {
 }
 
 function SegmentedField({ label, criteria, value, onChange, options }) {
+  useLocale()
   const criteriaText = criteria ?? FIELD_CRITERIA[label]
   return (
     <fieldset>
-      <legend className="font-body text-xs font-medium text-eeg-text mb-2">{label}</legend>
-      <CriteriaText>{criteriaText}</CriteriaText>
+      <legend className="font-body text-xs font-medium text-eeg-text mb-2">{localize(label)}</legend>
+      <CriteriaText>{localize(criteriaText)}</CriteriaText>
       <div className="inline-flex flex-wrap rounded-lg border border-eeg-border bg-eeg-surface p-1 gap-1">
         {options.map(([id, text]) => (
           <button
@@ -1155,7 +1331,7 @@ function SegmentedField({ label, criteria, value, onChange, options }) {
             onClick={() => onChange(id)}
             className={`rounded-md px-3 py-2 text-xs transition-colors ${value === id ? 'bg-eeg-accent text-eeg-bg font-semibold' : 'text-eeg-muted hover:text-eeg-text'}`}
           >
-            {text}
+            {localize(text)}
           </button>
         ))}
       </div>
@@ -1164,10 +1340,13 @@ function SegmentedField({ label, criteria, value, onChange, options }) {
 }
 
 function InfoBox({ children }) {
+  useLocale()
+  const showGuidance = useContext(GuidanceContext)
+  if (!showGuidance) return null
   return (
     <div className="mt-6 rounded-xl border border-eeg-accent/20 bg-eeg-accent/5 p-4 text-xs font-body text-eeg-muted leading-relaxed">
-      <strong className="text-eeg-accent">Interpretive note: </strong>
-      {children}
+      <strong className="text-eeg-accent">{localize("Interpretive note: ")}</strong>
+      {localize(children)}
     </div>
   )
 }
@@ -1184,6 +1363,7 @@ function ReportPreview({ report, tall = false }) {
 }
 
 function ReportActions({ copyReport, downloadReport, copyStatus, disabled = false }) {
+  useLocale()
   return (
     <div className="px-5 py-4 border-t border-eeg-border">
       <div className="flex gap-2">
@@ -1192,20 +1372,16 @@ function ReportActions({ copyReport, downloadReport, copyStatus, disabled = fals
           onClick={copyReport}
           disabled={disabled}
           className="btn-primary flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Copy report
-        </button>
+        >{localize("Copy report")}</button>
         <button
           type="button"
           onClick={downloadReport}
           disabled={disabled}
           className="btn-ghost disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Download .txt
-        </button>
+        >{localize("Download .txt")}</button>
       </div>
       <p className="h-4 mt-2 font-mono text-[10px] text-eeg-signal" aria-live="polite">
-        {copyStatus}
+        {localize(copyStatus)}
       </p>
     </div>
   )

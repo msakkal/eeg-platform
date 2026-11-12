@@ -1,3 +1,5 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
+import { getChannelThemeColor, getViewerTheme } from '@/engine/viewerThemes'
 import React, { useMemo } from 'react'
 
 /**
@@ -40,6 +42,7 @@ export default function ScalpElectrodeMap({
   size = 160,
   className = '',
 }) {
+  useLocale()
   const S   = size
   const cx  = S / 2
   const cy  = S / 2
@@ -48,14 +51,14 @@ export default function ScalpElectrodeMap({
   const highlighted = useMemo(() => new Set(highlightedElectrodes), [highlightedElectrodes])
 
   return (
-    <svg
+    <svg dir="ltr"
       viewBox={`0 0 ${S} ${S}`}
       width={S}
       height={S}
       className={className}
       style={{ display: 'block' }}
       role="img"
-      aria-label="Top-down 10-20 scalp electrode map"
+      aria-label={localize("Top-down 10-20 scalp electrode map")}
     >
       <defs>
         {/* Glow filter for highlighted electrodes */}
@@ -122,7 +125,7 @@ export default function ScalpElectrodeMap({
       />
 
       {/* ── Connection line between highlighted pair ─────────────────── */}
-      {highlightedElectrodes.length === 2 && (() => {
+      {localize(highlightedElectrodes.length === 2 && (() => {
         const [e1, e2] = highlightedElectrodes
         const p1 = ELECTRODE_POSITIONS[e1]
         const p2 = ELECTRODE_POSITIONS[e2]
@@ -141,14 +144,15 @@ export default function ScalpElectrodeMap({
             filter="url(#line-glow)"
           />
         )
-      })()}
+      })())}
 
       {/* ── Electrodes ───────────────────────────────────────────────── */}
-      {Object.entries(ELECTRODE_POSITIONS).map(([name, [nx, ny]]) => {
+      {localize(Object.entries(ELECTRODE_POSITIONS).map(([name, [nx, ny]]) => {
         const px = cx + nx * R
         const py = cy - ny * R
         const isHigh = highlighted.has(name)
         const isEar  = name === 'A1' || name === 'A2'
+        const sideColor = getChannelThemeColor(name, getViewerTheme('midnight'))
 
         return (
           <g key={name}>
@@ -168,8 +172,8 @@ export default function ScalpElectrodeMap({
             <circle
               cx={px} cy={py}
               r={isHigh ? (isEar ? 5 : 4.5) : (isEar ? 3.5 : 3)}
-              fill={isHigh ? '#00D4FF' : (isEar ? '#2A3A54' : '#1E3050')}
-              stroke={isHigh ? '#00FFB0' : '#334466'}
+              fill={isHigh ? sideColor : `${sideColor}66`}
+              stroke={isHigh ? '#FFD166' : sideColor}
               strokeWidth={isHigh ? 1.2 : 0.8}
               filter={isHigh ? 'url(#elec-glow)' : undefined}
             />
@@ -181,14 +185,14 @@ export default function ScalpElectrodeMap({
               textAnchor="middle"
               fontSize={isHigh ? 7 : 6}
               fontFamily='"DM Mono", monospace'
-              fill={isHigh ? '#00FFB0' : '#3A4E68'}
+              fill={sideColor}
               fontWeight={isHigh ? 'bold' : 'normal'}
             >
-              {name}
+              {localize(name)}
             </text>
           </g>
         )
-      })}
+      }))}
 
       {/* ── Idle hint ring (shows when nothing highlighted) ───────────── */}
       {highlightedElectrodes.length === 0 && (

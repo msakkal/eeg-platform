@@ -12,8 +12,6 @@ describe('eegStore', () => {
       noiseLevel: 0.25,
       sweepSpeed: 25,
       isPlaying: true,
-      pendingSpike: false,
-      pendingArtifact: false,
       eyesClosed: true,
       blinksEnabled: true,
       blinkRate: 18,
@@ -59,11 +57,16 @@ describe('eegStore', () => {
     expect(useEEGStore.getState().amplitude).toBe(75)
   })
 
-  it('triggers spike flag', () => {
-    useEEGStore.getState().triggerSpike()
-    expect(useEEGStore.getState().pendingSpike).toBe(true)
-    useEEGStore.getState().clearPending()
-    expect(useEEGStore.getState().pendingSpike).toBe(false)
+  it('selects status patterns and clears incompatible activation procedures', () => {
+    useEEGStore.setState({ activationProcedure: 'hyperventilation', eyesClosed: false })
+    useEEGStore.getState().setPattern('focal_status')
+    expect(useEEGStore.getState()).toMatchObject({
+      pattern: 'focal_status',
+      eyesClosed: true,
+      activationProcedure: 'none',
+    })
+    useEEGStore.getState().setPattern('generalized_status')
+    expect(useEEGStore.getState().pattern).toBe('generalized_status')
   })
 
   it('toggles eyes state', () => {

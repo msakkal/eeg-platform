@@ -1,3 +1,5 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
+import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
 import React, { useState, useMemo } from 'react'
 import { useTranslation }        from 'react-i18next'
 import { MONTAGES, MONTAGE_LIST } from '@/engine/montages'
@@ -23,6 +25,7 @@ const REFERENCE_POSITIONS = {
 }
 
 function MontageChainMap({ montage }) {
+  useLocale()
   const size = 380
   const cx = size / 2
   const cy = size / 2 + 8
@@ -83,7 +86,7 @@ function MontageChainMap({ montage }) {
           width={size}
           height={size + 20}
           role="img"
-          aria-label={`${montage?.label ?? 'Montage'} chain map`}
+          aria-label={localize(`${montage?.label ?? 'Montage'} chain map`)}
           className="max-w-full"
         >
           <defs>
@@ -131,7 +134,7 @@ function MontageChainMap({ montage }) {
           <line x1={cx} y1={cy - r} x2={cx} y2={cy + r} stroke="#1E2A4055" strokeWidth="0.7" strokeDasharray="2,4" />
           <line x1={cx - r} y1={cy} x2={cx + r} y2={cy} stroke="#1E2A4055" strokeWidth="0.7" strokeDasharray="2,4" />
 
-          {channelArrows.map((ch) => {
+          {localize(channelArrows.map((ch) => {
             return (
               <g key={`${ch.label}-${ch.index}`}>
                 <path
@@ -160,23 +163,23 @@ function MontageChainMap({ montage }) {
                   fontSize="6"
                   fill={ch.isReference ? '#94A3B8' : '#B8F7FF'}
                 >
-                  {ch.index + 1}
+                  {localize(ch.index + 1)}
                 </text>
               </g>
             )
-          })}
+          }))}
 
-          {hasAverageRef && (() => {
+          {localize(hasAverageRef && (() => {
             const p = toSvg(REFERENCE_POSITIONS.average)
             return (
               <g>
                 <circle cx={p.x} cy={p.y} r="7" fill="#FFD16622" stroke="#FFD166" strokeWidth="1.2" />
-                <text x={p.x} y={p.y + 3} textAnchor="middle" className="font-mono" fontSize="7" fill="#FFD166">avg</text>
+                <text x={p.x} y={p.y + 3} textAnchor="middle" className="font-mono" fontSize="7" fill="#FFD166">{localize("avg")}</text>
               </g>
             )
-          })()}
+          })())}
 
-          {hasEarRef && (() => {
+          {localize(hasEarRef && (() => {
             const p = toSvg(REFERENCE_POSITIONS.ears)
             return (
               <g>
@@ -184,9 +187,9 @@ function MontageChainMap({ montage }) {
                 <text x={p.x} y={p.y + 3} textAnchor="middle" className="font-mono" fontSize="7" fill="#FFD166">A</text>
               </g>
             )
-          })()}
+          })())}
 
-          {Object.entries(MONTAGE_MAP_POSITIONS).map(([name, point]) => {
+          {localize(Object.entries(MONTAGE_MAP_POSITIONS).map(([name, point]) => {
             const p = toSvg(point)
             const active = usedElectrodes.has(name)
             const isEar = name === 'A1' || name === 'A2'
@@ -209,32 +212,29 @@ function MontageChainMap({ montage }) {
                     fontSize="7"
                     fill={active ? '#B8F7FF' : '#5A6A82'}
                   >
-                    {name}
+                    {localize(name)}
                   </text>
                 )}
               </g>
             )
-          })}
+          }))}
         </svg>
       </div>
 
       <div className="min-w-0">
-        <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">
-          Montage chain
-        </p>
+        <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">{localize("Montage chain")}</p>
         <div className="flex gap-2 flex-wrap">
           {channels.slice(0, 24).map((ch, i) => (
             <span
               key={`${ch.label}-${i}`}
               className="text-xs font-mono px-2 py-1 bg-eeg-card border border-eeg-border rounded text-eeg-muted whitespace-nowrap"
             >
-              {ch.label}
+              {localize(ch.label)}
             </span>
           ))}
           {channels.length > 24 && (
             <span className="text-xs font-mono px-2 py-1 text-eeg-muted">
-              +{channels.length - 24} more...
-            </span>
+              +{localize(channels.length - 24)}{localize(" more...")}</span>
           )}
         </div>
       </div>
@@ -243,6 +243,7 @@ function MontageChainMap({ montage }) {
 }
 
 export default function MontagesPage() {
+  useLocale()
   const { t } = useTranslation()
   const [selectedId, setSelectedId]   = useState('longitudinal_bipolar')
   const [hoveredChannel, setHoveredChannel] = useState(null)
@@ -276,7 +277,7 @@ export default function MontagesPage() {
     <div className="flex h-full overflow-hidden">
 
       {/* ── Left: Montage list ───────────────────────────────────────────── */}
-      <nav className="w-52 flex-shrink-0 border-r border-eeg-border p-4">
+      <CollapsiblePanel title="Montages" widthClass="w-52"><nav className="p-4">
         <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">
           {t('montages.select_montage')}
         </p>
@@ -285,18 +286,18 @@ export default function MontagesPage() {
             <button
               key={m.id}
               onClick={() => setSelectedId(m.id)}
-              className={`w-full text-left px-3 py-2.5 rounded-lg text-xs transition-all
+              className={`w-full text-start px-3 py-2.5 rounded-lg text-xs transition-all
                 ${selectedId === m.id
                   ? 'bg-eeg-accent bg-opacity-10 text-eeg-accent border border-eeg-accent border-opacity-20'
                   : 'text-eeg-muted hover:text-eeg-text hover:bg-eeg-border hover:bg-opacity-40'
                 }`}
             >
-              <span className="font-body block font-medium">{m.label}</span>
-              <span className="font-mono opacity-60 text-xs">{m.channels.length} ch</span>
+              <span className="font-body block font-medium">{localize(m.label)}</span>
+              <span className="font-mono opacity-60 text-xs">{localize(m.channels.length)}{localize(" ch")}</span>
             </button>
           ))}
         </div>
-      </nav>
+      </nav></CollapsiblePanel>
 
       {/* ── Right: Detail + preview ──────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -304,13 +305,13 @@ export default function MontagesPage() {
         {/* Montage info header */}
         <div className="px-8 py-6 border-b border-eeg-border flex-shrink-0">
           <span className="label-tag mb-3 inline-block">{t('montages.title')}</span>
-          <h1 className="section-title mb-2">{montage?.label}</h1>
+          <h1 className="section-title mb-2">{localize(montage?.label)}</h1>
           <p className="font-body text-sm text-eeg-muted leading-relaxed max-w-xl">
-            {montage?.description}
+            {localize(montage?.description)}
           </p>
           <div className="mt-3 flex gap-4 text-xs font-mono text-eeg-muted">
-            <span className="text-eeg-accent">{montage?.channels.length} channels</span>
-            <span>{t('common.interactive')} preview</span>
+            <span className="text-eeg-accent">{localize(montage?.channels.length)}{localize(" channels")}</span>
+            <span>{t('common.interactive')}{localize(" preview")}</span>
           </div>
         </div>
 

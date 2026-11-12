@@ -1,3 +1,5 @@
+import { ADDITIONAL_PATTERN_CONFIG, createAdditionalOverlay } from './additionalPatterns.js'
+
 /**
  * EEG Signal Generation Engine
  *
@@ -323,7 +325,7 @@ function addCardiacPulse(signal, fs, label, beatTimes) {
 /**
  * Inject a spike transient into a signal buffer.
  * @param {Float32Array} signal  - signal to modify in-place
- * @param {number} sampleIndex   - center of spike
+ * @param {number} sampleIndex   - peak of spike
  * @param {object} options       - { amplitude, duration, polarity }
  */
 export function injectSpike(signal, sampleIndex, options = {}) {
@@ -334,15 +336,20 @@ export function injectSpike(signal, sampleIndex, options = {}) {
     asymmetry = 0.3,   // rise:fall ratio
   } = options
 
-  const halfW = Math.round((duration * SAMPLE_RATE) / 2)
-
-  for (let i = sampleIndex - halfW; i <= sampleIndex + halfW; i++) {
+  const sampleRate = options.sampleRate ?? SAMPLE_RATE
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || !Number.isFinite(duration) || duration <= 0) {
+    throw new RangeError('sampleRate and duration must be positive and finite')
+  }
+  if (!(asymmetry > 0 && asymmetry < 1)) throw new RangeError('asymmetry must be between 0 and 1')
+  // Duration is baseline-to-baseline; sampleIndex marks the pointed peak.
+  const width = Math.max(2, Math.round(duration * sampleRate))
+  const rise = Math.max(1, Math.min(width - 1, Math.round(width * asymmetry)))
+  const fall = width - rise
+  for (let offset = -rise; offset <= fall; offset++) {
+    const i = sampleIndex + offset
     if (i < 0 || i >= signal.length) continue
-    const t = (i - sampleIndex) / halfW          // normalised -1..1
-    const env = t < 0
-      ? Math.exp(-Math.pow(t / asymmetry, 2) * 4)
-      : Math.exp(-Math.pow(t / (1 - asymmetry), 2) * 4)
-    signal[i] += polarity * amplitude * env
+    const envelope = Math.pow(Math.max(0, 1 - Math.abs(offset) / (offset < 0 ? rise : fall)), 1.25)
+    signal[i] += polarity * amplitude * envelope
   }
   return signal
 }
@@ -403,13 +410,15 @@ export function injectKComplex(signal, sampleIndex, fs = SAMPLE_RATE, {
 
 /** Inject spike-and-wave complex (spike followed by slow wave). */
 export function injectSpikeAndWave(signal, sampleIndex, options = {}) {
-  const { frequency = 3 } = options
-  injectSpike(signal, sampleIndex, { amplitude: 200, duration: 0.04, polarity: -1 })
-  const swStart    = sampleIndex + Math.round(SAMPLE_RATE * 0.06)
-  const swDuration = Math.round(SAMPLE_RATE * 0.25)
+  const { frequency = 3, sampleRate = SAMPLE_RATE } = options
+  if (!Number.isFinite(frequency) || frequency <= 0) throw new RangeError('frequency must be positive and finite')
+  injectSpike(signal, sampleIndex, { amplitude: 200, duration: 0.04, polarity: -1, sampleRate })
+  const swStart    = sampleIndex + Math.round(sampleRate * Math.min(0.06, 0.3 / frequency))
+  const swDuration = Math.max(1, Math.round(sampleRate / frequency) - (swStart - sampleIndex))
   for (let i = 0; i < swDuration; i++) {
     const idx = swStart + i
     if (idx >= signal.length) break
+    if (idx < 0) continue
     signal[idx] += 80 * Math.sin(Math.PI * i / swDuration)
   }
   return signal
@@ -417,10 +426,11 @@ export function injectSpikeAndWave(signal, sampleIndex, options = {}) {
 
 /** Inject polyspike burst. */
 export function injectPolyspike(signal, sampleIndex, options = {}) {
-  const { count = 4, spacing = 0.025 } = options
+  const { count = 4, spacing = 0.025, sampleRate = SAMPLE_RATE } = options
   for (let k = 0; k < count; k++) {
-    const idx = sampleIndex + Math.round(k * spacing * SAMPLE_RATE)
+    const idx = sampleIndex + Math.round(k * spacing * sampleRate)
     injectSpike(signal, idx, {
+      sampleRate,
       amplitude: 120 - k * 15,
       duration:  0.03,
       polarity:  k % 2 === 0 ? -1 : 1,
@@ -438,8 +448,9 @@ export function injectTriphasicWave(signal, sampleIndex, options = {}) {
   const {
     amplitude = 120,
     duration  = 0.35,
+    sampleRate = SAMPLE_RATE,
   } = options
-  const total = Math.round(duration * SAMPLE_RATE)
+  const total = Math.round(duration * sampleRate)
   if (total < 3) return signal
   const p1End = Math.round(total * 0.18)   // phase 1: brief small positive
   const p2End = Math.round(total * 0.55)   // phase 2: dominant blunt negative
@@ -465,8 +476,8 @@ export function injectTriphasicWave(signal, sampleIndex, options = {}) {
 
 /** Inject muscle artifact (high-frequency burst). */
 export function injectMuscleArtifact(signal, sampleIndex, options = {}) {
-  const { duration = 0.5, amplitude = 80 } = options
-  const len = Math.round(duration * SAMPLE_RATE)
+  const { duration = 0.5, amplitude = 80, sampleRate = SAMPLE_RATE } = options
+  const len = Math.round(duration * sampleRate)
   for (let i = 0; i < len; i++) {
     const idx = sampleIndex + i
     if (idx >= signal.length) break
@@ -495,13 +506,14 @@ export function injectMuscleArtifact(signal, sampleIndex, options = {}) {
 export function injectEyeBlink(signal, sampleIndex, options = {}) {
   const {
     amplitude = 200,
+    sampleRate = SAMPLE_RATE,
     riseMs    = 70,
     fallMs    = 220,
     polarity  = +1,
   } = options
 
-  const riseN = Math.round((riseMs / 1000) * SAMPLE_RATE)
-  const fallN = Math.round((fallMs / 1000) * SAMPLE_RATE)
+  const riseN = Math.round((riseMs / 1000) * sampleRate)
+  const fallN = Math.round((fallMs / 1000) * sampleRate)
   const total = riseN + fallN
 
   for (let i = 0; i < total; i++) {
@@ -531,8 +543,9 @@ export function injectLateralEyeMovement(signal, sampleIndex, options = {}) {
   const {
     amplitude  = 80,
     durationMs = 350,
+    sampleRate = SAMPLE_RATE,
   } = options
-  const N = Math.round((durationMs / 1000) * SAMPLE_RATE)
+  const N = Math.round((durationMs / 1000) * sampleRate)
   if (N < 4) return signal
   for (let i = 0; i < N; i++) {
     const idx = sampleIndex + i
@@ -656,6 +669,14 @@ function alphaComaFieldGradient(label) {
  *   - blinkRate: blinks per minute (default 18)
  */
 export function generateMultiChannelEEG(options = {}) {
+  const injectSpikeAtRate = (signal, at, opts) => injectSpike(signal, at, { ...opts, sampleRate })
+  const injectSharpWaveAtRate = (signal, at, opts) => injectSharpWave(signal, at, { ...opts, sampleRate })
+  const injectSpikeAndWaveAtRate = (signal, at, opts) => injectSpikeAndWave(signal, at, { ...opts, sampleRate })
+  const injectPolyspikeAtRate = (signal, at, opts) => injectPolyspike(signal, at, { ...opts, sampleRate })
+  const injectTriphasicWaveAtRate = (signal, at, opts) => injectTriphasicWave(signal, at, { ...opts, sampleRate })
+  const injectEyeBlinkAtRate = (signal, at, opts) => injectEyeBlink(signal, at, { ...opts, sampleRate })
+  const injectLateralEyeMovementAtRate = (signal, at, opts) => injectLateralEyeMovement(signal, at, { ...opts, sampleRate })
+
   const {
     duration      = 10,
     sampleRate    = SAMPLE_RATE,
@@ -941,7 +962,7 @@ export function generateMultiChannelEEG(options = {}) {
     if (label === 'Cz' || label === 'C3' || label === 'C4' || label === 'Fz') {
       const vertexAmp = label === 'Cz' ? 110 : 75
       vertexTimes.forEach(t => {
-        injectSharpWave(sig, Math.round(t * sampleRate),
+        injectSharpWaveAtRate(sig, Math.round(t * sampleRate),
           { amplitude: vertexAmp, duration: 0.12, polarity: -1 })
       })
     }
@@ -1049,6 +1070,11 @@ export function generateMultiChannelEEG(options = {}) {
       })
       t += burstDur + 2 + random() * 2
     }
+  }
+
+  const burstMask = pattern === 'burst_suppression' ? new Uint8Array(nSamples) : null
+  if (burstMask) {
+    for (const { start, len } of burstSchedule) burstMask.fill(1, start, Math.min(nSamples, start + len))
   }
 
   function burstSuppressionChannel(label) {
@@ -1219,7 +1245,7 @@ export function generateMultiChannelEEG(options = {}) {
     for (let k = 0; k < nSpikes; k++) {
       const pos = Math.round(random() * nSamples)
       const amp = 180 + random() * 260
-      injectSharpWave(sig, pos, {
+      injectSharpWaveAtRate(sig, pos, {
         amplitude: amp,
         duration:  0.08 + random() * 0.1,
         polarity:  random() > 0.5 ? -1 : +1,
@@ -1243,7 +1269,7 @@ export function generateMultiChannelEEG(options = {}) {
   // ?? Build each channel ??????????????????????????????????????????????????
   ELECTRODES_1020.forEach(label => {
     let sig
-    switch (pattern) {
+    switch (Object.hasOwn(ADDITIONAL_PATTERN_CONFIG, pattern) ? ADDITIONAL_PATTERN_CONFIG[pattern].mode : pattern) {
       case 'normal_sleep':            sig = sleepChannel(label);            break
       case 'normal_drowsy':           sig = drowsyChannel(label);           break
       case 'fast_alpha_variant':      sig = awakeChannel(label);            break
@@ -1296,6 +1322,11 @@ export function generateMultiChannelEEG(options = {}) {
       addCardiacPulse(sig, sampleRate, label, cardiacBeats)
     }
 
+    // Keep the teaching suppression floor low after ambient artifacts and ear
+    // reference noise have been added, without changing the burst samples.
+    if (burstMask) {
+      for (let i = 0; i < nSamples; i++) if (!burstMask[i]) sig[i] *= 0.1
+    }
     channels[label] = sig
   })
 
@@ -1489,7 +1520,7 @@ export function generateMultiChannelEEG(options = {}) {
       ELECTRODES_1020.forEach(label => {
         const f = blinkField(label)
         if (f < 0.02) return
-        injectEyeBlink(channels[label], s0, {
+        injectEyeBlinkAtRate(channels[label], s0, {
           amplitude: peakAmp * f,
           riseMs,
           fallMs,
@@ -1512,7 +1543,7 @@ export function generateMultiChannelEEG(options = {}) {
       ELECTRODES_1020.forEach(label => {
         const f = lateralEogField(label, direction)
         if (Math.abs(f) < 0.05) return
-        injectLateralEyeMovement(channels[label], s0, {
+        injectLateralEyeMovementAtRate(channels[label], s0, {
           amplitude:  peak * f,
           durationMs: durMs,
         })
@@ -1530,7 +1561,7 @@ export function generateMultiChannelEEG(options = {}) {
     const burstStart = 1.0
     const burstEnd   = duration - 1.0
     const cmplxLen   = Math.round(sampleRate * 0.38)
-    const spikeOffset = 10
+    const spikeOffset = Math.round(10 * sampleRate / SAMPLE_RATE)
 
     const scaleFor = (region) => (
       region === 'frontal' || region === 'central' ? 1.0
@@ -1555,7 +1586,7 @@ export function generateMultiChannelEEG(options = {}) {
       const period = (1 / freq) * (0.94 + random() * 0.12)
 
       const scratch = new Float32Array(cmplxLen)
-      injectSpikeAndWave(scratch, spikeOffset, { frequency: 3 })
+      injectSpikeAndWaveAtRate(scratch, spikeOffset, { frequency: 3 })
       const s0 = Math.round(t * sampleRate)
       ELECTRODES_1020.forEach(label => {
         const scale = scaleFor(regionOf(label)) * ampEnv
@@ -1581,7 +1612,7 @@ export function generateMultiChannelEEG(options = {}) {
     while (t < duration - 0.5) {
       const ampJ = 0.85 + random() * 0.30           // ±15% per complex
       const scratch = new Float32Array(cmplxLen)
-      injectSharpWave(scratch, 12,
+      injectSharpWaveAtRate(scratch, Math.round(12 * sampleRate / SAMPLE_RATE),
         { amplitude: 130 * ampJ, duration: 0.11, polarity: -1 })
       const swStart = Math.round(sampleRate * 0.15)
       const swLen   = Math.round(sampleRate * 0.26)
@@ -1612,7 +1643,7 @@ export function generateMultiChannelEEG(options = {}) {
     while (t < duration - 0.5) {
       const ampJ = 0.85 + random() * 0.30
       const scratch = new Float32Array(cmplxLen)
-      injectSharpWave(scratch, 12,
+      injectSharpWaveAtRate(scratch, Math.round(12 * sampleRate / SAMPLE_RATE),
         { amplitude: 120 * ampJ, duration: 0.09, polarity: -1 })
       const swStart = Math.round(sampleRate * 0.13)
       const swLen   = Math.round(sampleRate * 0.22)
@@ -1655,7 +1686,7 @@ export function generateMultiChannelEEG(options = {}) {
     while (t < duration - 0.6) {
       const ampJ = 0.85 + random() * 0.30
       const scratch = new Float32Array(cmplxLen)
-      injectTriphasicWave(scratch, 0,
+      injectTriphasicWaveAtRate(scratch, 0,
         { amplitude: 140 * ampJ, duration: 0.35 })
       const s0 = Math.round(t * sampleRate)
       ELECTRODES_1020.forEach(label => {
@@ -1715,7 +1746,7 @@ export function generateMultiChannelEEG(options = {}) {
     while (t < duration - 0.6) {
       const ampJ = 0.82 + random() * 0.36
       const scratch = new Float32Array(cmplxLen)
-      injectSpike(scratch, 14,
+      injectSpikeAtRate(scratch, Math.round(14 * sampleRate / SAMPLE_RATE),
         { amplitude: 180 * ampJ, duration: 0.08, polarity: -1 })
       const swStart = Math.round(sampleRate * 0.15)
       const swLen   = Math.round(sampleRate * 0.40)
@@ -1750,7 +1781,7 @@ export function generateMultiChannelEEG(options = {}) {
       for (let t = tStart; t < burstEnd; t += complexPeriod) {
         const cmplxLen = Math.round(sampleRate * 0.2)
         const scratch  = new Float32Array(cmplxLen)
-        injectPolyspike(scratch, 16, { count: 3, spacing: 0.02 })
+        injectPolyspikeAtRate(scratch, Math.round(16 * sampleRate / SAMPLE_RATE), { count: 3, spacing: 0.02 })
         const swStart = Math.round(sampleRate * 0.08)
         const swLen   = Math.round(sampleRate * 0.12)
         for (let i = 0; i < swLen; i++) {
@@ -1811,7 +1842,7 @@ export function generateMultiChannelEEG(options = {}) {
     spikeSchedule.forEach(({ t, field }) => {
       const cmplxLen = Math.round(sampleRate * 0.36)
       const scratch  = new Float32Array(cmplxLen)
-      injectSharpWave(scratch, 16, { amplitude: 180, duration: 0.1, polarity: -1 })
+      injectSharpWaveAtRate(scratch, Math.round(16 * sampleRate / SAMPLE_RATE), { amplitude: 180, duration: 0.1, polarity: -1 })
       const swStart = Math.round(sampleRate * 0.14)
       const swLen   = Math.round(sampleRate * 0.22)
       for (let i = 0; i < swLen; i++) {
@@ -1838,7 +1869,7 @@ export function generateMultiChannelEEG(options = {}) {
     times.forEach(t => {
       const cmplxLen = Math.round(sampleRate * 0.4)
       const scratch  = new Float32Array(cmplxLen)
-      injectSharpWave(scratch, 16, { amplitude: 140, duration: 0.12, polarity: -1 })
+      injectSharpWaveAtRate(scratch, Math.round(16 * sampleRate / SAMPLE_RATE), { amplitude: 140, duration: 0.12, polarity: -1 })
       const swStart = Math.round(sampleRate * 0.17)
       const swLen   = Math.round(sampleRate * 0.22)
       for (let i = 0; i < swLen; i++) {
@@ -1909,7 +1940,7 @@ export function generateMultiChannelEEG(options = {}) {
     for (let t = pprStart; t < pprEnd; t += pprPeriod) {
       const cmplxLen = Math.round(sampleRate * 0.22)
       const scratch  = new Float32Array(cmplxLen)
-      injectPolyspike(scratch, 16, { count: 3, spacing: 0.022 })
+      injectPolyspikeAtRate(scratch, Math.round(16 * sampleRate / SAMPLE_RATE), { count: 3, spacing: 0.022 })
       const swStart = Math.round(sampleRate * 0.08)
       const swLen   = Math.round(sampleRate * 0.13)
       for (let i = 0; i < swLen; i++) {
@@ -1930,6 +1961,17 @@ export function generateMultiChannelEEG(options = {}) {
     }
   }
 
+  const additionalOverlay = createAdditionalOverlay(pattern, random)
+  if (additionalOverlay) {
+    for (let i = 0; i < nSamples; i++) {
+      const time = i / sampleRate
+      additionalOverlay.advance(time)
+      for (const label of ELECTRODES_1020) {
+        const { overlay, preserve } = additionalOverlay.valueFor(label, time)
+        channels[label][i] = channels[label][i] * preserve + overlay
+      }
+    }
+  }
   return { channels, sampleRate, duration, nSamples, pattern }
   } finally {
     activeRandom = previousRandom

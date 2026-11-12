@@ -1,4 +1,7 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
+import CollapsiblePanel from '@/components/ui/CollapsiblePanel'
 import { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ARTIFACT_CATALOGUE } from '@/engine/artifacts'
 import { makeTimeAxis, SAMPLE_RATE } from '@/engine/signalGenerator'
@@ -93,8 +96,16 @@ function remapHotChannels(hot, montageId) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ArtifactsPage() {
+  useLocale()
   const { t } = useTranslation()
-  const [selectedId, setSelectedId] = useState(ARTIFACT_CATALOGUE[0].id)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const requestedId = searchParams.get('id')
+  const selectedId = ARTIFACT_CATALOGUE.some(artifact => artifact.id === requestedId) ? requestedId : ARTIFACT_CATALOGUE[0].id
+  const setSelectedId = id => setSearchParams(previous => {
+    const next = new URLSearchParams(previous)
+    next.set('id', id)
+    return next
+  })
   const [detailTab,  setDetailTab]  = useState('overview')
   const [viewState,  setViewState]  = useState({ channels: [], events: [], hot: [] })
   const [generating, setGenerating] = useState(false)
@@ -212,13 +223,12 @@ export default function ArtifactsPage() {
     <div className="flex min-h-[100dvh] overflow-visible">
 
       {/* ── Left sidebar ─────────────────────────────────────────────────── */}
-      <aside className="w-52 flex-shrink-0 border-r border-eeg-border flex flex-col overflow-hidden">
+      <CollapsiblePanel title="Artifact topics" widthClass="w-52">
 
         <div className="px-4 py-4 border-b border-eeg-border">
-          <p className="font-display font-bold text-sm text-eeg-text">Artifacts</p>
+          <p className="font-display font-bold text-sm text-eeg-text">{localize("Artifacts")}</p>
           <p className="font-mono text-xs text-eeg-muted mt-0.5">
-            {ARTIFACT_CATALOGUE.length} patterns
-          </p>
+            {localize(ARTIFACT_CATALOGUE.length)}{localize(" patterns")}</p>
         </div>
 
         <div className="px-3 pt-3 pb-2 flex flex-wrap gap-1 border-b border-eeg-border">
@@ -231,7 +241,7 @@ export default function ArtifactsPage() {
                   : 'border-eeg-border text-eeg-muted hover:text-eeg-text'
                 }`}
             >
-              {fg.label}
+              {localize(fg.label)}
             </button>
           ))}
         </div>
@@ -241,26 +251,26 @@ export default function ArtifactsPage() {
             <button
               key={art.id}
               onClick={() => setSelectedId(art.id)}
-              className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-lg
+              className={`w-full text-start flex items-center gap-2.5 px-3 py-2.5 rounded-lg
                           transition-all mb-0.5
                 ${selectedId === art.id
                   ? 'bg-eeg-card border border-eeg-border text-eeg-text'
                   : 'text-eeg-muted hover:text-eeg-text hover:bg-eeg-border hover:bg-opacity-40'
                 }`}
             >
-              <span className="text-base leading-none flex-shrink-0">{art.icon}</span>
+              <span className="text-base leading-none flex-shrink-0">{localize(art.icon)}</span>
               <div className="min-w-0">
                 <p className="font-body text-xs font-medium leading-tight truncate">
-                  {art.shortLabel}
+                  {localize(art.shortLabel)}
                 </p>
                 <p className="font-mono text-xs opacity-50 leading-tight truncate">
-                  {art.frequency.split('(')[0].trim()}
+                  {localize(art.frequency.split('(')[0].trim())}
                 </p>
               </div>
             </button>
           ))}
         </nav>
-      </aside>
+      </CollapsiblePanel>
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 flex flex-col overflow-visible">
@@ -274,13 +284,13 @@ export default function ArtifactsPage() {
           {/* Viewer header */}
           <div className="px-5 py-2.5 border-b border-eeg-border flex items-center justify-between bg-eeg-surface">
             <div className="flex items-center gap-3">
-              <span className="text-xl">{artifact?.icon}</span>
+              <span className="text-xl">{localize(artifact?.icon)}</span>
               <div>
                 <h2 className="font-display font-bold text-base text-eeg-text leading-tight">
-                  {artifact?.label}
+                  {localize(artifact?.label)}
                 </h2>
                 <p className="font-mono text-xs text-eeg-muted">
-                  {artifact?.frequency}
+                  {localize(artifact?.frequency)}
                 </p>
               </div>
             </div>
@@ -289,11 +299,9 @@ export default function ArtifactsPage() {
                 className="text-xs font-mono px-2.5 py-1 rounded border"
                 style={{ color: artifact?.color, borderColor: artifact?.color + '44', background: artifact?.color + '11' }}
               >
-                {artifact?.amplitude}
+                {localize(artifact?.amplitude)}
               </span>
-              <div className="text-xs font-mono text-eeg-muted hidden md:block">
-                Longitudinal bipolar · {channels.length} ch · 8 s
-              </div>
+              <div className="text-xs font-mono text-eeg-muted hidden md:block">{localize("Longitudinal bipolar · ")}{localize(channels.length)}{localize(" ch · 8 s")}</div>
             </div>
           </div>
 
@@ -317,7 +325,7 @@ export default function ArtifactsPage() {
             {generating || channels.length === 0 ? (
               <div className="flex items-center justify-center h-full">
                 <div className="flex items-center gap-2 text-eeg-muted font-mono text-sm animate-pulse">
-                  <span>Generating trace…</span>
+                  <span>{localize("Generating trace…")}</span>
                 </div>
               </div>
             ) : (
@@ -336,7 +344,6 @@ export default function ArtifactsPage() {
                 leftLabelWidth={88}
                 footerHeight={ARTIFACT_VIEWER_FOOTER_HEIGHT}
                 verticalPadding={ARTIFACT_VIEWER_VERTICAL_PADDING}
-                signalColor={viewerStyle.signalColor || baseTheme.signal}
                 highlightedChannels={hot}
                 highlightColor={artifact?.color}
                 channelScale={(label) => label === 'ECG' ? 0.18 : 1}
@@ -390,6 +397,7 @@ export default function ArtifactsPage() {
 // ─── Detail Content ───────────────────────────────────────────────────────────
 
 function DetailContent({ artifact, tab, hot }) {
+  useLocale()
   return (
     <div className="px-7 pt-5 pb-12 max-w-3xl">
       {tab === 'overview' && (
@@ -402,29 +410,29 @@ function DetailContent({ artifact, tab, hot }) {
               ['Distribution', artifact.distribution],
             ].map(([k, v]) => (
               <div key={k} className="card px-4 py-3">
-                <p className="text-xs font-mono text-eeg-muted uppercase tracking-widest mb-1">{k}</p>
-                <p className="font-body text-sm text-eeg-text leading-snug">{v}</p>
+                <p className="text-xs font-mono text-eeg-muted uppercase tracking-widest mb-1">{localize(k)}</p>
+                <p className="font-body text-sm text-eeg-text leading-snug">{localize(v)}</p>
               </div>
             ))}
           </div>
 
           <div>
-            <SectionTitle>Mechanism</SectionTitle>
+            <SectionTitle>{localize("Mechanism")}</SectionTitle>
             <p className="font-body text-sm text-eeg-muted leading-relaxed mt-2">
-              {artifact.mechanism}
+              {localize(artifact.mechanism)}
             </p>
           </div>
 
           {hot && hot.length > 0 && (
             <div>
-              <SectionTitle>Channels Highlighted in Trace</SectionTitle>
+              <SectionTitle>{localize("Channels Highlighted in Trace")}</SectionTitle>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {hot.map(ch => (
                   <span key={ch}
                     className="text-xs font-mono px-2 py-0.5 rounded border"
                     style={{ color: artifact.color, borderColor: artifact.color + '44', background: artifact.color + '11' }}
                   >
-                    {ch}
+                    {localize(ch)}
                   </span>
                 ))}
               </div>
@@ -435,10 +443,8 @@ function DetailContent({ artifact, tab, hot }) {
 
       {tab === 'identify' && (
         <div>
-          <SectionTitle>How to Identify</SectionTitle>
-          <p className="font-body text-sm text-eeg-muted mt-2 mb-4 leading-relaxed">
-            Look for these features in the trace above — channels with the artifact maximum are highlighted and flagged with a dot.
-          </p>
+          <SectionTitle>{localize("How to Identify")}</SectionTitle>
+          <p className="font-body text-sm text-eeg-muted mt-2 mb-4 leading-relaxed">{localize("Look for these features in the trace above — channels with the artifact maximum are highlighted and flagged with a dot.")}</p>
           <ul className="space-y-3">
             {artifact.identification.map((item, i) => (
               <li key={i} className="flex items-start gap-3">
@@ -446,9 +452,9 @@ function DetailContent({ artifact, tab, hot }) {
                   className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold mt-0.5"
                   style={{ background: artifact.color + '22', color: artifact.color }}
                 >
-                  {i + 1}
+                  {localize(i + 1)}
                 </span>
-                <p className="font-body text-sm text-eeg-text leading-relaxed">{item}</p>
+                <p className="font-body text-sm text-eeg-text leading-relaxed">{localize(item)}</p>
               </li>
             ))}
           </ul>
@@ -457,17 +463,17 @@ function DetailContent({ artifact, tab, hot }) {
 
       {tab === 'differentiate' && (
         <div>
-          <SectionTitle>Differentiation from Pathological Patterns</SectionTitle>
+          <SectionTitle>{localize("Differentiation from Pathological Patterns")}</SectionTitle>
           <div className="mt-4 card p-5 border-l-4" style={{ borderLeftColor: artifact.color }}>
             <p className="font-body text-sm text-eeg-text leading-relaxed">
-              {artifact.differentiation}
+              {localize(artifact.differentiation)}
             </p>
           </div>
           <div className="mt-5">
-            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">Key Rule</p>
+            <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">{localize("Key Rule")}</p>
             <div className="card p-4 bg-eeg-card">
               <p className="font-mono text-xs text-eeg-accent leading-relaxed">
-                {getDifferentiationRule(artifact.id)}
+                {localize(getDifferentiationRule(artifact.id))}
               </p>
             </div>
           </div>
@@ -476,17 +482,15 @@ function DetailContent({ artifact, tab, hot }) {
 
       {tab === 'reduce' && (
         <div>
-          <SectionTitle>Reduction Strategies</SectionTitle>
-          <p className="font-body text-sm text-eeg-muted mt-2 mb-4 leading-relaxed">
-            Apply these in order — start with technical improvements before resorting to filtering, which can alter genuine EEG features.
-          </p>
+          <SectionTitle>{localize("Reduction Strategies")}</SectionTitle>
+          <p className="font-body text-sm text-eeg-muted mt-2 mb-4 leading-relaxed">{localize("Apply these in order — start with technical improvements before resorting to filtering, which can alter genuine EEG features.")}</p>
           <ol className="space-y-3">
             {artifact.reduction.map((item, i) => (
               <li key={i} className="flex items-start gap-3">
                 <span className="flex-shrink-0 font-mono text-xs text-eeg-muted w-6 mt-0.5">
-                  {String(i + 1).padStart(2, '0')}
+                  {localize(String(i + 1).padStart(2, '0'))}
                 </span>
-                <p className="font-body text-sm text-eeg-text leading-relaxed">{item}</p>
+                <p className="font-body text-sm text-eeg-text leading-relaxed">{localize(item)}</p>
               </li>
             ))}
           </ol>
@@ -495,12 +499,12 @@ function DetailContent({ artifact, tab, hot }) {
 
       {tab === 'clinical' && (
         <div>
-          <SectionTitle>Clinical Note</SectionTitle>
+          <SectionTitle>{localize("Clinical Note")}</SectionTitle>
           <div className="mt-4 card p-6 border-l-4" style={{ borderLeftColor: artifact.color }}>
             <div className="flex items-start gap-3">
-              <span className="text-2xl flex-shrink-0">{artifact.icon}</span>
+              <span className="text-2xl flex-shrink-0">{localize(artifact.icon)}</span>
               <p className="font-body text-sm text-eeg-text leading-relaxed">
-                {artifact.clinicalNote}
+                {localize(artifact.clinicalNote)}
               </p>
             </div>
           </div>
@@ -513,9 +517,10 @@ function DetailContent({ artifact, tab, hot }) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function SectionTitle({ children }) {
+  useLocale()
   return (
     <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted">
-      {children}
+      {localize(children)}
     </p>
   )
 }

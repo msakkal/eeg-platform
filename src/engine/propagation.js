@@ -6,7 +6,7 @@
  *
  * The "field" concept is central to EEG interpretation:
  *   - In referential montages: amplitude gradient reflects proximity to source
- *   - In bipolar montages:     phase reversal localises the generator
+ *   - In bipolar montages:     phase reversal identifies a scalp-field extremum
  */
 
 import { SAMPLE_RATE, createEngineForPattern } from './streaming.js'
@@ -123,8 +123,8 @@ export function generatePropagationEEG(weights, dischargeAmp = 200) {
  *   - negWeight:   propagation weight at the negative lead electrode
  *   - netWeight:   posWeight - negWeight (signed; used for colouring)
  *   - containsSrc: true if either lead is the source electrode
- *   - polarity:    +1 = source is positive lead (spike appears downward in standard EEG)
- *                  -1 = source is negative lead (spike appears upward)
+ *   - polarity:    +1 = source is positive lead (negative spike appears upward in negative-up display)
+ *                  -1 = source is negative lead (negative spike appears downward)
  *                   0 = neither lead is the source
  *
  * @param {string}  montageId

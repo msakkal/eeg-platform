@@ -6,7 +6,7 @@ import globals from 'globals'
 export default [
   js.configs.recommended,
   {
-    files: ['src/**/*.{js,jsx}'],
+    files: ['src/**/*.{js,jsx}', 'tests/**/*.{js,jsx}'],
     plugins: {
       react: reactPlugin,
       'react-hooks': reactHooks,

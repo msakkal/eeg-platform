@@ -1,4 +1,6 @@
+import { useLocale } from '@/i18n/localize'
 export default function AnimatedTrace() {
+  useLocale()
   return (
     <svg
       className="absolute bottom-0 left-0 w-full opacity-20"

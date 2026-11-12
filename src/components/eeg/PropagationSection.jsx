@@ -1,3 +1,4 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
 import { useState, useMemo } from 'react'
 import {
   ELECTRODE_POSITIONS_2D,
@@ -26,7 +27,7 @@ function toSvg(nx, ny) {
 
 // ─── Montage options shown in the selector ────────────────────────────────────
 const MONTAGE_OPTIONS = [
-  { id: 'longitudinal_bipolar', label: 'Long. Bipolar',  shortDesc: 'Phase reversals localise generator' },
+  { id: 'longitudinal_bipolar', label: 'Long. Bipolar',  shortDesc: "Phase reversals identify field extrema" },
   { id: 'transverse_bipolar',   label: 'Trans. Bipolar', shortDesc: 'Left-right phase reversal' },
   { id: 'circumferential_bipolar', label: 'Circ. Bipolar', shortDesc: 'Peripheral ring phase reversals' },
   { id: 'average_reference',    label: 'Avg. Reference', shortDesc: 'Amplitude gradient from source' },
@@ -41,6 +42,7 @@ const DISCHARGE_TIMES = [1.4, 3.6, 5.8, 8.2]
 // =============================================================================
 
 export default function PropagationSection() {
+  useLocale()
   const [sourceElec,     setSourceElec]     = useState('C3')
   const [sigma,          setSigma]          = useState(0.38)
   const [montageId,      setMontageId]      = useState('longitudinal_bipolar')
@@ -147,18 +149,9 @@ export default function PropagationSection() {
 
       {/* ── Section header ────────────────────────────────────────────────── */}
       <div>
-        <span className="label-tag mb-3 inline-block" style={{ color: '#FF6B35', borderColor: '#FF6B3544', background: '#FF6B3511' }}>
-          Interactive Demo
-        </span>
-        <h2 className="font-display font-bold text-2xl text-eeg-text mb-3">
-          Epileptic Field Propagation
-        </h2>
-        <p className="font-body text-sm text-eeg-muted leading-relaxed max-w-2xl">
-          An epileptic generator creates an electrical field that decays with distance across the scalp.
-          Select any electrode as the source below, adjust the spatial spread, and observe how the discharge
-          appears across the montage — including the characteristic <strong className="text-eeg-text">phase reversal</strong> in
-          bipolar montages and the <strong className="text-eeg-text">amplitude gradient</strong> in referential montages.
-        </p>
+        <span className="label-tag mb-3 inline-block" style={{ color: '#FF6B35', borderColor: '#FF6B3544', background: '#FF6B3511' }}>{localize("Interactive Demo")}</span>
+        <h2 className="font-display font-bold text-2xl text-eeg-text mb-3">{localize("Epileptic Field Propagation")}</h2>
+        <p className="font-body text-sm text-eeg-muted leading-relaxed max-w-2xl">{localize("This illustrative model uses a simulated scalp field centered on a selected electrode with Gaussian spread. Compare its appearance across montages, including the characteristic ")}<strong className="text-eeg-text">{localize("phase reversal")}</strong>{localize(" in bipolar montages and the ")}<strong className="text-eeg-text">{localize("amplitude gradient")}</strong>{localize(" in referential montages.")}</p>
       </div>
 
       {/* ── Row 1: Source picker + Field strength ─────────────────────────── */}
@@ -166,9 +159,7 @@ export default function PropagationSection() {
 
         {/* Scalp source picker */}
         <div className="card p-5 flex-shrink-0 w-72">
-          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">
-            1. Select Source Electrode
-          </p>
+          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">{localize("1. Select Source Electrode")}</p>
 
           <ScalpSourceMap
             weights={weights}
@@ -185,7 +176,7 @@ export default function PropagationSection() {
             {[['Source', '#FF3333'], ['Near', '#FF6B35'], ['Mid', '#FFD166'], ['Far', '#00FFB0'], ['Distant', '#2A3A54']].map(([label, color]) => (
               <div key={label} className="flex flex-col items-center gap-1">
                 <div className="w-3 h-3 rounded-full" style={{ background: color }} />
-                <span className="text-xs font-mono" style={{ color, fontSize: '9px' }}>{label}</span>
+                <span className="text-xs font-mono" style={{ color, fontSize: '9px' }}>{localize(label)}</span>
               </div>
             ))}
           </div>
@@ -193,21 +184,14 @@ export default function PropagationSection() {
 
         {/* Field strength panel */}
         <div className="card p-5 flex-1 min-w-0 self-stretch">
-          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">
-            Field Strength by Electrode
-          </p>
-          <p className="font-body text-xs text-eeg-muted mb-4 leading-relaxed">
-            Each electrode\u2019s distance from the source determines its share of the
-            field. Use the spread slider to see how a more focal generator
-            concentrates amplitude on a few sites, while a diffuse one spreads
-            across the head.
-          </p>
+          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">{localize("Field Strength by Electrode")}</p>
+          <p className="font-body text-xs text-eeg-muted mb-4 leading-relaxed">{localize("Each electrode\\u2019s distance from the source determines its share of the field. Use the spread slider to see how a more focal generator concentrates amplitude on a few sites, while a diffuse one spreads across the head.")}</p>
           <div className="space-y-2">
             {topElectrodes.map(([elec, w]) => (
               <div key={elec} className="flex items-center gap-3">
                 <span className="font-mono text-xs w-8 flex-shrink-0"
                   style={{ color: weightToColor(w) }}>
-                  {elec}
+                  {localize(elec)}
                 </span>
                 <div className="flex-1 h-2 bg-eeg-border rounded-full overflow-hidden">
                   <div
@@ -219,8 +203,8 @@ export default function PropagationSection() {
                     }}
                   />
                 </div>
-                <span className="font-mono text-xs text-eeg-muted w-10 text-right">
-                  {(w * 100).toFixed(0)}%
+                <span className="font-mono text-xs text-eeg-muted w-10 text-end">
+                  {localize((w * 100).toFixed(0))}%
                 </span>
               </div>
             ))}
@@ -233,22 +217,20 @@ export default function PropagationSection() {
 
         {/* Montage selector */}
         <div className="card p-5">
-          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">
-            2. Select Montage
-          </p>
+          <p className="text-xs font-mono uppercase tracking-widest text-eeg-muted mb-3">{localize("2. Select Montage")}</p>
           <div className="grid grid-cols-2 gap-2">
             {MONTAGE_OPTIONS.map(opt => (
               <button
                 key={opt.id}
                 onClick={() => setMontageId(opt.id)}
-                className={`text-left px-3 py-3 rounded-xl border transition-all
+                className={`text-start px-3 py-3 rounded-xl border transition-all
                   ${montageId === opt.id
                     ? 'border-eeg-accent bg-eeg-accent bg-opacity-10 text-eeg-text'
                     : 'border-eeg-border text-eeg-muted hover:border-eeg-muted hover:text-eeg-text'
                   }`}
               >
-                <span className="font-display font-semibold text-xs block">{opt.label}</span>
-                <span className="font-mono text-xs opacity-60 block mt-0.5">{opt.shortDesc}</span>
+                <span className="font-display font-semibold text-xs block">{localize(opt.label)}</span>
+                <span className="font-mono text-xs opacity-60 block mt-0.5">{localize(opt.shortDesc)}</span>
               </button>
             ))}
           </div>
@@ -267,16 +249,12 @@ export default function PropagationSection() {
       <div className="card overflow-hidden">
         <div className="px-5 py-3 border-b border-eeg-border flex items-center justify-between bg-eeg-surface">
           <div>
-            <p className="font-display font-semibold text-sm text-eeg-text">
-              EEG — {MONTAGES[montageId]?.label}
+            <p className="font-display font-semibold text-sm text-eeg-text">{localize("EEG — ")}{localize(MONTAGES[montageId]?.label)}
             </p>
-            <p className="font-mono text-xs text-eeg-muted mt-0.5">
-              Source: <span style={{ color: '#FF3333' }}>{sourceElec}</span>
-              {' · '}
-              {derivedChannels.length} channels · 10 s · 4 discharges
-              {phaseReversals.length > 0 && (
-                <span className="ms-2 text-yellow-400">
-                  ⇄ Phase reversal at {phaseReversals[0]?.at}
+            <p className="font-mono text-xs text-eeg-muted mt-0.5">{localize("Source: ")}<span style={{ color: '#FF3333' }}>{localize(sourceElec)}</span>
+              {localize(' · ')}
+              {localize(derivedChannels.length)}{localize(" channels · 10 s · 4 discharges")}{phaseReversals.length > 0 && (
+                <span className="ms-2 text-yellow-400">{localize("⇄ Phase reversal at ")}{localize(phaseReversals[0]?.at)}
                 </span>
               )}
             </p>
@@ -304,7 +282,7 @@ export default function PropagationSection() {
               highlightColor="#FFD166"
               channelColor={propagationChannelColor}
               showChannelAmplitudes
-              polarity="positive-up"
+              polarity="negative-up"
               chainGap={isBipolar ? 18 : 0}
               onHoverChannel={setHoveredChannel}
             />
@@ -331,12 +309,13 @@ export default function PropagationSection() {
 // =============================================================================
 
 function ScalpSourceMap({ weights, source, onSelect, sigma }) {
+  useLocale()
   const [hovered, setHovered] = useState(null)
   const srcPos = toSvg(ELECTRODE_POSITIONS_2D[source]?.x ?? 0, ELECTRODE_POSITIONS_2D[source]?.y ?? 0)
   const spreadRadius = sigma * MAP_R * 2.4   // visual radius of the gradient ring
 
   return (
-    <svg
+    <svg dir="ltr"
       viewBox={`0 0 ${MAP_SIZE} ${MAP_SIZE}`}
       width={MAP_SIZE}
       height={MAP_SIZE}
@@ -386,7 +365,7 @@ function ScalpSourceMap({ weights, source, onSelect, sigma }) {
       />
 
       {/* Electrodes */}
-      {SELECTABLE_ELECTRODES.map(elec => {
+      {localize(SELECTABLE_ELECTRODES.map(elec => {
         const pos   = ELECTRODE_POSITIONS_2D[elec]
         const sv    = toSvg(pos.x, pos.y)
         const w     = weights[elec] ?? 0
@@ -435,7 +414,7 @@ function ScalpSourceMap({ weights, source, onSelect, sigma }) {
                 fontFamily="DM Mono, monospace"
                 fontWeight={isSrc ? 'bold' : 'normal'}
               >
-                {isSrc ? '●' : `${(w*100).toFixed(0)}%`}
+                {localize(isSrc ? '●' : `${(w*100).toFixed(0)}%`)}
               </text>
             )}
 
@@ -449,17 +428,15 @@ function ScalpSourceMap({ weights, source, onSelect, sigma }) {
               fontFamily="DM Mono, monospace"
               fontWeight={isSrc ? 'bold' : 'normal'}
             >
-              {elec}
+              {localize(elec)}
             </text>
           </g>
         )
-      })}
+      }))}
 
       {/* Source label callout */}
       <text x={MAP_CX} y={MAP_SIZE - 4} textAnchor="middle" fontSize="7"
-        fill="#5A6A82" fontFamily="DM Mono, monospace">
-        Source: {source} · Click electrode to change
-      </text>
+        fill="#5A6A82" fontFamily="DM Mono, monospace">{localize("Source: ")}{localize(source)}{localize(" · Click electrode to change")}</text>
     </svg>
   )
 }
@@ -469,6 +446,7 @@ function ScalpSourceMap({ weights, source, onSelect, sigma }) {
 // =============================================================================
 
 function FieldExplanationCallout({ sourceElec, isBipolar, phaseReversals, channelInfo }) {
+  useLocale()
   const sourceChannels = channelInfo.filter(c => c.containsSrc)
   const maxAmplitudeChannel = channelInfo.reduce((best, c) =>
     c.netAmplitude > (best?.netAmplitude ?? 0) ? c : best, null
@@ -485,23 +463,18 @@ function FieldExplanationCallout({ sourceElec, isBipolar, phaseReversals, channe
         <span className="text-xl flex-shrink-0 mt-1" style={{ color: '#FFD166' }}>⇄</span>
         <div className="min-w-0">
           <p className="font-display font-semibold text-sm text-eeg-text mb-1">
-            {isBipolar ? 'Phase Reversal (Bipolar Montages)' : 'Amplitude Gradient (Referential Montages)'}
+            {localize(isBipolar ? 'Phase Reversal (Bipolar Montages)' : 'Amplitude Gradient (Referential Montages)')}
           </p>
           {isBipolar ? (
-            <p className="font-body text-xs text-eeg-muted leading-relaxed">
-              In a bipolar montage, the epileptic discharge appears with <span className="text-yellow-300">opposite polarity</span> in
-              channels on either side of the source electrode. This \u201cphase reversal\u201d marks the generator.
-              {phaseReversals.length > 0
-                ? <> With source <strong className="text-eeg-text">{sourceElec}</strong>, look for the phase reversal between <strong className="text-yellow-300">{phaseReversals[0].label1}</strong> and <strong className="text-yellow-300">{phaseReversals[0].label2}</strong>.</>
-                : <> Source <strong className="text-eeg-text">{sourceElec}</strong> may appear at the end of a chain — look for maximum amplitude rather than reversal.</>
+            <p className="font-body text-xs text-eeg-muted leading-relaxed">{localize("In a bipolar montage, the epileptic discharge appears with ")}<span className="text-yellow-300">{localize("opposite polarity")}</span>{localize(" in adjacent channels. This phase reversal identifies a local scalp-potential extremum.")}{phaseReversals.length > 0
+                ? <>{localize(" With source ")}<strong className="text-eeg-text">{localize(sourceElec)}</strong>{localize(", look for the phase reversal between ")}<strong className="text-yellow-300">{localize(phaseReversals[0].label1)}</strong>{localize(" and ")}<strong className="text-yellow-300">{localize(phaseReversals[0].label2)}</strong>.</>
+                : <>{localize(" Source ")}<strong className="text-eeg-text">{localize(sourceElec)}</strong>{localize(" may appear at the end of a chain — look for maximum amplitude rather than reversal.")}</>
               }
             </p>
           ) : (
-            <p className="font-body text-xs text-eeg-muted leading-relaxed">
-              In a referential montage, the source electrode shows the <span className="text-eeg-accent">largest amplitude</span> discharge.
-              Amplitude decreases with distance from <strong className="text-eeg-text">{sourceElec}</strong>.
+            <p className="font-body text-xs text-eeg-muted leading-relaxed">{localize("In a referential montage, the source electrode shows the ")}<span className="text-eeg-accent">{localize("largest amplitude")}</span>{localize(" discharge. Amplitude decreases with distance from ")}<strong className="text-eeg-text">{localize(sourceElec)}</strong>.
               {maxAmplitudeChannel && (
-                <> The highest-amplitude channel is <strong className="text-eeg-accent">{maxAmplitudeChannel.label}</strong>.</>
+                <>{localize(" The highest-amplitude channel is ")}<strong className="text-eeg-accent">{localize(maxAmplitudeChannel.label)}</strong>.</>
               )}
             </p>
           )}
@@ -512,11 +485,10 @@ function FieldExplanationCallout({ sourceElec, isBipolar, phaseReversals, channe
       <div className="flex items-start gap-3">
         <span className="text-xl flex-shrink-0 mt-1" style={{ color: '#FF3333' }}>📍</span>
         <div className="min-w-0 flex-1">
-          <p className="font-display font-semibold text-sm text-eeg-text mb-2">
-            Channels Involving <span style={{ color: '#FF3333' }}>{sourceElec}</span>
+          <p className="font-display font-semibold text-sm text-eeg-text mb-2">{localize("Channels Involving ")}<span style={{ color: '#FF3333' }}>{localize(sourceElec)}</span>
           </p>
           {sourceChannels.length === 0 ? (
-            <p className="font-mono text-xs text-eeg-muted">No channels in this montage directly involve {sourceElec}.</p>
+            <p className="font-mono text-xs text-eeg-muted">{localize("No channels in this montage directly involve ")}{localize(sourceElec)}.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {sourceChannels.map(c => (
@@ -527,18 +499,16 @@ function FieldExplanationCallout({ sourceElec, isBipolar, phaseReversals, channe
                     borderColor:  c.polarity > 0 ? '#FF6B3544' : '#00D4FF44',
                     background:   c.polarity > 0 ? '#FF6B3511' : '#00D4FF11',
                   }}
-                  title={c.polarity > 0 ? `${sourceElec} is positive lead → spike deflects downward` : `${sourceElec} is negative lead → spike deflects upward`}
+                  title={localize(c.polarity > 0 ? `${sourceElec} is positive lead → spike deflects upward` : `${sourceElec} is negative lead → spike deflects downward`)}
                 >
-                  {c.label} {c.polarity > 0 ? '↓' : '↑'}
+                  {localize(c.label)} {localize(c.polarity > 0 ? '↑' : '↓')}
                 </span>
               ))}
             </div>
           )}
           <p className="font-mono text-xs text-eeg-muted mt-2">
-            <span className="text-orange-400">↓</span> source is positive lead (spike down)
-            {' · '}
-            <span className="text-cyan-400">↑</span> source is negative lead (spike up)
-          </p>
+            <span className="text-orange-400">↑</span>{localize(" source is positive lead (spike up)")}{localize(' · ')}
+            <span className="text-cyan-400">↓</span>{localize(" source is negative lead (spike down)")}</p>
         </div>
       </div>
 
@@ -551,6 +521,7 @@ function FieldExplanationCallout({ sourceElec, isBipolar, phaseReversals, channe
 // =============================================================================
 
 function AmplitudeScaleBar() {
+  useLocale()
   return (
     <div className="flex items-center gap-2">
       <div className="flex flex-col items-end gap-0.5">
@@ -578,6 +549,7 @@ const TYPICAL_HIGH  = 0.45
 const TYPICAL_MID   = (TYPICAL_LOW + TYPICAL_HIGH) / 2
 
 function SpreadSlider({ sigma, setSigma }) {
+  useLocale()
   const pct = (v) => ((v - SIGMA_MIN) / (SIGMA_MAX - SIGMA_MIN)) * 100
   const tlow  = pct(TYPICAL_LOW)
   const thigh = pct(TYPICAL_HIGH)
@@ -591,10 +563,10 @@ function SpreadSlider({ sigma, setSigma }) {
   return (
     <div className="mt-4">
       <div className="flex justify-between items-center mb-1.5">
-        <span className="text-xs font-body text-eeg-muted">Spatial Spread (σ)</span>
+        <span className="text-xs font-body text-eeg-muted">{localize("Spatial Spread (σ)")}</span>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-eeg-muted">{sigma.toFixed(2)}</span>
-          <span className="text-xs font-mono" style={{ color: weightToColor(0.8) }}>{tag}</span>
+          <span className="text-xs font-mono text-eeg-muted">{localize(sigma.toFixed(2))}</span>
+          <span className="text-xs font-mono" style={{ color: weightToColor(0.8) }}>{localize(tag)}</span>
         </div>
       </div>
 
@@ -614,7 +586,7 @@ function SpreadSlider({ sigma, setSigma }) {
             border: '1px dashed #00FFB055',
             zIndex: 0,
           }}
-          title="Typical spatial spread of a focal interictal sharp wave"
+          title={localize("Typical spatial spread of a focal interictal sharp wave")}
         />
 
         <input
@@ -634,12 +606,8 @@ function SpreadSlider({ sigma, setSigma }) {
 
       {/* Tick row: focal / typical / diffuse with the typical band labelled */}
       <div className="relative mt-2 h-5">
-        <span className="absolute text-xs font-mono text-eeg-muted" style={{ left: 0 }}>
-          Focal
-        </span>
-        <span className="absolute text-xs font-mono text-eeg-muted" style={{ right: 0 }}>
-          Diffuse
-        </span>
+        <span className="absolute text-xs font-mono text-eeg-muted" style={{ left: 0 }}>{localize("Focal")}</span>
+        <span className="absolute text-xs font-mono text-eeg-muted" style={{ right: 0 }}>{localize("Diffuse")}</span>
         {/* Vertical ticks for the typical-range boundaries */}
         <div className="absolute" style={{ left: `${tlow}%`, top: '-12px' }}>
           <div className="w-px h-1.5 bg-eeg-accent opacity-60" />
@@ -655,16 +623,10 @@ function SpreadSlider({ sigma, setSigma }) {
             transform: 'translateX(-50%)',
             color: inTypical ? '#00FFB0' : '#5A6A82',
           }}
-        >
-          typical clinical
-        </span>
+        >{localize("typical clinical")}</span>
       </div>
 
-      <p className="text-[10px] font-mono text-eeg-muted mt-1.5 leading-relaxed">
-        The shaded band (<span className="text-eeg-accent">σ 0.30–0.45</span>)
-        spans the spatial extent of a typical focal interictal sharp wave.
-        Slide outside it to see tighter foci or generalised fields.
-      </p>
+      <p className="text-[10px] font-mono text-eeg-muted mt-1.5 leading-relaxed">{localize("The shaded band (")}<span className="text-eeg-accent">σ 0.30–0.45</span>{localize(") spans the spatial extent of a typical focal interictal sharp wave. Slide outside it to see tighter foci or generalised fields.")}</p>
     </div>
   )
 }

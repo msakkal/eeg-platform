@@ -1,3 +1,5 @@
+import { ADDITIONAL_PATTERN_CONFIG } from './additionalPatterns.js'
+
 /**
  * Central pattern metadata used by the Sandbox UI and engine tests.
  *
@@ -66,7 +68,7 @@ export const PATTERN_GROUPS = [
   },
   {
     id: 'periodic',
-    label: 'Periodic (ICU)',
+    label: 'Rhythmic & periodic (ICU)',
     color: '#FFA552',
     patterns: [
       { id: 'gpds', label: 'GPDs', color: '#FFA552', implemented: true },
@@ -102,6 +104,10 @@ export const PATTERN_GROUPS = [
     ],
   },
 ]
+
+for (const [id, config] of Object.entries(ADDITIONAL_PATTERN_CONFIG)) {
+  PATTERN_GROUPS.find(group => group.id === config.group).patterns.push({ id, label: config.label, color: config.color, implemented: true })
+}
 
 export const SANDBOX_PATTERN_IDS = PATTERN_GROUPS.flatMap(group =>
   group.patterns.map(pattern => pattern.id),

@@ -1,3 +1,6 @@
+import { OneShotSeizureOverlay, describeFocalPlan } from './seizures.js'
+import { ADDITIONAL_PATTERN_CONFIG, createAdditionalOverlay } from './additionalPatterns.js'
+
 /**
  * Streaming EEG Engine
  * ────────────────────
@@ -333,29 +336,38 @@ class Channel {
     this.sampleCount = 0
   }
 
+  // Resolve mode-dependent settings once per output block, not per sample.
+  prepare(mode, eyesOpen) {
+    if (this.preparedMode === mode && this.preparedEyesOpen === eyesOpen) return
+    this.preparedMode = mode
+    this.preparedEyesOpen = eyesOpen
+    this.amps = modeAmps(mode, this.region, this.posterior, eyesOpen)
+    this.alphaMix = alphaMixFor(mode, this.region, this.posterior, eyesOpen)
+    this.otherMix = betaThetaDeltaMix(this.region)
+  }
+
   sample(t, opts) {
     const {
       mode,
-      eyesOpen,
       pdrPhase,
       pdrEnvelope,
-      betaSharedPhase,
-      thetaSharedPhase,
-      deltaSharedPhase,
+      betaSharedSin,
+      thetaSharedSin,
+      deltaSharedSin,
       mainsPhase,
       muLeftPhase,
       muRightPhase,
       sampleRate,
       noiseScale = 1,
     } = opts
-    const { region, posterior, name } = this
+    const { region, name } = this
     // Advance the per-channel local alpha envelope every 4th sample (64 Hz
     // update rate matching the ~0.1–10 s time constants of the envelope).
     if ((this.sampleCount++ & 3) === 0) {
       this.localAlphaEnv.step()
       this.localMuEnv.step()
     }
-    const { A, B, T, D, noiseGain } = modeAmps(mode, region, posterior, eyesOpen)
+    const { A, B, T, D, noiseGain } = this.amps
 
     // Base center frequencies + persistent offset + slow FM drift
     const alphaCarrier = (mode === 'fast_alpha_variant' ? 16.8
@@ -385,7 +397,7 @@ class Channel {
     this.phDelta += 2 * Math.PI * fD / sampleRate
 
     // Mix shared posterior alpha driver with local oscillator
-    const aMix       = alphaMixFor(mode, region, posterior, eyesOpen)
+    const aMix       = this.alphaMix
     const alphaDriv  = Math.sin(pdrPhase + this.alphaPosteriorLag)
     const alphaLocal = Math.sin(this.phAlpha)
     // Apply alpha envelope: the shared posterior-driver contribution waxes
@@ -399,10 +411,10 @@ class Channel {
                      + (1 - aMix) * (localEnv * alphaLocal)
 
     // Lighter mix on other bands — they are less spatially coherent than alpha
-    const otherMix   = betaThetaDeltaMix(region)
-    const betaTerm   = otherMix * Math.sin(betaSharedPhase)  + (1 - otherMix) * Math.sin(this.phBeta)
-    const thetaTerm  = otherMix * Math.sin(thetaSharedPhase) + (1 - otherMix) * Math.sin(this.phTheta)
-    const deltaTerm  = otherMix * Math.sin(deltaSharedPhase) + (1 - otherMix) * Math.sin(this.phDelta)
+    const otherMix   = this.otherMix
+    const betaTerm   = otherMix * betaSharedSin  + (1 - otherMix) * Math.sin(this.phBeta)
+    const thetaTerm  = otherMix * thetaSharedSin + (1 - otherMix) * Math.sin(this.phTheta)
+    const deltaTerm  = otherMix * deltaSharedSin + (1 - otherMix) * Math.sin(this.phDelta)
 
     let y = A * alphaTerm + B * betaTerm + T * thetaTerm + D * deltaTerm
 
@@ -1599,7 +1611,7 @@ class AbsenceOverlay {
 }
 
 // Burst-suppression: scheduled bursts on a near-flat suppression background.
-// Bursts are bilaterally synchronous; suppression attenuates background to ~15%.
+// Bursts are bilaterally synchronous; suppression attenuates background to 2% to keep the interburst floor below 10 ?V.
 class BurstSuppressionOverlay {
   constructor(rng) {
     this.rng = rng
@@ -1617,6 +1629,7 @@ class BurstSuppressionOverlay {
         t: event.t0,
         type: 'burst',
         label: 'Burst',
+        durationS: burstDur,
         detail: 'Burst-suppression burst',
       })
       this.burstUntil = this.nextT + burstDur
@@ -1649,7 +1662,7 @@ class BurstSuppressionOverlay {
       o += w * ev.ampJ * env * carrier
     }
     // When NOT in a burst, attenuate background to suppression floor
-    const preserve = active ? 1.0 : 0.10
+    const preserve = active ? 1.0 : 0.02
     return { overlay: o, preserve }
   }
 }
@@ -2464,7 +2477,9 @@ class BreachRhythmOverlay {
 
 export class StreamingEEG {
   constructor({ sampleRate = SAMPLE_RATE, seed = Date.now(), noiseScale = 1 } = {}) {
+    if (!Number.isFinite(sampleRate) || sampleRate <= 0) throw new RangeError('sampleRate must be positive and finite')
     this.sampleRate = sampleRate
+    this.sampleIndex = 0
     this.clock = 0
     this.rng = makeRng(seed | 0)
     this.noiseScale = Math.max(0, Number.isFinite(noiseScale) ? noiseScale : 1)
@@ -2492,6 +2507,7 @@ export class StreamingEEG {
     this.eyesOpen = false
     this.overlays = []
     this.eventLog = []
+    this.emitEvent = event => this.recordEvent(event)
   }
 
   setMode(mode) { this.mode = mode }
@@ -2506,6 +2522,28 @@ export class StreamingEEG {
     if (i >= 0) this.overlays.splice(i, 1)
   }
   clearOverlays() { this.overlays = [] }
+  startSeizure(kind, settings = {}) {
+    if (!['focal', 'generalized'].includes(kind) || this.getActiveSeizure()) return false
+    if (this.overlays.some(overlay => ['FocalStatusOverlay', 'GeneralizedStatusOverlay'].includes(overlay.constructor.name))) return false
+    const overlay = new OneShotSeizureOverlay(kind, this.clock, this.rng, settings)
+    this.addOverlay(overlay)
+    this.recordEvent({ t: this.clock, type: `simulated_${kind}_seizure`, label: kind === 'focal' ? 'Focal seizure' : 'Generalized seizure', durationS: overlay.duration, detail: kind === 'focal' ? `${describeFocalPlan(overlay.focalOptions)}${overlay.focalOptions.spread === 'none' ? '' : `; spread begins after ${overlay.focalOptions.spreadDelay}s over ${overlay.focalOptions.spreadDuration}s`}` : 'Generalized evolving rhythm: 6 to 4 to 2.5 Hz' })
+    return true
+  }
+  getActiveSeizure() {
+    const overlay = this.overlays.find(item => item.isManualSeizure && !item.isFinished(this.clock))
+    return overlay ? { kind: overlay.kind, startTime: overlay.startTime, endTime: overlay.endTime, duration: overlay.duration, focalOptions: overlay.focalOptions } : null
+  }
+  stopSeizure() {
+    const active = this.getActiveSeizure()
+    this.overlays = this.overlays.filter(overlay => !overlay.isManualSeizure)
+    if (!active) return false
+    const event = this.eventLog.find(event => event.type === `simulated_${active.kind}_seizure` && event.t === active.startTime)
+    if (event) event.durationS = Math.max(0, this.clock - active.startTime)
+    this.recordEvent({ t: this.clock, type: 'seizure_stopped', label: 'Seizure simulation stopped', detail: 'Returned to the selected background' })
+    return true
+  }
+
   hasOverlay(predicate) { return this.overlays.some(predicate) }
   recordEvent(event) {
     const normalized = {
@@ -2531,12 +2569,20 @@ export class StreamingEEG {
    * Each call is contiguous in time — there is no buffer wrap.
    */
   fillWindow(durationSec, target = null) {
+    if (!Number.isFinite(durationSec) || durationSec < 0) throw new RangeError('durationSec must be nonnegative and finite')
     const fs = this.sampleRate
     const N = Math.round(durationSec * fs)
     const out = target ?? {}
     const elecs = this.electrodes
-    for (const e of elecs) {
+    const channelStates = new Array(elecs.length)
+    const outputBuffers = new Array(elecs.length)
+    for (let ch = 0; ch < elecs.length; ch++) {
+      const e = elecs[ch]
       if (!out[e] || out[e].length !== N) out[e] = new Float32Array(N)
+      const channel = this.channels[e]
+      channel.prepare(this.mode, this.eyesOpen)
+      channelStates[ch] = channel
+      outputBuffers[ch] = out[e]
     }
 
     // Carrier frequencies for the shared drivers
@@ -2551,9 +2597,9 @@ export class StreamingEEG {
       eyesOpen: this.eyesOpen,
       pdrPhase: this.pdrPhase,
       pdrEnvelope: 1,
-      betaSharedPhase: this.betaPhase,
-      thetaSharedPhase: this.thetaPhase,
-      deltaSharedPhase: this.deltaPhase,
+      betaSharedSin: 0,
+      thetaSharedSin: 0,
+      deltaSharedSin: 0,
       mainsPhase: this.mainsPhase,
       muLeftPhase: this.muLeftPhase,
       muRightPhase: this.muRightPhase,
@@ -2562,7 +2608,7 @@ export class StreamingEEG {
     }
 
     for (let i = 0; i < N; i++) {
-      const t = this.clock + i / fs
+      const t = (this.sampleIndex + i) / fs
 
       // Advance shared driver phases
       this.pdrPhase   += 2 * Math.PI * pdrHz   / fs
@@ -2579,19 +2625,20 @@ export class StreamingEEG {
       const pdrEnv = this.pdrEnvelope.value()
 
       // Let overlays update their schedules for this timestep
-      for (const o of this.overlays) o.advance(t, event => this.recordEvent(event))
+      for (const o of this.overlays) o.advance(t, this.emitEvent)
 
       opts.pdrPhase = this.pdrPhase
       opts.pdrEnvelope = pdrEnv
-      opts.betaSharedPhase = this.betaPhase
-      opts.thetaSharedPhase = this.thetaPhase
-      opts.deltaSharedPhase = this.deltaPhase
+      opts.betaSharedSin = Math.sin(this.betaPhase)
+      opts.thetaSharedSin = Math.sin(this.thetaPhase)
+      opts.deltaSharedSin = Math.sin(this.deltaPhase)
       opts.mainsPhase = this.mainsPhase
       opts.muLeftPhase = this.muLeftPhase
       opts.muRightPhase = this.muRightPhase
 
-      for (const e of elecs) {
-        let y = this.channels[e].sample(t, opts)
+      for (let ch = 0; ch < elecs.length; ch++) {
+        const e = elecs[ch]
+        let y = channelStates[ch].sample(t, opts)
         // Apply overlays in order; each can attenuate the running signal
         // (preserve < 1) before adding its own overlay component.
         for (const o of this.overlays) {
@@ -2600,16 +2647,19 @@ export class StreamingEEG {
           if (r.preserve !== 1) y *= r.preserve
           if (r.overlay)        y += r.overlay
         }
-        out[e][i] = y
+        outputBuffers[ch][i] = y
       }
     }
 
-    this.clock += durationSec
+    this.sampleIndex += N
+    this.clock = this.sampleIndex / fs
+    this.overlays = this.overlays.filter(overlay => !overlay.isManualSeizure || !overlay.isFinished(this.clock))
     return out
   }
 
   /** Reset clock to 0 (keeps all per-channel state and overlay schedules). */
   rewind() {
+    this.sampleIndex = 0
     this.clock = 0
     this.eventLog = []
     for (const o of this.overlays) {
@@ -2621,6 +2671,59 @@ export class StreamingEEG {
 }
 
 // ─── Factory helpers ────────────────────────────────────────────────────────
+
+const awakePatterns = new Set([
+  'normal_awake', 'fast_alpha_variant', 'mu_rhythm', 'central_midline_theta', 'lambda_waves', 'absence', 'temporal_sharps', 'polyspike_jme',
+  'photoparoxysmal', 'centrotemporal_spikes', 'breach_rhythm', 'posterior_slow_waves_youth',
+])
+
+// Change future samples without replacing channel state, history, or seizures.
+export function configureEngineControls(engine, pattern, {
+  eyesClosed = true, blinksEnabled = true, blinkRate = 18,
+  noiseLevel = 0.25, activationProcedure = 'none',
+} = {}) {
+  const eyesOpen = !eyesClosed
+  engine.setEyesOpen(eyesOpen)
+  engine.setNoiseScale(0.2 + Math.max(0, noiseLevel) * 3.2)
+  const rate = Number.isFinite(blinkRate) ? Math.max(0, blinkRate) : 18
+  const ocular = eyesOpen && awakePatterns.has(pattern)
+  function toggleOverlay(Type, enabled, create) {
+    const existing = engine.overlays.find(overlay => overlay instanceof Type)
+    if (!enabled) {
+      if (existing) engine.removeOverlay(existing)
+      return null
+    }
+    if (existing) return existing
+    const overlay = create()
+    // Overlay constructors use times relative to a new recording. Schedule
+    // newly enabled artifacts from the current clock, avoiding old events.
+    if (Number.isFinite(overlay.nextT)) overlay.nextT += engine.clock
+    if (Number.isFinite(overlay.nextEventT)) overlay.nextEventT += engine.clock
+    engine.addOverlay(overlay)
+    return overlay
+  }
+  const blink = toggleOverlay(BlinkOverlay, ocular && blinksEnabled && rate > 0,
+    () => new BlinkOverlay(engine.rng, rate))
+  if (blink && blink.meanIbi !== 60 / rate) {
+    blink.nextT = engine.clock + Math.max(0.25,
+      (blink.nextT - engine.clock) * (60 / rate) / blink.meanIbi)
+    blink.meanIbi = 60 / rate
+  }
+  toggleOverlay(SaccadeOverlay, ocular, () => new SaccadeOverlay(engine.rng))
+  for (const overlay of engine.overlays) {
+    if (overlay instanceof LambdaWavesOverlay) {
+      if (eyesOpen && !overlay.enabled) overlay.nextT = engine.clock + 0.55
+      overlay.enabled = eyesOpen
+    }
+    if (overlay instanceof PosteriorSlowWavesYouthOverlay)
+      overlay.reactivityScale = eyesOpen ? 0.08 : 1
+  }
+  const activation = engine.overlays.find(overlay => overlay instanceof ActivationProcedureOverlay)
+  if (activation && activation.kind !== activationProcedure) engine.removeOverlay(activation)
+  toggleOverlay(ActivationProcedureOverlay,
+    activationProcedure !== 'none' && isActivationProcedureAllowed(activationProcedure, pattern),
+    () => new ActivationProcedureOverlay(activationProcedure, engine.rng))
+}
 
 /**
  * Create a streaming engine pre-configured for a named pattern, optionally
@@ -2643,10 +2746,6 @@ export function createEngineForPattern(pattern, options = {}) {
 
   const eyesOpen = !eyesClosed
   const isEci = pattern === 'electrocerebral_silence'
-  const awakePatterns = new Set([
-    'normal_awake', 'fast_alpha_variant', 'mu_rhythm', 'central_midline_theta', 'lambda_waves', 'absence', 'temporal_sharps', 'polyspike_jme',
-    'photoparoxysmal', 'centrotemporal_spikes', 'breach_rhythm', 'posterior_slow_waves_youth',
-  ])
   const ambientHr = 60 + Math.round(engine.rng() * 12)
 
   // Always-on artifacts
@@ -2662,7 +2761,10 @@ export function createEngineForPattern(pattern, options = {}) {
   }
 
   // Map pattern → base mode + optional overlays
-  switch (pattern) {
+  if (Object.hasOwn(ADDITIONAL_PATTERN_CONFIG, pattern)) {
+    engine.setMode(ADDITIONAL_PATTERN_CONFIG[pattern].mode)
+    engine.addOverlay(createAdditionalOverlay(pattern, engine.rng))
+  } else switch (pattern) {
     case 'normal_awake':         engine.setMode('normal_awake'); break
     case 'fast_alpha_variant':   engine.setMode('fast_alpha_variant'); break
     case 'mu_rhythm':
@@ -2780,7 +2882,7 @@ export function createEngineForPattern(pattern, options = {}) {
       engine.addOverlay(new BreachRhythmOverlay(engine.rng))
       break
     case 'burst_suppression':
-      engine.setMode('slow_wave_sleep')          // very low-amp base
+      engine.setMode('slow_wave_sleep')          // overlay attenuates the interburst background
       engine.addOverlay(new BurstSuppressionOverlay(engine.rng))
       break
     case 'electrocerebral_silence':

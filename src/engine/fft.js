@@ -14,7 +14,10 @@
  */
 export function fft(re, im) {
   const n = re.length
+  if (im.length !== n)
+    throw new RangeError('FFT real and imaginary arrays must have equal lengths.')
   if (n <= 1) return
+  assertFFTSize(n)
 
   // Bit-reversal permutation
   let j = 0
@@ -29,24 +32,25 @@ export function fft(re, im) {
   }
 
   // Butterfly operations
-  for (let len = 2; len <= n; len <<= 1) {
-    const halfLen  = len >> 1
-    const wRe      = Math.cos(-2 * Math.PI / len)
-    const wIm      = Math.sin(-2 * Math.PI / len)
+  for (let len = 2; len <= n; len *= 2) {
+    const halfLen = len >> 1
+    const wRe = Math.cos((-2 * Math.PI) / len)
+    const wIm = Math.sin((-2 * Math.PI) / len)
     for (let i = 0; i < n; i += len) {
-      let curRe = 1, curIm = 0
+      let curRe = 1,
+        curIm = 0
       for (let k = 0; k < halfLen; k++) {
         const uRe = re[i + k]
         const uIm = im[i + k]
         const vRe = re[i + k + halfLen] * curRe - im[i + k + halfLen] * curIm
         const vIm = re[i + k + halfLen] * curIm + im[i + k + halfLen] * curRe
-        re[i + k]          = uRe + vRe
-        im[i + k]          = uIm + vIm
+        re[i + k] = uRe + vRe
+        im[i + k] = uIm + vIm
         re[i + k + halfLen] = uRe - vRe
         im[i + k + halfLen] = uIm - vIm
         const nextRe = curRe * wRe - curIm * wIm
-        curIm        = curRe * wIm + curIm * wRe
-        curRe        = nextRe
+        curIm = curRe * wIm + curIm * wRe
+        curRe = nextRe
       }
     }
   }
@@ -59,7 +63,7 @@ export function fft(re, im) {
  * Returns a new Float64Array.
  */
 export function hannWindow(signal) {
-  const n      = signal.length
+  const n = signal.length
   const result = new Float64Array(n)
   if (n === 1) {
     result[0] = signal[0]
@@ -88,13 +92,12 @@ export function hannWindow(signal) {
  *   psd:   power values (µV²/Hz or dB µV²/Hz)
  */
 export function computePSD(signal, sampleRate = 256, opts = {}) {
-  const {
-    nfft    = nextPow2(signal.length),
-    window  = 'hann',
-    dbScale = true,
-  } = opts
+  const { nfft = nextPow2(signal.length), window = 'hann', dbScale = true } = opts
 
   // Zero-pad or truncate to nfft
+  assertSampleRate(sampleRate)
+  assertFFTSize(nfft)
+  if (!signal.length) return { freqs: new Float64Array(0), psd: new Float64Array(0) }
   const re = new Float64Array(nfft)
   const im = new Float64Array(nfft)
   const usedLength = Math.min(signal.length, nfft)
@@ -110,9 +113,8 @@ export function computePSD(signal, sampleRate = 256, opts = {}) {
     windowEnergy = 0
     for (let i = 0; i < usedLength; i++) {
       re[i] = w[i]
-      const coefficient = usedLength > 1
-        ? 0.5 * (1 - Math.cos((2 * Math.PI * i) / (usedLength - 1)))
-        : 1
+      const coefficient =
+        usedLength > 1 ? 0.5 * (1 - Math.cos((2 * Math.PI * i) / (usedLength - 1))) : 1
       windowEnergy += coefficient * coefficient
     }
   }
@@ -121,9 +123,9 @@ export function computePSD(signal, sampleRate = 256, opts = {}) {
   fft(re, im)
 
   // One-sided PSD (bins 0 to nfft/2)
-  const nBins = nfft / 2 + 1
+  const nBins = Math.floor(nfft / 2) + 1
   const freqs = new Float64Array(nBins)
-  const psd   = new Float64Array(nBins)
+  const psd = new Float64Array(nBins)
 
   const normFactor = sampleRate * Math.max(windowEnergy, Number.EPSILON)
 
@@ -141,11 +143,11 @@ export function computePSD(signal, sampleRate = 256, opts = {}) {
 // ─── Band Power ───────────────────────────────────────────────────────────────
 
 export const EEG_BANDS = {
-  delta: { min: 0.5, max: 4,  label: 'δ Delta',  color: '#7B5EA7' },
-  theta: { min: 4,   max: 8,  label: 'θ Theta',  color: '#00D4FF' },
-  alpha: { min: 8,   max: 13, label: 'α Alpha',  color: '#00FFB0' },
-  beta:  { min: 13,  max: 30, label: 'β Beta',   color: '#FF6B35' },
-  gamma: { min: 30,  max: 45, label: 'γ Gamma',  color: '#FFD166' },
+  delta: { min: 0.5, max: 4, label: 'δ Delta', color: '#7B5EA7' },
+  theta: { min: 4, max: 8, label: 'θ Theta', color: '#00D4FF' },
+  alpha: { min: 8, max: 13, label: 'α Alpha', color: '#00FFB0' },
+  beta: { min: 13, max: 30, label: 'β Beta', color: '#FF6B35' },
+  gamma: { min: 30, max: 45, label: 'γ Gamma', color: '#FFD166' },
 }
 
 /**
@@ -203,19 +205,21 @@ export function computeBandPowers(freqs, psd) {
  * @returns {{ timeSteps: number[], freqBins: number[], matrix: Float64Array[] }}
  */
 export function computeSpectrogram(signal, sampleRate = 256, opts = {}) {
-  const {
-    frameSize = 256,
-    hopSize   = 64,
-    maxFreq   = 40,
-  } = opts
+  const { frameSize = 256, hopSize = 64, maxFreq = 40 } = opts
 
-  const nFrames   = Math.floor((signal.length - frameSize) / hopSize) + 1
+  assertSampleRate(sampleRate)
+  assertFFTSize(frameSize)
+  if (!Number.isSafeInteger(hopSize) || hopSize < 1) {
+    throw new RangeError('Spectrogram hop size must be a positive integer.')
+  }
+  if (signal.length < frameSize) return { timeSteps: [], freqBins: [], matrix: [] }
+  const nFrames = Math.floor((signal.length - frameSize) / hopSize) + 1
   const timeSteps = []
-  const matrix    = []
+  const matrix = []
 
   for (let f = 0; f < nFrames; f++) {
-    const start  = f * hopSize
-    const frame  = signal.slice(start, start + frameSize)
+    const start = f * hopSize
+    const frame = signal.slice(start, start + frameSize)
     const { freqs, psd } = computePSD(frame, sampleRate, { nfft: frameSize, dbScale: true })
 
     timeSteps.push(start / sampleRate)
@@ -229,8 +233,10 @@ export function computeSpectrogram(signal, sampleRate = 256, opts = {}) {
   }
 
   // Frequency bins (up to maxFreq)
-  const { freqs: allFreqs } = computePSD(signal.slice(0, frameSize), sampleRate, { nfft: frameSize })
-  const freqBins = Array.from(allFreqs).filter(f => f <= maxFreq)
+  const { freqs: allFreqs } = computePSD(signal.slice(0, frameSize), sampleRate, {
+    nfft: frameSize,
+  })
+  const freqBins = Array.from(allFreqs).filter((f) => f <= maxFreq)
 
   return { timeSteps, freqBins, matrix }
 }
@@ -238,7 +244,17 @@ export function computeSpectrogram(signal, sampleRate = 256, opts = {}) {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function nextPow2(n) {
-  let p = 1
-  while (p < n) p <<= 1
-  return p
+  return 2 ** Math.ceil(Math.log2(Math.max(1, n)))
+}
+
+function assertFFTSize(size) {
+  if (!Number.isSafeInteger(size) || size < 1 || !Number.isInteger(Math.log2(size))) {
+    throw new RangeError('FFT length must be a positive power of two.')
+  }
+}
+
+function assertSampleRate(rate) {
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new RangeError('Sample rate must be a positive finite number.')
+  }
 }

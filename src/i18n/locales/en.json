@@ -1,5 +1,6 @@
 {
   "nav": {
+    "atlas": "EEG Atlas",
     "home": "Home",
     "concepts": "EEG Concepts",
     "montages": "Montages",
@@ -12,6 +13,9 @@
     "report_builder": "Report Builder",
     "sidebar": "Navigation sidebar",
     "main": "Main navigation"
+  },
+  "atlas": {
+    "subtitle": "Explore waveform appearance, whole-record patterns, clinical context, and mimics in one connected reference."
   },
   "home": {
     "hero_tag": "Interactive EEG Education",

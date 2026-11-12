@@ -1,3 +1,4 @@
+import { useLocale } from '@/i18n/localize'
 import { useMemo } from 'react'
 import EEGViewer from './EEGViewer'
 import { generateDemoTrace } from '@/engine/waveforms'
@@ -14,6 +15,7 @@ export default function DemoTraceViewer({
   polarity = 'negative-up',
   traceScale = 1,
 }) {
+  useLocale()
   const signal = useMemo(() => {
     if (data) return data
     if (!patternId) return null

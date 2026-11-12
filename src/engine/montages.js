@@ -22,7 +22,7 @@ export const MONTAGES = {
     id:          'longitudinal_bipolar',
     label:       'Longitudinal Bipolar',
     shortLabel:  'Long. Bipolar',
-    description: 'The most common clinical montage. Electrodes are connected in chains running front-to-back along each hemisphere. Phase reversals localise generators.',
+    description: "Phase reversals identify field extrema",
     channels: [
       // Left parasagittal chain
       { label: 'Fp1–F7',  pos: 'Fp1', neg: 'F7'  },

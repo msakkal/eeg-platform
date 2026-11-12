@@ -1,15 +1,16 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
 import { useRef, useEffect, useLayoutEffect, useCallback, useId, useMemo } from 'react'
 import { applyFilterChain } from '@/engine/filters'
 import { SAMPLE_RATE } from '@/engine/signalGenerator'
-import { getViewerTheme, DEFAULT_SENSITIVITY } from '@/engine/viewerThemes'
+import { createTraceSamplingPlan, sampleTraceAt } from '@/engine/traceSampling'
+import { getCanvasResolution } from '@/engine/canvasResolution'
+import { eegProfilingEnabled, recordEEGMetric } from '@/engine/eegPerformance'
+import { getViewerTheme, getChannelThemeColor, DEFAULT_SENSITIVITY } from '@/engine/viewerThemes'
 
 const EMPTY_ARRAY = []
 const DEFAULT_CHANNEL_HEIGHT = 48
 const DEFAULT_LEFT_LABEL_WIDTH = 72
 const DEFAULT_FOOTER_HEIGHT = 24
-const DEFAULT_CHAIN_GAP = 18
-const MAX_CANVAS_DPR = 2
-const SMOOTH_TRACE_SAMPLE_RATIO = 2
 const MIN_TRACE_POINT_SPACING_PX = 0.5
 const NEGATIVE_UP = -1
 
@@ -28,33 +29,6 @@ function cancelDrawFrame(id) {
   } else {
     window.clearTimeout(id)
   }
-}
-
-function averagedValueAt(data, index, halfFootprint) {
-  if (halfFootprint < 0.5) {
-    const i0 = Math.floor(index)
-    const i1 = Math.min(data.length - 1, i0 + 1)
-    const frac = index - i0
-    return data[i0] + (data[i1] - data[i0]) * frac
-  }
-
-  // Integrate the complete source-sample footprint represented by this
-  // screen point. Fractional edge weights keep the result continuous when a
-  // moving window crosses a sample boundary and prevent temporal aliasing.
-  const left = Math.max(-0.5, index - halfFootprint)
-  const right = Math.min(data.length - 0.5, index + halfFootprint)
-  const first = Math.max(0, Math.floor(left + 0.5))
-  const last = Math.min(data.length - 1, Math.ceil(right - 0.5))
-  let weightedSum = 0
-  let totalWeight = 0
-
-  for (let i = first; i <= last; i++) {
-    const weight = Math.max(0, Math.min(right, i + 0.5) - Math.max(left, i - 0.5))
-    weightedSum += data[i] * weight
-    totalWeight += weight
-  }
-
-  return totalWeight > 0 ? weightedSum / totalWeight : data[Math.round(index)]
 }
 
 function drawSmoothedSamplePath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX = 0) {
@@ -80,12 +54,9 @@ function drawSmoothedSamplePath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX =
   ctx.lineTo(endX, endY)
 }
 
-function drawPixelSampledPath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX = 0) {
-  const nPts = data.length
-  const lastIdx = nPts - 1
-  const columns = Math.max(2, Math.ceil(plotW * SMOOTH_TRACE_SAMPLE_RATIO))
-  const samplesPerPixel = lastIdx / Math.max(1, columns - 1)
-  const halfFootprint = samplesPerPixel * 0.5
+function drawPixelSampledPath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX, plan) {
+  const columns = plan.columns
+  const lastIdx = data.length - 1
   let prevX = labelW - offsetX
   let prevY = cy - data[0] * pxPerUv
 
@@ -94,7 +65,7 @@ function drawPixelSampledPath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX = 0
   for (let col = 1; col < columns; col++) {
     const ratio = col / (columns - 1)
     const x = labelW + ratio * plotW - offsetX
-    const y = cy - averagedValueAt(data, ratio * lastIdx, halfFootprint) * pxPerUv
+    const y = cy - sampleTraceAt(data, plan, col) * pxPerUv
     // A midpoint quadratic keeps adjacent resampled points tangent to one
     // another. Straight segments make tiny bucket changes look like a jiggle
     // while the live window advances.
@@ -109,14 +80,14 @@ function drawPixelSampledPath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX = 0
   ctx.lineTo(endX, endY)
 }
 
-function drawSignalPathFast(ctx, data, labelW, plotW, cy, pxPerUv, offsetX = 0) {
+function drawSignalPathFast(ctx, data, labelW, plotW, cy, pxPerUv, offsetX, samplingPlans, sampleDensity) {
   const nPts = data.length
 
   ctx.beginPath()
   ctx.lineJoin = 'round'
   ctx.lineCap  = 'round'
 
-  if (nPts <= plotW * SMOOTH_TRACE_SAMPLE_RATIO) {
+  if (nPts <= plotW * sampleDensity) {
     if (nPts === 1) {
       ctx.moveTo(labelW - offsetX, cy - data[0] * pxPerUv)
       return
@@ -126,10 +97,17 @@ function drawSignalPathFast(ctx, data, labelW, plotW, cy, pxPerUv, offsetX = 0) 
     return
   }
 
-  // Dense live traces shimmer if each frame re-buckets moving samples into
-  // min/max columns. Sampling one interpolated point per CSS pixel keeps the
-  // path stable while capping work to the visible canvas width.
-  drawPixelSampledPath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX)
+  // Keep the weighted sampling geometry stable as the recording scrolls.
+  // Density follows the backing resolution (at least two points/CSS pixel),
+  // retaining extra detail on high-density displays without new signal filters.
+  let plan = samplingPlans.get(nPts)
+  if (!plan) {
+    // Mixed-length inputs are uncommon; keep the geometry cache bounded.
+    if (samplingPlans.size >= 4) samplingPlans.clear()
+    plan = createTraceSamplingPlan(nPts, plotW, sampleDensity)
+    samplingPlans.set(nPts, plan)
+  }
+  drawPixelSampledPath(ctx, data, labelW, plotW, cy, pxPerUv, offsetX, plan)
 }
 
 function hasActiveFilter(filterConfig) {
@@ -146,6 +124,10 @@ function filteredVisibleData(ch, filterConfig, workspace) {
   if (!ch.data?.length) return ch.data
 
   const filtered = applyFilterChain(ch.data, SAMPLE_RATE, filterConfig, workspace)
+  // Keep the returned frame private to this render. A future filter pass may
+  // reuse its scratch buffer, but must not overwrite a still-displayed trace.
+  if (workspace.bufA === filtered) workspace.bufA = null
+  if (workspace.bufB === filtered) workspace.bufB = null
   const start = ch.visibleStartIndex ?? 0
   return start > 0 ? filtered.subarray(start) : filtered
 }
@@ -225,6 +207,7 @@ export default function EEGViewer({
   onHoverChannel = null,
   theme = 'midnight',
   className = '',
+  isVisible = true,
   channelHeight = DEFAULT_CHANNEL_HEIGHT,
   leftLabelWidth = DEFAULT_LEFT_LABEL_WIDTH,
   footerHeight = DEFAULT_FOOTER_HEIGHT,
@@ -245,13 +228,15 @@ export default function EEGViewer({
   chainGap = 0,
   verticalPadding = 0,
 }) {
+  const language = useLocale()
   const accessibilityDescriptionId = useId()
   const canvasRef = useRef(null)
-  const dprRef = useRef(Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DPR))
   const hoverRef = useRef({ x: null, ch: null })
   const rafRef = useRef(null)
   const lastReportedHoverRef = useRef(null)
   const filterWorkspacesRef = useRef([])
+  const samplingCacheRef = useRef({ width: null, plans: new Map() })
+  const drawRef = useRef(null)
 
   const th = useMemo(
     () => ({ ...getViewerTheme(theme), ...(themeOverrides ?? {}) }),
@@ -259,6 +244,12 @@ export default function EEGViewer({
   )
 
   const filteredChannels = useMemo(() => {
+    // A processed frame owns its filter settings as well as its timestamp.
+    // Keep showing that coherent frame until the worker returns the next one;
+    // never re-filter it on the UI thread using newly selected controls.
+    if (channels.length && channels.every(channel => channel.processed)) {
+      return channels.map(channel => ({ ...channel, data: channel.filteredData ?? visibleData(channel) }))
+    }
     if (!hasActiveFilter(filterConfig)) {
       const alreadyVisible = channels.every(ch => !ch.visibleStartIndex)
       if (alreadyVisible) return channels
@@ -314,12 +305,11 @@ export default function EEGViewer({
   }, [filteredChannels, onHoverChannel])
 
   const draw = useCallback(() => {
+    const drawStart = eegProfilingEnabled ? performance.now() : 0
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas || !isVisible) return
 
-    const dpr = Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DPR)
-    dprRef.current = dpr
-    const W = canvas.clientWidth
+    const W = canvas.getBoundingClientRect().width || canvas.clientWidth
     const chs = filteredChannels
     const nCh = chs.length
     const rowH = channelHeight
@@ -327,21 +317,25 @@ export default function EEGViewer({
     const labelW = showChannelLabels || showChannelAmplitudes ? leftLabelWidth : 0
     const H = Math.max(footerHeight, nCh * rowH + totalGap + verticalPadding + footerHeight)
 
-    const bitmapW = Math.max(1, Math.round(W * dpr))
-    const bitmapH = Math.max(1, Math.round(H * dpr))
+    const resolution = getCanvasResolution(W, H, window.devicePixelRatio)
+    const { bitmapWidth: bitmapW, bitmapHeight: bitmapH, sampleDensity } = resolution
     if (canvas.width !== bitmapW || canvas.height !== bitmapH) {
       canvas.width = bitmapW
       canvas.height = bitmapH
-      canvas.style.height = `${H}px`
     }
+    if (canvas.style.height !== `${H}px`) canvas.style.height = `${H}px`
 
     const ctx = canvas.getContext('2d')
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.setTransform(resolution.scaleX, 0, 0, resolution.scaleY, 0, 0)
     ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'low'
+    ctx.imageSmoothingQuality = 'high'
     ctx.clearRect(0, 0, W, H)
 
     const plotW = W - labelW
+    if (samplingCacheRef.current.width !== plotW || samplingCacheRef.current.density !== sampleDensity) {
+      samplingCacheRef.current = { width: plotW, density: sampleDensity, plans: new Map() }
+    }
+    const samplingPlans = samplingCacheRef.current.plans
     const plotH = H - footerHeight
     if (plotW <= 0 || plotH <= 0 || nCh === 0) return
 
@@ -439,7 +433,7 @@ export default function EEGViewer({
       for (let s = Math.ceil(windowStart); s <= Math.floor(windowStart + duration); s++) {
         const x = labelW + (s - windowStart) * pxPerSec
         if (x < labelW || x > W - 12) continue
-        ctx.fillText(`${s}s`, x + 3, H - 8)
+        ctx.fillText(localize(`${s}s`, language), x + 3, H - 8)
       }
     }
 
@@ -479,7 +473,7 @@ export default function EEGViewer({
       ctx.fillStyle = th.annotationText
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
-      ctx.fillText(label, tagX + padX, tagY + tagH / 2)
+      ctx.fillText(localize(label, language), tagX + padX, tagY + tagH / 2)
     })
 
     if (hoverX !== null) {
@@ -498,7 +492,7 @@ export default function EEGViewer({
       ctx.font = '8px "DM Mono", monospace'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'middle'
-      ctx.fillText(`${hoverTime.toFixed(2)}s`, hoverX + 7, 9)
+      ctx.fillText(localize(`${hoverTime.toFixed(2)}s`, language), hoverX + 7, 9)
     }
 
     chs.forEach(({ label, data }, idx) => {
@@ -546,16 +540,18 @@ export default function EEGViewer({
       if (!data?.length) return
 
       const customColor = channelColor?.(label, idx)
-      const traceColor = customColor ?? (isHighlighted ? rowHighlightColor : baseSignalColor)
-      ctx.strokeStyle = isHovered ? th.signalHover : traceColor
+      const traceColor = customColor ?? (isHighlighted ? rowHighlightColor : signalColor ?? getChannelThemeColor(label, th))
+      ctx.strokeStyle = traceColor
       ctx.lineWidth = isHovered
         ? curveWidth + 0.45
         : isHighlighted
           ? curveWidth + 0.15
           : curveWidth
       if (th.glow && (isHovered || isHighlighted)) {
-        ctx.shadowColor = isHovered ? th.glowHover : traceColor
-        ctx.shadowBlur = isHovered ? th.glowBlur * 1.4 : isHighlighted ? th.glowBlur : th.glowBlur * 0.7
+        ctx.shadowColor = traceColor
+        // Canvas shadows use backing pixels rather than the path transform.
+        const glowBlur = isHovered ? th.glowBlur * 1.4 : th.glowBlur
+        ctx.shadowBlur = glowBlur * resolution.scaleX
       }
       const offsetX = sampleOffset * plotW / Math.max(1, data.length - 1)
       drawSignalPathFast(
@@ -565,7 +561,9 @@ export default function EEGViewer({
         plotW,
         cy,
         pxPerUvFor(idx) * displayPolarity,
-        offsetX
+        offsetX,
+        samplingPlans,
+        sampleDensity
       )
       ctx.stroke()
       ctx.shadowBlur = 0
@@ -592,7 +590,7 @@ export default function EEGViewer({
         ctx.font = '9px "DM Mono", monospace'
         ctx.textAlign = 'left'
         ctx.textBaseline = 'middle'
-        ctx.fillText(`${calUv} µV`, calX + 7, calY - calH / 2)
+        ctx.fillText(localize(`${calUv} µV`, language), calX + 7, calY - calH / 2)
       }
     }
 
@@ -611,20 +609,21 @@ export default function EEGViewer({
         const isHovered = hoverCh === idx
         const isHighlighted = highlightedSet.has(label)
         const customColor = channelColor?.(label, idx)
-        const labelColor = isHovered ? th.chanLabelHover : customColor ?? (isHighlighted ? rowHighlightColor : th.chanLabel)
+        const labelColor = customColor ?? (isHighlighted ? rowHighlightColor : getChannelThemeColor(label, th))
         ctx.fillStyle = labelColor
         ctx.font = `${isHovered || isHighlighted ? 'bold ' : ''}10px "DM Mono", monospace`
         ctx.textAlign = 'right'
         ctx.textBaseline = 'middle'
         const labelY = showChannelAmplitudes ? cy - 5 : cy
-        if (showChannelLabels) ctx.fillText(label, labelW - 6, labelY)
+        if (showChannelLabels) ctx.fillText(localize(label, language), labelW - 6, labelY)
         if (showChannelAmplitudes) {
           ctx.fillStyle = th.axisText
           ctx.font = '8px "DM Mono", monospace'
-          ctx.fillText(`${Math.round(channelMax[idx])}µV`, labelW - 6, cy + 9)
+          ctx.fillText(localize(`${Math.round(channelMax[idx])}µV`, language), labelW - 6, cy + 9)
         }
       })
     }
+    if (eegProfilingEnabled) recordEEGMetric('paintMs', performance.now() - drawStart)
   }, [
     annotations,
     chainGap,
@@ -639,7 +638,9 @@ export default function EEGViewer({
     footerHeight,
     highlightedSet,
     highlightColor,
+    isVisible,
     leftLabelWidth,
+    language,
     polarity,
     scaleMode,
     sampleOffset,
@@ -659,11 +660,18 @@ export default function EEGViewer({
     if (rafRef.current != null) return
     rafRef.current = requestDrawFrame(() => {
       rafRef.current = null
-      draw()
+      drawRef.current?.()
     })
-  }, [draw])
+  }, [])
 
   useLayoutEffect(() => {
+    drawRef.current = draw
+    // A live frame supersedes a pending hover/resize redraw. Cancel it so it
+    // cannot redraw stale props or paint the same frame a second time.
+    if (rafRef.current != null) {
+      cancelDrawFrame(rafRef.current)
+      rafRef.current = null
+    }
     draw()
   }, [draw])
 
@@ -683,6 +691,30 @@ export default function EEGViewer({
     const observer = new ResizeObserver(scheduleDraw)
     observer.observe(canvas)
     return () => observer.disconnect()
+  }, [scheduleDraw])
+
+  // A paused viewer must also redraw after a monitor/zoom DPR change even
+  // when its CSS size did not change (and ResizeObserver therefore stays idle).
+  useEffect(() => {
+    let media
+    function watchDensity() {
+      media?.removeEventListener?.('change', densityChanged)
+      media = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`)
+      media?.addEventListener?.('change', densityChanged)
+    }
+    function densityChanged() {
+      watchDensity()
+      scheduleDraw()
+    }
+    watchDensity()
+    window.addEventListener('resize', scheduleDraw)
+    const viewport = window.visualViewport
+    viewport?.addEventListener('resize', scheduleDraw)
+    return () => {
+      media?.removeEventListener?.('change', densityChanged)
+      window.removeEventListener('resize', scheduleDraw)
+      viewport?.removeEventListener('resize', scheduleDraw)
+    }
   }, [scheduleDraw])
 
   function handleMouseMove(e) {
@@ -724,7 +756,7 @@ export default function EEGViewer({
     const labelW = showChannelLabels || showChannelAmplitudes ? leftLabelWidth : 0
     if (x < labelW) return
     const duration = timeAxis[timeAxis.length - 1] || 10
-    const plotW = canvas.clientWidth - labelW
+    const plotW = (rect.width || canvas.clientWidth) - labelW
     if (plotW <= 0) return
     const relTime = ((x - labelW) / plotW) * duration
     const chIdx = channelIndexAtY(e.clientY - rect.top, channelLayout.centers, channelHeight)
@@ -745,13 +777,12 @@ export default function EEGViewer({
 
   return (
     <div className={`relative overflow-hidden ${className}`}>
-      <p id={accessibilityDescriptionId} className="sr-only">
-        Synthetic educational EEG display. Channel labels: {filteredChannels.map(channel => channel.label).join(', ') || 'none'}.
+      <p id={accessibilityDescriptionId} className="sr-only">{localize("Synthetic educational EEG display. Channels are color-coded by left, right, midline, and cross-head derivation. Channel labels: ")}{localize(filteredChannels.map(channel => channel.label).join(', ') || 'none')}.
       </p>
-      <canvas
+      <canvas dir="ltr"
         ref={canvasRef}
         role={onAnnotate ? 'button' : 'img'}
-        aria-label={accessibilityLabel}
+        aria-label={localize(accessibilityLabel)}
         aria-describedby={accessibilityDescriptionId}
         tabIndex={onAnnotate ? 0 : undefined}
         aria-keyshortcuts={onAnnotate ? 'Enter Space' : undefined}
@@ -762,7 +793,7 @@ export default function EEGViewer({
         onClick={handleClick}
         onKeyDown={handleKeyDown}
       >
-        {accessibilityLabel}
+        {localize(accessibilityLabel)}
       </canvas>
     </div>
   )

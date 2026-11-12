@@ -1,3 +1,4 @@
+import { translateDisplay as localize, useLocale } from '@/i18n/localize'
 import React from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -21,20 +22,12 @@ const MODULES = [
     color:   '#00FFB0',
   },
   {
-    path:    '/waveforms',
-    titleKey:'nav.waveforms',
-    descKey: 'waveforms.subtitle',
-    icon:    '〰',
-    tag:     'Visual',
+    path:    '/atlas',
+    titleKey:'nav.atlas',
+    descKey: 'atlas.subtitle',
+    icon:    'EEG',
+    tag:     'Reference',
     color:   '#7B5EA7',
-  },
-  {
-    path:    '/findings',
-    titleKey:'nav.findings',
-    descKey: 'findings.subtitle',
-    icon:    '🔬',
-    tag:     'Clinical',
-    color:   '#FF6B35',
   },
   {
     path:    '/artifacts',
@@ -79,6 +72,7 @@ const MODULES = [
 ]
 
 export default function HomePage() {
+  useLocale()
   const { t } = useTranslation()
 
   return (
@@ -126,10 +120,10 @@ export default function HomePage() {
               style={{ '--hover-border': mod.color }}
             >
               <div className="flex items-start justify-between mb-4">
-                <span className="text-2xl">{mod.icon}</span>
+                <span className="text-2xl">{localize(mod.icon)}</span>
                 <span className="text-xs font-mono px-2 py-0.5 rounded border"
                   style={{ color: mod.color, borderColor: `${mod.color}44`, background: `${mod.color}11` }}>
-                  {mod.tag}
+                  {localize(mod.tag)}
                 </span>
               </div>
               <h3 className="font-display font-semibold text-eeg-text mb-2">
