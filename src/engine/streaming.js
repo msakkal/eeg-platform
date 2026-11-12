@@ -1557,15 +1557,25 @@ class LpdsOverlay {
 
 // Absence: 3 Hz spike-and-wave run, frontocentral max, tapers in frequency
 // and amplitude across the run (3.4 → 2.6 Hz, ramps in 5%, tapers last 20%).
+// Repeat finite teaching runs with normal background between them. A single
+// run at t=1..7 is lost during the viewer's 70-second history prefill.
 class AbsenceOverlay {
   constructor(rng, durationSec = 6) {
     this.rng = rng
     this.runStart = 1.0
+    this.durationSec = durationSec
+    this.gapSec = 6
     this.runEnd   = this.runStart + durationSec
     this.events = []
     this.nextT = this.runStart
   }
   advance(t, emitEvent = null) {
+    while (t >= this.runEnd + this.gapSec) {
+      this.runStart = this.runEnd + this.gapSec
+      this.runEnd = this.runStart + this.durationSec
+      this.nextT = this.runStart
+      this.events.length = 0
+    }
     if (t < this.runStart || t >= this.runEnd) return
     if (t >= this.nextT) {
       const event = { t0: this.nextT }

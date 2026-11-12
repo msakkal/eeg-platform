@@ -26,6 +26,11 @@ before clinical use. See the [project review](docs/project-review.md),
 [Arabic translation review](docs/arabic-translation-review.md) for validation scope
 and remaining limitations.
 
+The live 3 Hz absence example repeats six-second spike-and-wave runs separated
+by six seconds of background, so discharges remain available after the viewer
+fills its recording history. This repetition is a teaching schedule, not a model
+of an individual patient's seizure frequency.
+
 ## Local development
 
 Use Node.js 22 and npm, matching the CI environment.
