@@ -7,6 +7,18 @@ Explore EEG concepts, electrode placement, montages, a searchable waveform and
 clinical atlas, artifacts, quizzes, a reading algorithm, report drafts, and a
 real-time signal sandbox with filters, spectral analysis, and seizure examples.
 
+## Features
+
+| Module | What you can explore |
+| --- | --- |
+| EEG concepts | Frequency bands, signal fundamentals, and the 10-20 electrode system |
+| Montages | Bipolar and referential derivations with interactive examples |
+| EEG atlas | Searchable waveforms, clinical findings, normal variants, and artifacts |
+| Sandbox | Simulated multichannel recordings, filters, scalp maps, spectra, and spectrograms |
+| Quiz | Knowledge checks and electrode-placement exercises |
+| Reading algorithm | A structured approach to reviewing an EEG |
+| Report builder | Editable report drafts for learning and review |
+
 All EEG recordings are simulated. This is an educational resource. Clinical
 content, translations, and generated report drafts require professional review
 before clinical use. See the [project review](docs/project-review.md),
@@ -16,7 +28,7 @@ and remaining limitations.
 
 ## Local development
 
-Use Node.js 22 LTS and npm.
+Use Node.js 22 and npm, matching the CI environment.
 
 ```sh
 npm ci
@@ -25,14 +37,17 @@ npm run dev
 
 Vite prints the local development URL. No backend, API keys, or environment file
 are required. Optional configuration is documented in [.env.example](.env.example).
+On Windows, use `npm.cmd` in place of `npm` if PowerShell blocks `npm.ps1`.
 
-```sh
-npm run lint
-npm run check:translations
-npm test
-npm run build
-npm run preview
-```
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm run lint` | Check source and tests with ESLint |
+| `npm run check:translations` | Check German and Arabic text coverage and template parameters |
+| `npm test` | Run the full regression suite |
+| `npm run test:watch` | Rerun tests while developing |
+| `npm run build` | Create the production site in `dist/` |
+| `npm run preview` | Serve the production build locally |
 
 The production site is generated in `dist/`. Dependencies, build output, local
 environment files, editor settings, and development logs are excluded from Git.
@@ -46,6 +61,9 @@ Only the contents of `dist/` are uploaded for hosting.
 3. Run the **CI** workflow from the **Actions** tab, or push another commit.
 4. Open the site URL shown by the `github-pages` deployment. For the current
    repository, the expected URL is <https://msakkal.github.io/eeg-platform/>.
+
+The URL becomes available after the first successful deployment. Local builds
+and repository cleanup do not publish the site by themselves.
 
 The [workflow](.github/workflows/ci.yml) checks lint, translations, and tests
 before building and deploying. Pull requests run checks and a build without
@@ -63,10 +81,11 @@ For a local preview of a repository-path deployment in PowerShell:
 $env:VITE_BASE_URL = '/eeg-platform/'
 npm run build
 npm run preview
-Remove-Item Env:VITE_BASE_URL
 ```
 
-Open the preview URL with `/eeg-platform/` appended. For other static hosts, set
+Open the preview URL with `/eeg-platform/` appended. Stop the preview with
+**Ctrl+C**, then run `Remove-Item Env:VITE_BASE_URL` to restore the default base
+path for subsequent commands. For other static hosts, set
 `VITE_BASE_URL` to `/` or the site's subdirectory, beginning and ending with `/`.
 See [Vite's deployment guide](https://vite.dev/guide/static-deploy.html#github-pages)
 and [GitHub's Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
@@ -77,7 +96,7 @@ and [GitHub's Pages workflow documentation](https://docs.github.com/en/pages/get
 | --- | --- | --- |
 | `en` | English (default and fallback) | LTR |
 | `de` | Deutsch | LTR |
-| `ar` | Arabic | RTL |
+| `ar` | العربية (Arabic) | RTL |
 
 English is used on first visit. Explicit language selections are remembered
 locally; unsupported saved languages fall back to English. Translations are
@@ -89,6 +108,18 @@ lesson text, controls, quiz explanations, and report templates are in
 `translateDisplay` for displayed content, `formatText` for templates, and
 `literalText` for user-entered text; preserve identifiers and option values.
 Run `npm run check:translations` after changing displayed text.
+
+## Deployment troubleshooting
+
+- **No deployment starts:** enable GitHub Actions as the Pages source, confirm
+  the workflow file is on the default branch, and run **CI** from the Actions tab.
+- **A workflow fails:** inspect the failed lint, translation, test, build, or
+  deploy job in Actions. Deployment waits for successful validation and build.
+- **Assets return 404:** check that the build base matches the hosting path.
+  The Pages workflow supplies this automatically; local subdirectory builds
+  require `VITE_BASE_URL`.
+- **A lesson URL returns 404:** use the hash route, such as
+  `/eeg-platform/#/atlas`, rather than `/eeg-platform/atlas`.
 
 ## Source layout
 
